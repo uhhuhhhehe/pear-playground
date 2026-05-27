@@ -314,6 +314,110 @@
         margin-bottom: 5px;
         margin-top: 15px;
      }
+    #joinGamePopup {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+    box-sizing: border-box;
+    left: 50%;
+    padding: 24px;
+    position: fixed;
+    text-align: center;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 320px;
+    z-index: 2000;
+  }
+
+  #joinGamePopup h2 {
+    color: #1c1c1e;
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 20px 0;
+  }
+
+  /* Input Group Layout */
+  .popup-input-group {
+    align-items: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 24px;
+    text-align: left;
+  }
+
+  .popup-input-group label {
+    color: #8e8e93;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .popup-input-group input {
+    background: #f2f2f7;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    box-sizing: border-box;
+    color: #1c1c1e;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 12px 14px;
+    transition: all 0.2s ease;
+    width: 100%;
+  }
+
+  /* Input Focus State */
+  .popup-input-group input:focus {
+    background: #ffffff;
+    border-color: #007aff;
+    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+    outline: none;
+  }
+
+  /* Button Action Container */
+  .popup-actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  .popup-btn {
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 12px;
+    transition: all 0.2s ease;
+  }
+
+  /* Secondary Close Button */
+  .popup-btn.close {
+    background: #f2f2f7;
+    color: #8e8e93;
+    flex: 1;
+  }
+
+  .popup-btn.close:hover {
+    background: #e5e5ea;
+    color: #48484a;
+  }
+
+  /* Primary Join Button */
+  .popup-btn.join {
+    background: #007aff;
+    color: #ffffff;
+    flex: 2; /* Gives the primary action more visual weight */
+  }
+
+  .popup-btn.join:hover {
+    background: #0063cc;
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+  }
+  
+  .popup-btn:active {
+    transform: scale(0.98);
+  }
   </style>
 </head>
 <body>
@@ -358,16 +462,18 @@
     <button onclick="closeSettings()" style="width:100%; padding:10px; background:#007aff; color:white; border:none; border-radius:8px; cursor:pointer;">Close</button>
 </div>
 
-<div id="joinGamePopup" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:300px; padding:20px; background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.2); z-index:2000; text-align:center;">
-    <h2 style="margin-top:0; color:#333;">Join Game</h2>
-    
-    <div class="input-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
-        <label for="joinGameCode" style="color:#333; margin:0;">code</label>
-        <input type="number" id="joinGameCode">
-    </div>
+<div id="joinGamePopup" style="display: none;">
+  <h2>Join Game</h2>
+  
+  <div class="popup-input-group">
+    <label for="joinGameCode">Room Code</label>
+    <input type="text" id="joinGameCode" placeholder="Enter code..." pattern="[0-9]*" inputmode="numeric">
+  </div>
 
-    <button onclick="closeJoinGame()" style="width:100%; padding:10px; background:#007aff; color:white; border:none; border-radius:8px; cursor:pointer;">Close</button>
-    <button onclick="joinCurrentGame()" style="width:100%; padding:10px; background:#007aff; color:white; border:none; border-radius:8px; cursor:pointer;">Join</button>
+  <div class="popup-actions">
+    <button class="popup-btn close" onclick="closeJoinGame()">Close</button>
+    <button class="popup-btn join" onclick="joinCurrentGame()">Join</button>
+  </div>
 </div>
 
 <div id="toolbar" style="display:none;">
