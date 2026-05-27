@@ -1136,17 +1136,32 @@ async function hostGame() {
 }
 
 // Firebase config
-const firebaseConfig = {
-  databaseURL: "https://pear-playground-default-rtdb.firebaseio.com/" // Replace with your URL
-};
+let db = null;
 
-const firebaseApp = firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+function initFirebase() {
+  if (typeof firebase === 'undefined') {
+    console.warn("Firebase not loaded yet");
+    return;
+  }
+  const firebaseConfig = {
+    databaseURL: "https://pear-playground-default-rtdb.firebaseio.com/"
+  };
+  try {
+    const firebaseApp = firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+    console.log("Firebase initialized");
+  } catch (e) {
+    console.error("Firebase error:", e);
+  }
+}
+
+// Call this after a short delay to let Firebase load
+setTimeout(initFirebase, 500);
 
 let playerRef = null;
 
 async function sendPosition() {
-  if (!currentUser || !currentCode) return;
+  if (!db || !currentUser || !currentCode) return;
   
   try {
     await db.ref(`games/${currentCode}/players/${currentUser}`).set({
@@ -1160,7 +1175,7 @@ async function sendPosition() {
 }
 
 async function fetchPlayers() {
-  if (!currentCode) return;
+  if (!db || !currentCode) return;
   
   try {
     const snapshot = await db.ref(`games/${currentCode}/players`).once('value');
