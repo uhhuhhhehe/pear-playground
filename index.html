@@ -1181,17 +1181,23 @@ async function fetchPlayers() {
     const snapshot = await db.ref(`games/${currentCode}/players`).once('value');
     const allPlayers = snapshot.val() || {};
     
+    console.log("Fetched players:", allPlayers); // DEBUG
+    console.log("Current code:", currentCode); // DEBUG
+    console.log("Current user:", currentUser); // DEBUG
+    
     otherPlayers = {};
     for (const u in allPlayers) {
       if (u !== currentUser && Date.now() - allPlayers[u].t < 5000) {
         otherPlayers[u] = allPlayers[u];
       }
     }
+    
+    console.log("Other players to draw:", otherPlayers); // DEBUG
   } catch (e) {
     console.error("Fetch players error:", e);
   }
 }
-
+  
 function startMultiplayer() {
   if (multiplayerInterval) clearInterval(multiplayerInterval);
   if (multiplayerInterval2) clearInterval(multiplayerInterval2);
