@@ -116,91 +116,121 @@
     }
     
 
-    #toolbar {
-      display: flex;
-      flex-wrap: nowrap;
-      overflow-x: auto; 
-      gap: 8px;
-      padding: 10px 12px;
-      background: #ffffff; /* Clean white background */
-      border-bottom: 1px solid #dbdbdb;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); /* Subtle shadow */
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      z-index: 10;
-      box-sizing: border-box; /* Ensure padding doesn't add to width */
-    }
-    
-    /* Toolbar button styles */
-    #toolbar button {
-      padding: 8px 16px; /* Smaller padding for toolbar */
-      font-size: 14px;
-      font-weight: 500;
-      background-color: #f0f0f0;
-      color: #333;
-      border: 1px solid #dcdcdc;
-    }
-    #toolbar button:hover {
-      background-color: #e0e0e0;
-      border-color: #c0c0c0;
-    }
-    .selected-tool { 
-      background-color: #007aff !important; 
-      color: white !important;
-      border-color: #007aff !important;
-      box-shadow: 0 2px 8px rgba(0,123,255,0.2);
-    }
-    
-    /* Special toolbar buttons */
-    #toolbar button[onclick="openBlockCreator()"] {
-      background-color: #28a745;
-      color: white;
-      border-color: #28a745;
-    }
-     #toolbar button[onclick="openBlockCreator()"]:hover {
-      background-color: #218838;
-      border-color: #218838;
-    }
-    #toolbar button[onclick="resetAllTriggers()"] {
-      background-color: #dc3545;
-      color: white;
-      border-color: #dc3545;
-    }
-    #toolbar button[onclick="resetAllTriggers()"]:hover {
-      background-color: #c82333;
-      border-color: #c82333;
-    }
-    #toolbar button[onclick="saveMap()"] {
-      background-color: #17a2b8;
-      color: white;
-      border-color: #17a2b8;
-    }
-    #toolbar button[onclick="saveMap()"]:hover {
-      background-color: #138496;
-      border-color: #138496;
-    }
-    #toolbar button#exitBtn {
-      margin-left: auto; /* Push to the far right */
-      background-color: #6c757d;
-      color: white;
-      border-color: #6c757d;
-    }
-    #toolbar button#exitBtn:hover {
-      background-color: #5a6268;
-      border-color: #5a6268;
-    }
-    
-    
-    /* Style for new custom tool buttons */
-    .custom-tool-btn img {
-        width: 16px;
-        height: 16px;
-        vertical-align: middle;
-        margin-right: 5px;
-        border: 1px solid #777;
-    }
+/* Modern global font for the toolbar */
+#toolbar {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center; /* Center items vertically */
+  overflow-x: auto; 
+  gap: 6px;
+  padding: 8px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e4e4e7;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.02);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 10;
+  box-sizing: border-box;
+  
+  /* Hide clunky native scrollbars while keeping scroll functionality */
+  -ms-overflow-style: none;  
+  scrollbar-width: none;  
+}
+
+#toolbar::-webkit-scrollbar {
+  display: none; /* Hide scrollbar for Chrome, Safari, and Opera */
+}
+
+/* Base button styles */
+#toolbar button {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  background-color: #f4f4f5;
+  color: #27272a;
+  border: 1px solid #e4e4e7;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease-in-out;
+}
+
+/* Hover effect for standard buttons */
+#toolbar button:hover {
+  background-color: #e4e4e7;
+  border-color: #d4d4d8;
+}
+
+/* Tactile press effect for ALL buttons */
+#toolbar button:active {
+  transform: scale(0.96);
+}
+
+/* Active/Selected Tool */
+.selected-tool { 
+  background-color: #007aff !important; 
+  color: white !important;
+  border-color: #007aff !important;
+  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.25);
+}
+.selected-tool:hover {
+  background-color: #0062cc !important;
+}
+
+/* Action Group Styling (Green/Red/Teal/etc) */
+.btn-create {
+  background-color: #10b981 !important; /* Modern Emerald */
+  color: white !important;
+  border-color: #10b981 !important;
+}
+.btn-create:hover { background-color: #059669 !important; }
+
+.btn-reset {
+  background-color: #ef4444 !important; /* Modern Rose/Red */
+  color: white !important;
+  border-color: #ef4444 !important;
+}
+.btn-reset:hover { background-color: #dc2626 !important; }
+
+.btn-save {
+  background-color: #06b6d4 !important; /* Modern Cyan */
+  color: white !important;
+  border-color: #06b6d4 !important;
+}
+.btn-save:hover { background-color: #0891b2 !important; }
+
+/* Right-aligned utility buttons */
+.btn-right-group {
+  margin-left: auto; /* Pushes this button and subsequent ones to the right */
+  display: flex;
+  gap: 6px;
+}
+
+.btn-exit {
+  background-color: #71717a !important;
+  color: white !important;
+  border-color: #71717a !important;
+}
+.btn-exit:hover { background-color: #52525b !important; }
+
+.btn-host {
+  background-color: #6366f1 !important; /* Elegant Indigo for hosting */
+  color: white !important;
+  border-color: #6366f1 !important;
+}
+.btn-host:hover { background-color: #4f46e5 !important; }
+
+/* Style for custom tool icons */
+.custom-tool-btn img {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  margin-right: 6px;
+  border-radius: 2px;
+}
 
     #popup, #blockCreatorPopup {
       position: fixed;
@@ -488,7 +518,7 @@
 </div>
 
 <div id="toolbar" style="display:none;">
-  <button onclick="selectTool('box')">Box</button>
+  <button onclick="selectTool('box')" class="selected-tool">Box</button>
   <button onclick="selectTool('box-pushable')">Pushable</button>
   <button onclick="selectTool('box-stickable')">Slime</button>
   <button onclick="selectTool('kill')">Kill Block</button>
@@ -504,15 +534,14 @@
   <button onclick="selectTool('edit')">Edit</button>
   <button onclick="selectTool('copy')">Copy Block</button>
   
-  <button onclick="openBlockCreator()">+ New Block</button>
+  <button onclick="openBlockCreator()" class="btn-create">+ New Block</button>
+  <button onclick="resetAllTriggers()" class="btn-reset">Reset Triggers</button>
+  <button onclick="saveMap()" class="btn-save">Save Map</button>
   
-  <button onclick="resetAllTriggers()">Reset Triggers</button>
-  
-  <button onclick="saveMap()">Save Map</button>
-  
-  <button onclick="goToMenu()" id="exitBtn">Menu (ESC)</button>
-
-  <button id="hostBtn" onclick="hostGame()">Host Game</button>
+  <div class="btn-right-group">
+    <button onclick="goToMenu()" id="exitBtn" class="btn-exit">Menu (ESC)</button>
+    <button id="hostBtn" onclick="hostGame()" class="btn-host">Host Game</button>
+  </div>
 </div>
 
 
@@ -2949,20 +2978,43 @@ function drawFPS() {
         lastFpsTime = now;
     }
 
-    // 2. Draw it
+    // 2. Draw it (Matching the modern, clean toolbar theme)
     ctx.save();
     
-    // Optional: Draw a semi-transparent box background for readability
-    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-    ctx.fillRect(canvas.width - 100, canvas.height - 40, 90, 30);
-
-    // Draw the Text
-    ctx.fillStyle = "#00FF00"; // Bright Green
-    ctx.font = "bold 16px sans-serif";
-    ctx.textAlign = "right";   // Align text to the right side
+    // Badge positioning metrics
+    const badgeWidth = 85;
+    const badgeHeight = 30;
+    const offset = 16; // Padding from the edge of the canvas
     
-    // Position: Width - padding, Height - padding
-    ctx.fillText("FPS: " + fps, canvas.width - 20, canvas.height - 20);
+    const x = canvas.width - badgeWidth - offset;
+    const y = canvas.height - badgeHeight - offset;
+    const cornerRadius = 6;
+
+    // Draw the clean white background card
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.roundRect(x, y, badgeWidth, badgeHeight, cornerRadius);
+    ctx.fill();
+
+    // Draw the subtle light-gray border
+    ctx.strokeStyle = "#e4e4e7";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Draw a modern emerald status dot
+    ctx.fillStyle = "#10b981"; 
+    ctx.beginPath();
+    ctx.arc(x + 14, y + (badgeHeight / 2), 3.5, 0, 2 * Math.PI);
+    ctx.fill();
+
+    // Draw the Typography
+    ctx.fillStyle = "#27272a"; // Dark zinc text
+    ctx.font = "600 13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle"; // Perfectly vertical-aligns text with the dot
+    
+    // Render text slightly offset from the green dot
+    ctx.fillText(fps + " FPS", x + 26, y + (badgeHeight / 2));
     
     ctx.restore();
 }
