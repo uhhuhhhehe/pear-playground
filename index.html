@@ -448,6 +448,137 @@
   .popup-btn:active {
     transform: scale(0.98);
   }
+
+  /* Centered Full-Screen Layout Container */
+#homeScreen {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background-color: #f4f4f5; /* Light soft-gray canvas background */
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* Central Dashboard Wrapper */
+.home-dashboard {
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Clean Typography Header */
+.home-header {
+  text-align: center;
+}
+.home-header h1 {
+  font-size: 32px;
+  font-weight: 800;
+  color: #18181b;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.5px;
+}
+.home-header p {
+  font-size: 15px;
+  color: #71717a;
+  margin: 0;
+}
+
+/* Two-Column Layout Grid for Features */
+.home-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 600px) {
+  .home-grid {
+    grid-template-columns: 1fr; /* Stack vertically on mobile screens */
+  }
+}
+
+/* Modern Segmented Layout Cards */
+.home-panel {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+}
+.home-panel h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #27272a;
+  margin: 0 0 8px 0;
+}
+.home-panel p {
+  font-size: 13px;
+  color: #71717a;
+  margin: 0 0 20px 0;
+  line-height: 1.5;
+}
+
+/* Button Container & Actions */
+.panel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: auto; /* Pushes button rows to bottom of cards so heights match */
+}
+
+.home-btn {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease-in-out;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+.home-btn:active {
+  transform: scale(0.97); /* Tactile press effect */
+}
+
+/* Button Theme Variants */
+.btn-emerald {
+  background-color: #10b981;
+  color: #ffffff;
+}
+.btn-emerald:hover { background-color: #059669; }
+
+.btn-indigo {
+  background-color: #6366f1;
+  color: #ffffff;
+}
+.btn-indigo:hover { background-color: #4f46e5; }
+
+.btn-secondary {
+  background-color: #ffffff;
+  color: #27272a;
+  border-color: #e4e4e7;
+}
+.btn-secondary:hover {
+  background-color: #f4f4f5;
+  border-color: #d4d4d8;
+}
+
+/* Subtle Footer Note */
+.home-footer {
+  text-align: center;
+  font-size: 13px;
+  color: #71717a;
+  border-top: 1px dashed #e4e4e7;
+  padding-top: 16px;
+  margin-top: 8px;
+}
   </style>
 </head>
 <body>
@@ -465,15 +596,41 @@
 </div>
 
 <div id="homeScreen" class="screen" style="display:none;">
-  <!-- MODIFIED: Wrapped in card -->
-  <div class="screen-card">
-    <h1>Welcome!</h1>
-    <button onclick="startCreate()">Create New Map</button>
-    <button onclick="openLoad()" class="secondary">Edit Existing Map</button>
-    <button onclick="openSettings()" class="secondary" style="background-color:#555; color:white; margin-top:10px;">Settings</button>
-    <button onclick="openJoinGame()" class="secondary">Join Game</button>
-    <p style="margin-top: 20px; color: #555;">Use the toolbar to build your map!</p>
+  <div class="home-dashboard">
+    
+    <header class="home-header">
+      <h1>Pear Playground</h1>
+      <p>Design, build, and share your levels</p>
+    </header>
+
+    <div class="home-grid">
+      
+      <div class="home-panel">
+        <h2>Map Builder</h2>
+        <p>Start a brand new blueprint project completely from scratch or import your existing layouts.</p>
+        <div class="panel-actions">
+          <button onclick="startCreate()" class="home-btn btn-emerald">Create New Map</button>
+          <button onclick="openLoad()" class="home-btn btn-secondary">Edit Existing Map</button>
+        </div>
+      </div>
+
+      <div class="home-panel">
+        <h2>Multiplayer & Options</h2>
+        <p>Connect to live rooms hosted by other builders or adjust your local editor parameters.</p>
+        <div class="panel-actions">
+          <button onclick="openJoinGame()" class="home-btn btn-indigo">Join Game</button>
+          <button onclick="openSettings()" class="home-btn btn-secondary">Settings</button>
+        </div>
+      </div>
+
+    </div>
+
+    <footer class="home-footer">
+      Use the specialized toolbar layout at the top of your screen to construct your map elements!
+    </footer>
+    
   </div>
+
   <input id="loadFile" type="file" style="display:none;" onchange="loadMapFile(event)">
 </div>
 <div id="settingsPopup" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:300px; padding:20px; background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.2); z-index:2000; text-align:center;">
