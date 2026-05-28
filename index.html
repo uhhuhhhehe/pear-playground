@@ -1071,7 +1071,33 @@ const firebaseConfig = {
 const firebaseApp = firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+// Properties that are pure runtime state — never need saving
+// REPLACE your RUNTIME_PROPS with this:
+const RUNTIME_PROPS = new Set([
+    'isJumping', 'wasGrounded',
+    'isFiringOutput', 'hasFiredTouch', 'hasFiredClick',
+    'hasFired', 'broken', 'breakTimer'
+]);
 
+// Properties that are just default values — no point saving them
+const SAVE_DEFAULTS = {
+    shape: 'box',
+    gravity: 0,
+    pushable: false,
+    slime: false,
+    kill: false,
+    spawn: false,
+    solid: true,
+    opacity: 1,
+    group: '',
+    text: '',
+    active: true,
+    reappearTime: 300,
+    scaleX: 1,   // NEW
+    scaleY: 1,   // NEW
+    vx: 0,       // NEW
+    vy: 0        // NEW
+};
 
 
 const canvas = document.getElementById("gameCanvas");
@@ -1643,12 +1669,20 @@ function loadMapFile(ev) {
     // Add loaded objects
     if (data.objects) {
         for (let o of data.objects) {
-            // Ensure properties exist on load
-            if (o.opacity === undefined) o.opacity = 1; 
-            if (o.group === undefined) o.group = ""; 
-            if (o.tag === 'trigger' && o.active === undefined) o.active = true; 
-            if (o.tag !== "player") objects.push(o);
-        }
+    // Restore any defaults that were stripped during save
+    const restored = Object.assign({}, SAVE_DEFAULTS, o);
+
+    // These still need explicit handling
+    if (restored.opacity === undefined) restored.opacity = 1;
+    if (restored.group === undefined) restored.group = '';
+    if (restored.tag === 'trigger') {
+        if (restored.active === undefined) restored.active = true;
+        if (restored.hasFired === undefined) restored.hasFired = false;
+        if (!restored.mods) restored.mods = {};
+    }
+
+    if (restored.tag !== 'player') objects.push(restored);
+}
     }
 
     // --- LOAD CUSTOM BLOCKS ---
@@ -1685,23 +1719,42 @@ function loadMapFile(ev) {
   reader.readAsText(file);
 }
 
+function stripObjectForSave(obj) {
+    const stripped = {};
+    for (const key in obj) {
+        if (!obj.hasOwnProperty(key)) continue;
+
+        // Skip runtime-only properties
+        if (RUNTIME_PROPS.has(key)) continue;
+
+        // Skip properties that match their default value
+        if (key in SAVE_DEFAULTS && obj[key] === SAVE_DEFAULTS[key]) continue;
+
+        // Skip undefined values (e.g. empty trigger mods)
+        if (obj[key] === undefined) continue;
+
+        stripped[key] = obj[key];
+    }
+    return stripped;
+}
+
 function saveMap() {
-  const savableObjects = objects.filter(o => o.tag !== "player");
+    const savableObjects = objects
+        .filter(o => o.tag !== 'player')
+        .map(o => stripObjectForSave(o));  // Strip each object
 
-  // Save customBlocks with the map
-  const data = {
-    objects: savableObjects,
-    customBlocks: customBlocks 
-  };
+    const data = {
+        objects: savableObjects,
+        customBlocks: customBlocks
+    };
 
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json"
-  });
+    // JSON.stringify with no formatting (removes all whitespace)
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
 
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `map_${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `map_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
 }
 
 
