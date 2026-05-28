@@ -3126,28 +3126,58 @@ function drawBlockGraphic(ctx, tag, w, h) {
         }
 
         case 'kill': {
-            // Danger spikes
-            ctx.fillStyle = '#1c1c1e';
-            ctx.fillRect(x, y, w, h);
-            // Warning stripes
-            ctx.fillStyle = '#fbbf24';
-            const stripeW = w / 5;
-            for (let i = 0; i < 5; i += 2) ctx.fillRect(x + i * stripeW, y + h * 0.3, stripeW, h * 0.7);
-            // Spikes
-            ctx.fillStyle = '#ef4444';
-            const sc = Math.max(2, Math.floor(w / 12));
-            const sw = w / sc;
-            for (let i = 0; i < sc; i++) {
-                ctx.beginPath();
-                ctx.moveTo(x + i * sw, y + h * 0.3);
-                ctx.lineTo(x + (i + 0.5) * sw, y - h * 0.25);
-                ctx.lineTo(x + (i + 1) * sw, y + h * 0.3);
-                ctx.closePath(); ctx.fill();
-            }
-            ctx.strokeStyle = '#7f1d1d'; ctx.lineWidth = 2;
-            ctx.strokeRect(x, y, w, h);
-            break;
-        }
+    // 1. MAIN GRAY BLOCK FILL
+    ctx.fillStyle = '#8e8e93'; // Nice, clean neutral gray
+    ctx.fillRect(x, y, w, h);
+
+    // 2. DARK GRAY OUTLINE
+    ctx.strokeStyle = '#48484a'; // Rich, darker gray for definition
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, w, h);
+
+    // 3. WARNING TRIANGLE IN THE MIDDLE
+    ctx.save();
+    // Move coordinate system to the center of the block
+    ctx.translate(x + w / 2, y + h / 2);
+    
+    // Scale the sign so it fits beautifully inside the block (takes up roughly 55% of the space)
+    const signSize = Math.min(w, h) * 0.55;
+    ctx.scale(signSize / 20, signSize / 20); // Normalizes drawing grid to a 20x20 unit space
+
+    // --- Draw Yellow Triangle Base ---
+    ctx.fillStyle = '#fbbf24'; // Warning amber/yellow
+    ctx.lineJoin = 'round';    // Softens the sharp corners of the triangle
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#fbbf24'; 
+    
+    ctx.beginPath();
+    ctx.moveTo(0, -9);      // Top point
+    ctx.lineTo(9, 8);       // Bottom right
+    ctx.lineTo(-9, 8);      // Bottom left
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // --- Draw Exclamation Point (Black Details) ---
+    ctx.fillStyle = '#000000';
+    
+    // Top bar of the exclamation mark
+    ctx.beginPath();
+    ctx.moveTo(-1, -3);
+    ctx.lineTo(1, -3);
+    ctx.lineTo(0.7, 2);
+    ctx.lineTo(-0.7, 2);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Bottom dot of the exclamation mark
+    ctx.beginPath();
+    ctx.arc(0, 4.5, 0.9, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    break;
+}
 
         case 'spawn': {
             // Checkpoint with star
