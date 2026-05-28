@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
 
@@ -28,7 +28,7 @@
       text-align: center;
     }
     
-    /* New: Card style for login/menu uhh hehe */
+    /* New: Card style for login/menu */
     .screen-card {
       background: #ffffff;
       padding: 40px;
@@ -863,7 +863,13 @@ const settings = {
     shake: true,
     particles: true
 };
+// Firebase config
+const firebaseConfig = {
+  databaseURL: "https://pear-playground-default-rtdb.firebaseio.com/" // Replace with your URL
+};
 
+const firebaseApp = firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
 
 
@@ -878,7 +884,7 @@ const loginMsg = document.getElementById("loginMsg");
 const loadFile = document.getElementById("loadFile");
 const joinCode = document.getElementById("joinGameCode");
 const CAM_SMOOTH = 0.1;    // How fast camera follows (0.1 = smooth, 1.0 = instant)
-const MULTIPLAYER_URL = "https://script.google.com/macros/s/AKfycbySYgC3uioMbnMYyVEP2v6d4pBJ0cdeLcBQnj7NCQBSIm60CvkAd56KJETovWlarT1yBw/exec";
+
 
 
 const world = { width: 100000, height: 60000 };
@@ -931,7 +937,7 @@ const objects = [player];
 
 let customBlocks = {}; // Stores the "definitions" of new blocks
 
-const DRIVE_URL = "https://script.google.com/macros/s/AKfycbzX2K440toC1mAffrEiTMS7obbfC9s605bmYQNiwJTZNXI-MmeDqkNDcHbZlIzOfsKU/exec";
+
 let currentUser = null;
 
 /* ============================================================
@@ -1129,49 +1135,55 @@ function closeHostCodePopup() {
    LOGIN SYSTEM
 ============================================================ */
 async function getUsers() {
-  const res = await fetch(DRIVE_URL);
-  return res.json();
+  const snapshot = await db.ref('users').once('value');
+  return snapshot.val() || {};
 }
 
-async function saveUsers(obj) {
-  await fetch(DRIVE_URL, {
-    method: "POST",
-    body: JSON.stringify(obj),
-  });
+async function saveUsers(usersObj) {
+  await db.ref('users').set(usersObj);
 }
 
 async function signup(e) {
   e?.preventDefault();
-  const u = username.value;
-  const p = password.value;
-  const users = await getUsers();
-
-  if (users[u]) {
-    loginMsg.textContent = "User already exists!";
-    return;
+  loginMsg.textContent = "Loading...";
+  try {
+    const u = username.value.trim();
+    const p = password.value;
+    if (!u || !p) { loginMsg.textContent = "Fill in both fields."; return; }
+    
+    const users = await getUsers();
+    if (users[u]) { loginMsg.textContent = "User already exists!"; return; }
+    
+    users[u] = p;
+    await saveUsers(users);
+    currentUser = u;
+    showHome();
+  } catch (err) {
+    loginMsg.textContent = "Error: " + err.message;
+    console.error(err);
   }
-
-  users[u] = p;
-  await saveUsers(users);
-
-  currentUser = u;
-  showHome();
 }
 
 async function login(e) {
   e?.preventDefault();
-  const u = username.value;
-  const p = password.value;
-  const users = await getUsers();
-
-  if (!users[u] || users[u] !== p) {
-    loginMsg.textContent = "Invalid username or password!";
-    return;
+  loginMsg.textContent = "Loading...";
+  try {
+    const u = username.value.trim();
+    const p = password.value;
+    const users = await getUsers();
+    
+    if (!users[u] || users[u] !== p) {
+      loginMsg.textContent = "Invalid username or password!";
+      return;
+    }
+    currentUser = u;
+    showHome();
+  } catch (err) {
+    loginMsg.textContent = "Error: " + err.message;
+    console.error(err);
   }
-
-  currentUser = u;
-  showHome();
 }
+
 
 function showHome() {
   loginScreen.style.display = "none";
@@ -1197,77 +1209,50 @@ function goToMenu() {
     Game Hosting / Joining
 =========================================================== */
 async function getGames() {
-  const games = await fetch("https://script.google.com/macros/s/AKfycbweYhMouHgaCWWIg4T6MQjB1p57PxLRWbvqcKQ_bnI5KG3KdQPxpccHwexcX23bBVJXhQ/exec");
-  return games.json();
+  const snapshot = await db.ref('hostedGames').once('value');
+  const gamesObj = snapshot.val() || {};
+  // Convert back to the [[code, data], ...] array format the rest of the code expects
+  return Object.entries(gamesObj).map(([code, data]) => [parseInt(code), data]);
 }
 
-async function saveGameToHost(obj) {
-  await fetch("https://script.google.com/macros/s/AKfycbweYhMouHgaCWWIg4T6MQjB1p57PxLRWbvqcKQ_bnI5KG3KdQPxpccHwexcX23bBVJXhQ/exec", {
-    //fetches from the hosted games script
-    method: "POST",
-    body: JSON.stringify(obj),
-  });
+async function saveGameToHost(gameArray) {
+  const [code, data] = gameArray;
+  await db.ref(`hostedGames/${code}`).set(data);
 }
 
 async function deleteHostedGame(code) {
-  await fetch("YOUR_GAMES_URL", {
-    method: "POST",
-    body: JSON.stringify({ action: "delete", code: code }),
-  });
+  await db.ref(`hostedGames/${code}`).remove();
 }
 
 async function hostGame() {
-
-  // make a unique game code
-  currentGames = await getGames();
-  let newCode;
-  do {
-    newCode = getRandomInt(1, 100000);
-  } while (currentGames.some(item => item[0] === newCode));
-  currentCode = newCode;
-
-  // save map
-  const savableObjects = objects.filter(o => o.tag !== "player");
-  const data = {
-    objects: savableObjects,
-    customBlocks: customBlocks
-  };
-
-  const newHostedGameData = [currentCode, data];
-  await saveGameToHost(newHostedGameData); // ✅
-  isHost = true;
-  document.getElementById("hostBtn").style.display = "block";
-  startMultiplayer();
-  showHostCodePopup(currentCode);
-}
-
-// Firebase config
-let db = null;
-
-function initFirebase() {
-  if (typeof firebase === 'undefined') {
-    console.warn("Firebase not loaded yet");
-    return;
-  }
-  const firebaseConfig = {
-    databaseURL: "https://pear-playground-default-rtdb.firebaseio.com/"
-  };
   try {
-    const firebaseApp = firebase.initializeApp(firebaseConfig);
-    db = firebase.database();
-    console.log("Firebase initialized");
-  } catch (e) {
-    console.error("Firebase error:", e);
+    currentGames = await getGames();
+    let newCode;
+    do {
+      newCode = getRandomInt(1, 100000);
+    } while (currentGames.some(item => item[0] === newCode));
+    currentCode = newCode;
+
+    const savableObjects = objects.filter(o => o.tag !== "player");
+    const data = { objects: savableObjects, customBlocks: customBlocks };
+
+    await saveGameToHost([currentCode, data]);
+    isHost = true;
+    document.getElementById("hostBtn").style.display = "block";
+    startMultiplayer();
+    showHostCodePopup(currentCode);
+  } catch (err) {
+    alert("Failed to host game: " + err.message);
+    console.error(err);
   }
 }
 
-// Call this after a short delay to let Firebase load
-setTimeout(initFirebase, 500);
+
 
 let playerRef = null;
 
 async function sendPosition() {
-  if (!db || !currentUser || !currentCode) return;
+  if (!currentUser || !currentCode) return;
   
   try {
     await db.ref(`games/${currentCode}/players/${currentUser}`).set({
@@ -1281,15 +1266,11 @@ async function sendPosition() {
 }
 
 async function fetchPlayers() {
-  if (!db || !currentCode) return;
+  if (!currentCode) return;
   
   try {
     const snapshot = await db.ref(`games/${currentCode}/players`).once('value');
     const allPlayers = snapshot.val() || {};
-    
-    console.log("Fetched players:", allPlayers); // DEBUG
-    console.log("Current code:", currentCode); // DEBUG
-    console.log("Current user:", currentUser); // DEBUG
     
     otherPlayers = {};
     for (const u in allPlayers) {
@@ -1297,13 +1278,11 @@ async function fetchPlayers() {
         otherPlayers[u] = allPlayers[u];
       }
     }
-    
-    console.log("Other players to draw:", otherPlayers); // DEBUG
   } catch (e) {
     console.error("Fetch players error:", e);
   }
 }
-  
+
 function startMultiplayer() {
   if (multiplayerInterval) clearInterval(multiplayerInterval);
   if (multiplayerInterval2) clearInterval(multiplayerInterval2);
