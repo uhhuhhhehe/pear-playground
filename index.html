@@ -448,15 +448,26 @@
 </div>
 <div id="settingsPopup" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:300px; padding:20px; background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.2); z-index:2000; text-align:center;">
     <h2 style="margin-top:0; color:#333;">Settings</h2>
-    
-    <div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
-        <label for="setShake" style="color:#333; margin:0;">Screen Shake</label>
-        <input type="checkbox" id="setShake" checked onchange="toggleSetting('shake')">
-    </div>
 
     <div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+        <label for="setShake" style="color:#333; margin:0;">Screen Shake</label>
+        <input type="checkbox" id="setShake" onchange="toggleSetting('shake')">
+    </div>
+    <div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
         <label for="setParticles" style="color:#333; margin:0;">Particles</label>
-        <input type="checkbox" id="setParticles" checked onchange="toggleSetting('particles')">
+        <input type="checkbox" id="setParticles" onchange="toggleSetting('particles')">
+    </div>
+    <div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+        <label for="setGrid" style="color:#333; margin:0;">Show Grid</label>
+        <input type="checkbox" id="setGrid" onchange="toggleSetting('grid')">
+    </div>
+    <div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+        <label for="setDebug" style="color:#333; margin:0;">Show Debug Info</label>
+        <input type="checkbox" id="setDebug" onchange="toggleSetting('debug')">
+    </div>
+    <div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+        <label for="setFps" style="color:#333; margin:0;">Show FPS</label>
+        <input type="checkbox" id="setFps" onchange="toggleSetting('fps')">
     </div>
 
     <button onclick="closeSettings()" style="width:100%; padding:10px; background:#007aff; color:white; border:none; border-radius:8px; cursor:pointer;">Close</button>
@@ -861,7 +872,10 @@ let isHost = false;
 // Global Settings
 const settings = {
     shake: true,
-    particles: true
+    particles: true,
+    grid: true,       // NEW
+    debug: true,      // NEW
+    fps: true         // NEW
 };
 // Firebase config
 const firebaseConfig = {
@@ -1092,13 +1106,17 @@ function loadImages(sources, callback) {
     }
   }
 }
+// Replace your existing openSettings function:
 function openSettings() {
     document.getElementById("settingsPopup").style.display = "block";
     document.getElementById("overlay").style.display = "block";
-    
-    // Sync checkboxes with current state
-    document.getElementById("setShake").checked = settings.shake;
+
+    // Sync all checkboxes with current state
+    document.getElementById("setShake").checked    = settings.shake;
     document.getElementById("setParticles").checked = settings.particles;
+    document.getElementById("setGrid").checked     = settings.grid;
+    document.getElementById("setDebug").checked    = settings.debug;
+    document.getElementById("setFps").checked      = settings.fps;
 }
 
 function closeSettings() {
@@ -1108,9 +1126,10 @@ function closeSettings() {
     document.getElementById("overlay").style.display = "none";
 }
 
+// Replace your existing toggleSetting function:
 function toggleSetting(key) {
     settings[key] = !settings[key];
-    console.log(key + " set to " + settings[key]);
+    saveSettings(); // Auto-save to Firebase on every toggle
 }
 function rectsCollide(a, b) {
   return (
@@ -1120,7 +1139,28 @@ function rectsCollide(a, b) {
     a.y + a.height > b.y
   );
 }
+async function saveSettings() {
+    if (!currentUser) return;
+    try {
+        await db.ref(`userSettings/${currentUser}`).set(settings);
+    } catch (err) {
+        console.error("Failed to save settings:", err);
+    }
+}
 
+async function loadSettings() {
+    if (!currentUser) return;
+    try {
+        const snapshot = await db.ref(`userSettings/${currentUser}`).once('value');
+        const saved = snapshot.val();
+        if (saved) {
+            // Merge saved values into settings, keeping defaults for any missing keys
+            Object.assign(settings, saved);
+        }
+    } catch (err) {
+        console.error("Failed to load settings:", err);
+    }
+}
 function showHostCodePopup(code) {
     document.getElementById("hostCodeDisplay").textContent = code;
     document.getElementById("hostCodePopup").style.display = "block";
@@ -1157,6 +1197,7 @@ async function signup(e) {
     users[u] = p;
     await saveUsers(users);
     currentUser = u;
+    await loadSettings();
     showHome();
   } catch (err) {
     loginMsg.textContent = "Error: " + err.message;
@@ -1177,6 +1218,7 @@ async function login(e) {
       return;
     }
     currentUser = u;
+    await loadSettings();
     showHome();
   } catch (err) {
     loginMsg.textContent = "Error: " + err.message;
@@ -2833,7 +2875,7 @@ function draw() {
   // Note: Grid and Objects need to be drawn relative to camera manually 
   // because your original code calculates (x - camera.x). 
   // We keep that logic.
-  drawGrid();
+  if (settings.grid) drawGrid(); 
   drawObjects(); 
   
   // 6. Draw Particles
@@ -2848,8 +2890,8 @@ function draw() {
   
   ctx.restore(); // Undo shake
 
-  drawDebug();
-  drawFPS();
+  if (settings.debug) drawDebug();
+  if (settings.fps) drawFPS();
 }
 function drawGhost() {
     if (!currentTool || ['delete', 'edit'].includes(currentTool)) return;
