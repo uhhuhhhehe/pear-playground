@@ -1119,21 +1119,7 @@ START_POS.y = ground.y - 300;
 
 // Base image sources
 const sources = {
-  player: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSjp9h-NKlhT5hOESg9xPOGyTq1JJb1HtlUdA&s",
-  box: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSID_d0_HxQye6_zqAOD2hpEKd5kbhtQ9aF7A&s",
-  ground: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSFIXCN7Tjd1g6wAugiLvrG7KV8NokWfnxtKg&s",
-  sticky:"https://diycandy.b-cdn.net/wp-content/uploads/2024/04/booger-slime.jpg",
-  pushablebox:"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQJ3hG_R5HFXOtRqCdqWdUTu9c7A27mRjJZQg&s",
-  kill: "https://w0.peakpx.com/wallpaper/452/117/HD-wallpaper-goofy-skull-candle-skull-goofy-silly.jpg",
-  spawn: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSAgdihWDXwchnqNsfioSTsrt2gpq9K9vxwHw&s",
-  text: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
-  // UPDATED: New trigger texture URL
-  trigger: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQgO7t2XxFaL0Xt7T0YzS_yTnWWq_d4gWykIg&s",
-  monitor: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3iW7q1llVM1XCtSriiJEROK1wc9RL7Wmg3A&s",
-  counter: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTETgmMOmsTEQJOw34eGI_FLKrA-nq-lCMZRw&s",
-  comparer: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRpLF4Sbkwb3Qt91AsW089ylST0Fxrdb16l7g&s",
-  breakable: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTZc17ABiITLS0B-si9E6ahYXRfWXpU017NZA&s",
-  missing: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAKNJREFUOI1jYBgFwwwAAAJgAbcVAwPDf2ADrWBiYDjAxMIwXwDjI4wu0NbN//8yAhgA/P//LwPDf1jIxMAw3MSABXkGBgaGf7iQgYGBAbgAhv8nKigDGDCwMDB8AUy/A/P//0EwOP3PzEAwGECIwP//GRiYQACYQYABYQYABiYk3sDEADBqAACjQnIAeBYiLYt//D8DAwMbQDMA+f8XQAEAnwEAc21Yd0BopkIAAAAASUVORK5CYII=" // Missing texture
+    missing: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAKNJREFUOI1jYBgFwwwAAAJgAbcVAwPDf2ADrWBiYDjAxMIwXwDjI4wu0NbN//8yAhgA/P//LwPDf1jIxMAw3MSABXkGBgaGf7iQgYGBAbgAhv8nKigDGDCwMDB8AUy/A/P//0EwOP3PzEAwGECIwP//GRiYQACYQYABYQYABiYk3sDEADBqAACjQnIAeBYiLYt//D8DAwMbQDMA+f8XQAEAnwEAc21Yd0BopkIAAAAASUVORK5CYII="
 };
 let images = {};
 
@@ -3053,6 +3039,334 @@ function checkComparers() {
         }
     });
 }
+
+// ============================================================
+//   PROCEDURAL BLOCK GRAPHICS
+// ============================================================
+
+function roundRect(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+}
+
+function drawStar(ctx, cx, cy, points, outerR, innerR) {
+    ctx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+        const angle = (i * Math.PI / points) - Math.PI / 2;
+        const r = i % 2 === 0 ? outerR : innerR;
+        i === 0 ? ctx.moveTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r)
+                : ctx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+}
+
+function drawBlockGraphic(ctx, tag, w, h) {
+    const x = -w / 2, y = -h / 2;
+    ctx.save();
+
+    switch (tag) {
+
+        case 'box': {
+            // Stone brick
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = '#64748b';
+            ctx.lineWidth = 1.5;
+            const rows = Math.max(2, Math.floor(h / 16));
+            const bH = h / rows;
+            for (let r = 1; r < rows; r++) {
+                ctx.beginPath(); ctx.moveTo(x, y + r * bH); ctx.lineTo(x + w, y + r * bH); ctx.stroke();
+            }
+            for (let r = 0; r < rows; r++) {
+                const vx = x + ((r % 2 === 0) ? w * 0.5 : w * 0.25);
+                ctx.beginPath(); ctx.moveTo(vx, y + r * bH); ctx.lineTo(vx, y + (r + 1) * bH); ctx.stroke();
+            }
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+
+        case 'pushablebox': {
+            // Wooden crate
+            ctx.fillStyle = '#d97706';
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = '#a16207'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y + h); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x, y + h); ctx.stroke();
+            ctx.strokeStyle = '#92400e'; ctx.lineWidth = 3;
+            ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
+            ctx.strokeStyle = '#78350f'; ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+
+        case 'sticky': {
+            // Slime
+            ctx.fillStyle = '#4ade80';
+            ctx.fillRect(x, y, w, h);
+            ctx.fillStyle = '#86efac';
+            ctx.beginPath(); ctx.arc(x + w * 0.3, y + h * 0.35, w * 0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(x + w * 0.65, y + h * 0.55, w * 0.07, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath(); ctx.arc(x + w * 0.5, y + h + 2, w * 0.12, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+
+        case 'kill': {
+            // Danger spikes
+            ctx.fillStyle = '#1c1c1e';
+            ctx.fillRect(x, y, w, h);
+            // Warning stripes
+            ctx.fillStyle = '#fbbf24';
+            const stripeW = w / 5;
+            for (let i = 0; i < 5; i += 2) ctx.fillRect(x + i * stripeW, y + h * 0.3, stripeW, h * 0.7);
+            // Spikes
+            ctx.fillStyle = '#ef4444';
+            const sc = Math.max(2, Math.floor(w / 12));
+            const sw = w / sc;
+            for (let i = 0; i < sc; i++) {
+                ctx.beginPath();
+                ctx.moveTo(x + i * sw, y + h * 0.3);
+                ctx.lineTo(x + (i + 0.5) * sw, y - h * 0.25);
+                ctx.lineTo(x + (i + 1) * sw, y + h * 0.3);
+                ctx.closePath(); ctx.fill();
+            }
+            ctx.strokeStyle = '#7f1d1d'; ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+
+        case 'spawn': {
+            // Checkpoint with star
+            ctx.fillStyle = '#1d4ed8';
+            ctx.fillRect(x, y, w, h);
+            ctx.fillStyle = '#93c5fd';
+            ctx.fillRect(x, y, w, h * 0.15); // top stripe
+            ctx.fillStyle = '#fbbf24';
+            drawStar(ctx, 0, h * 0.05, 5, w * 0.32, w * 0.14);
+            ctx.strokeStyle = '#1e3a8a'; ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+
+        case 'trigger': {
+            ctx.fillStyle = 'rgba(99, 102, 241, 0.12)';
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 2;
+            ctx.setLineDash([5, 4]);
+            ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+            ctx.setLineDash([]);
+            // Lightning bolt
+            ctx.fillStyle = 'rgba(99,102,241,0.8)';
+            const bx = -w * 0.08, by = -h * 0.32;
+            ctx.beginPath();
+            ctx.moveTo(bx + w * 0.12, by);
+            ctx.lineTo(bx - w * 0.02, by + h * 0.28);
+            ctx.lineTo(bx + w * 0.07, by + h * 0.28);
+            ctx.lineTo(bx - w * 0.04, by + h * 0.6);
+            ctx.lineTo(bx + w * 0.18, by + h * 0.26);
+            ctx.lineTo(bx + w * 0.08, by + h * 0.26);
+            ctx.closePath(); ctx.fill();
+            break;
+        }
+
+        case 'monitor': {
+            // Camera/eye sensor
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(x, y, w, h);
+            // Lens ring
+            ctx.fillStyle = '#0369a1';
+            ctx.beginPath(); ctx.arc(0, 0, w * 0.35, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#0ea5e9';
+            ctx.beginPath(); ctx.arc(0, 0, w * 0.25, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#bae6fd';
+            ctx.beginPath(); ctx.arc(-w * 0.1, -h * 0.1, w * 0.08, 0, Math.PI * 2); ctx.fill();
+            // LED dot
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath(); ctx.arc(x + w - 7, y + 7, 3, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+
+        case 'counter': {
+            ctx.fillStyle = '#1d4ed8';
+            roundRect(ctx, x, y, w, h, 5); ctx.fill();
+            ctx.fillStyle = '#2563eb';
+            roundRect(ctx, x + w * 0.1, y + h * 0.12, w * 0.8, h * 0.5, 3); ctx.fill();
+            ctx.strokeStyle = '#1e3a8a'; ctx.lineWidth = 2;
+            roundRect(ctx, x, y, w, h, 5); ctx.stroke();
+            break;
+        }
+
+        case 'comparer': {
+            ctx.fillStyle = '#6d28d9';
+            roundRect(ctx, x, y, w, h, 5); ctx.fill();
+            ctx.fillStyle = '#7c3aed';
+            roundRect(ctx, x + w * 0.1, y + h * 0.12, w * 0.8, h * 0.5, 3); ctx.fill();
+            ctx.strokeStyle = '#4c1d95'; ctx.lineWidth = 2;
+            roundRect(ctx, x, y, w, h, 5); ctx.stroke();
+            break;
+        }
+
+        case 'breakable': {
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(x, y, w, h);
+            // Crack lines
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(x + w * 0.5, y);
+            ctx.lineTo(x + w * 0.38, y + h * 0.38);
+            ctx.lineTo(x + w * 0.6, y + h * 0.58);
+            ctx.lineTo(x + w * 0.5, y + h); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x + w * 0.38, y + h * 0.38);
+            ctx.lineTo(x, y + h * 0.5); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x + w * 0.6, y + h * 0.58);
+            ctx.lineTo(x + w, y + h * 0.45); ctx.stroke();
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+
+        case 'player': {
+    // 1. Elongated Pear Body (Bottom half doubled in height)
+    ctx.beginPath();
+    // Start at the top center of the neck
+    ctx.moveTo(x + w * 0.5, y + h * 0.10); 
+    
+    // Top right neck down to the elongated right hip
+    ctx.bezierCurveTo(
+        x + w * 0.65, y + h * 0.10,   // Upper neck control
+        x + w * 0.60, y + h * 0.30,   // Narrow waist control
+        x + w * 0.85, y + h * 0.50    // Flare out to right hip
+    );
+    // Elongated bottom right bulb to bottom center
+    ctx.bezierCurveTo(
+        x + w * 1.00, y + h * 0.70,   
+        x + w * 0.80, y + h * 0.98,   
+        x + w * 0.50, y + h * 0.98    // Bottom center base
+    );
+    // Bottom center to elongated bottom left bulb
+    ctx.bezierCurveTo(
+        x + w * 0.20, y + h * 0.98,   
+        x + w * 0.00, y + h * 0.70,   
+        x + w * 0.15, y + h * 0.50    // Flare out to left hip
+    );
+    // Left hip back up to the top neck
+    ctx.bezierCurveTo(
+        x + w * 0.40, y + h * 0.30,   // Narrow waist control
+        x + w * 0.35, y + h * 0.10,   // Upper neck control
+        x + w * 0.50, y + h * 0.10    // Back to top center
+    );
+    ctx.closePath();
+
+    // Smooth Radial Gradient adjusted for taller shape
+    const cx = x + w * 0.42; 
+    const cy = y + h * 0.35; // Shifted highlight up slightly
+    const r1 = w * 0.05;      
+    const r2 = w * 1.1; // Wider reach to cover the taller base           
+    
+    const pearGrad = ctx.createRadialGradient(cx, cy, r1, cx, cy, r2);
+    pearGrad.addColorStop(0, '#eefed4');   
+    pearGrad.addColorStop(0.3, '#a3e635'); 
+    pearGrad.addColorStop(0.8, '#65a30d'); 
+    pearGrad.addColorStop(1, '#3f6212');   
+    
+    ctx.fillStyle = pearGrad;
+    ctx.fill();
+    
+    ctx.strokeStyle = '#2d4a0f';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 2. Centered Stem
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.5, y + h * 0.10);
+    ctx.bezierCurveTo(
+        x + w * 0.48, y + h * 0.02, 
+        x + w * 0.52, y - h * 0.04, 
+        x + w * 0.58, y - h * 0.06
+    );
+    ctx.strokeStyle = '#78350f'; 
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // 3. Cute Leaf
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.52, y + h * 0.02);
+    ctx.quadraticCurveTo(x + w * 0.72, y - h * 0.04, x + w * 0.75, y + h * 0.03);
+    ctx.quadraticCurveTo(x + w * 0.60, y + h * 0.08, x + w * 0.52, y + h * 0.02);
+    ctx.closePath();
+    
+    const leafGrad = ctx.createLinearGradient(x + w * 0.52, y, x + w * 0.75, y + h * 0.05);
+    leafGrad.addColorStop(0, '#4ade80');
+    leafGrad.addColorStop(1, '#15803d');
+    ctx.fillStyle = leafGrad;
+    ctx.fill();
+    ctx.strokeStyle = '#166534';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 4. Raised Face Coordinates (Moved up into the upper-mid section)
+    const faceY = y + h * 0.48; 
+    
+    // Left Eye
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); 
+    ctx.arc(x + w * 0.38, faceY, w * 0.08, 0, Math.PI * 2); 
+    ctx.fill();
+    ctx.fillStyle = '#1e1b4b'; 
+    ctx.beginPath(); 
+    ctx.arc(x + w * 0.39, faceY, w * 0.04, 0, Math.PI * 2); 
+    ctx.fill();
+    
+    // Right Eye
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); 
+    ctx.arc(x + w * 0.62, faceY, w * 0.08, 0, Math.PI * 2); 
+    ctx.fill();
+    ctx.fillStyle = '#1e1b4b';
+    ctx.beginPath(); 
+    ctx.arc(x + w * 0.61, faceY, w * 0.04, 0, Math.PI * 2); 
+    ctx.fill();
+    
+    // 5. Cute Smile
+    ctx.strokeStyle = '#1e1b4b'; 
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); 
+    ctx.arc(x + w * 0.5, faceY + h * 0.04, w * 0.08, 0.1 * Math.PI, 0.9 * Math.PI); 
+    ctx.stroke();
+    
+    break;
+}
+
+        default: {
+            ctx.fillStyle = '#6366f1';
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = '#4338ca'; ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+        }
+    }
+
+    ctx.restore();
+}
 /* ============================================================
    DRAWING
 ============================================================ */
@@ -3289,24 +3603,16 @@ function drawSingleObject(obj) {
     // Use image for ALL block types (built-in and custom)
     const img = images[obj.tag];
 
-    if (img && img.complete && obj.tag !== "text") {
-      ctx.drawImage(
-        img, -obj.width / 2, -obj.height / 2, obj.width, obj.height
-      );
-    } else if (obj.tag !== "text") {
-      // Fallback for missing/loading images
-      if (obj.tag === 'trigger') {
-          // Fallback style for trigger is slightly less visible to distinguish it
-          ctx.fillStyle = "rgba(0, 255, 255, 0.2)"; // Faint cyan
-          ctx.strokeStyle = "rgb(0, 255, 255)"; // Solid cyan border
-          ctx.lineWidth = 2;
-          ctx.fillRect(-obj.width / 2, -obj.height / 2, obj.width, obj.height);
-          ctx.strokeRect(-obj.width / 2, -obj.height / 2, obj.width, obj.height);
-      } else {
-          ctx.fillStyle = obj.tag === "player" ? "red" : "green";
-          ctx.fillRect(-obj.width / 2, -obj.height / 2, obj.width, obj.height);
-      }
+    // WITH THIS:
+if (obj.tag !== "text") {
+    if (customBlocks[obj.tag] && images[obj.tag] && images[obj.tag].complete) {
+        // Custom blocks still use their uploaded image
+        ctx.drawImage(images[obj.tag], -obj.width / 2, -obj.height / 2, obj.width, obj.height);
+    } else {
+        // All built-in blocks use procedural drawing
+        drawBlockGraphic(ctx, obj.tag, obj.width, obj.height);
     }
+}
 
     // START: NEW DRAW LOGIC FOR COUNTER TEXT
     if (obj.tag === 'counter') {
@@ -3373,55 +3679,145 @@ function drawObjects() {
   });
 
   for (const u in otherPlayers) {
-  const op = otherPlayers[u];
-  ctx.save();
-  ctx.globalAlpha = 0.8;
-  // Draw them as a blue version of the player image
-  const img = images.player;
-  if (img && img.complete) {
-    ctx.drawImage(img, op.x - camera.x, op.y - camera.y, 50, 50);
-  }
-  // Draw their username above
-  ctx.fillStyle = "white";
-  ctx.font = "12px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(u, op.x - camera.x + 25, op.y - camera.y - 8);
-  ctx.restore();
+    const op = otherPlayers[u];
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.translate(op.x - camera.x + 25, op.y - camera.y + 25);
+    ctx.scale(1, 1);
+    drawBlockGraphic(ctx, 'player', 50, 50);
+    // Username label
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(u, 0, -28);
+    ctx.restore();
 }
 }
 
 function drawGround() {
-  const img = images.ground;
-  
-  // OPTIMIZATION: Only calculate start and end based on camera position
-  // We floor the camera position to the nearest grid block (50px)
-  const startX = Math.floor(camera.x / 50) * 50;
-  // We draw enough blocks to cover the canvas width + a small buffer
-  const endX = startX + canvas.width + 50;
+    // 1. SETUP BOUNDARIES & CAMERA
+    const viewLeft = camera.x;
+    const viewRight = camera.x + canvas.width;
+    
+    const renderLeft = Math.max(0, viewLeft);
+    const renderRight = Math.min(world.width, viewRight);
+    
+    const dxStart = renderLeft - camera.x;
+    const dxEnd = renderRight - camera.x;
+    const dy = ground.y - camera.y;
 
-  for (let x = startX; x < endX; x += 50) {
-    // Safety check to ensure we don't draw past world borders
-    if (x > world.width) break;
-    if (x < 0) continue;
-
-    if (img && img.complete) {
-      ctx.drawImage(
-        img,
-        x - camera.x,
-        ground.y - camera.y,
-        50,
-        ground.height
-      );
-    } else {
-      ctx.fillStyle = "#654321";
-      ctx.fillRect(
-        x - camera.x,
-        ground.y - camera.y,
-        50,
-        ground.height
-      );
+    // Smooth, gentle rolling hills
+    function getGentleHillY(worldX) {
+        return Math.sin(worldX * 0.005) * 6 + 
+               Math.cos(worldX * 0.01) * 3;
     }
-  }
+
+    // --- 2. GENERATE MEADOW CURVE ---
+    const points = [];
+    const stepSize = 16; 
+    
+    // Math.floor ensures the starting grid coordinate stays locked in world space
+    const startX = Math.floor(renderLeft / stepSize) * stepSize;
+    
+    for (let lx = startX; lx <= renderRight + stepSize; lx += stepSize) {
+        points.push({
+            worldX: lx, // Lock the absolute world coordinate
+            x: lx - camera.x,
+            y: dy + getGentleHillY(lx)
+        });
+    }
+
+    // --- 3. SOLID GRASS GREEN FILL ---
+    ctx.beginPath();
+    ctx.moveTo(dxStart, dy + ground.height);
+    
+    if (points.length > 0) {
+        ctx.lineTo(points[0].x, points[0].y);
+        for (let i = 0; i < points.length - 1; i++) {
+            const xc = (points[i].x + points[i + 1].x) / 2;
+            const yc = (points[i].y + points[i + 1].y) / 2;
+            ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+        }
+    }
+    
+    ctx.lineTo(dxEnd, dy + ground.height);
+    ctx.closePath();
+
+    ctx.fillStyle = '#22c55e'; 
+    ctx.fill();
+
+    // --- 4. DARK GREEN OUTLINE ---
+    ctx.beginPath();
+    if (points.length > 0) {
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 0; i < points.length - 1; i++) {
+            const xc = (points[i].x + points[i + 1].x) / 2;
+            const yc = (points[i].y + points[i + 1].y) / 2;
+            ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+        }
+    }
+    ctx.strokeStyle = '#15803d'; 
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // --- 5. FIXED DETAILS (Tufts & Flowers locked to World Coordinates) ---
+    for (let i = 0; i < points.length; i++) {
+        const pt = points[i];
+        
+        // FIX: We use the absolute grid-snapped worldX position.
+        // Because worldX is always a multiple of 16 (stepSize), it never changes 
+        // values based on camera fractions or sub-pixels.
+        const seed = Math.sin(pt.worldX) * 1000;
+        const rand = seed - Math.floor(seed); 
+
+        if (rand > 0.75) continue;
+
+        ctx.save();
+        ctx.translate(pt.x, pt.y);
+
+        if (rand < 0.35) {
+            // Soft Grass Tufts
+            ctx.fillStyle = '#16a34a'; 
+            ctx.beginPath();
+            ctx.moveTo(-3, 1);
+            ctx.quadraticCurveTo(-4, -5, -5, -7);
+            ctx.quadraticCurveTo(-2, -3, -1, 1);
+            ctx.moveTo(-1, 1);
+            ctx.quadraticCurveTo(0, -7, 1, -9);
+            ctx.quadraticCurveTo(1, -4, 1, 1);
+            ctx.moveTo(1, 1);
+            ctx.quadraticCurveTo(3, -4, 4, -6);
+            ctx.quadraticCurveTo(2, -2, 2, 1);
+            ctx.fill();
+        } else if (rand < 0.60) {
+            // Dainty Wildflowers
+            const stemHeight = 5 + (rand * 5);
+            
+            ctx.strokeStyle = '#15803d';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(0, 1);
+            ctx.quadraticCurveTo(-0.5, -stemHeight/2, -1, -stemHeight);
+            ctx.stroke();
+
+            const flowerColors = ['#fde047', '#3b82f6', '#ec4899']; 
+            const colorIdx = Math.floor(rand * 3) % 3;
+            
+            ctx.fillStyle = flowerColors[colorIdx];
+            ctx.beginPath();
+            ctx.arc(-1, -stemHeight, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(-1, -stemHeight, 0.8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
 }
 
 function drawGrid(spacing = GRID_SIZE) {
