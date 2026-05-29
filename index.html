@@ -116,69 +116,45 @@
     }
     
 
-/* Modern global font for the toolbar */
 #toolbar {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center; /* Center items vertically */
-  overflow-x: auto; 
-  gap: 6px;
-  padding: 8px 16px;
+  font-family: system-ui, -apple-system, sans-serif;
+  position: absolute;
+  top: 0; left: 0; width: 100%;
   background: #ffffff;
   border-bottom: 1px solid #e4e4e7;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.02);
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
   z-index: 10;
+  padding: 10px 16px;
   box-sizing: border-box;
-  
-  /* Hide clunky native scrollbars while keeping scroll functionality */
-  -ms-overflow-style: none;  
-  scrollbar-width: none;  
+  transform: translateY(-100%);
+  transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
+#toolbar.open { transform: translateY(0); }
+#toolbar::-webkit-scrollbar { display: none; }
 
-#toolbar::-webkit-scrollbar {
-  display: none; /* Hide scrollbar for Chrome, Safari, and Opera */
-}
-
-/* Base button styles */
 #toolbar button {
-  padding: 6px 14px;
-  font-size: 13px;
+  padding: 6px 12px;
+  font-size: 12px;
   font-weight: 500;
-  background-color: #f4f4f5;
+  background: #f4f4f5;
   color: #27272a;
   border: 1px solid #e4e4e7;
   border-radius: 6px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s ease-in-out;
+  transition: all 0.12s;
+  margin: 0;
 }
-
-/* Hover effect for standard buttons */
-#toolbar button:hover {
-  background-color: #e4e4e7;
-  border-color: #d4d4d8;
-}
-
-/* Tactile press effect for ALL buttons */
-#toolbar button:active {
-  transform: scale(0.96);
-}
-
-/* Active/Selected Tool */
-.selected-tool { 
-  background-color: #007aff !important; 
-  color: white !important;
-  border-color: #007aff !important;
-  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.25);
-}
-.selected-tool:hover {
-  background-color: #0062cc !important;
-}
+#toolbar button:hover { background: #e4e4e7; }
+#toolbar button:active { transform: scale(0.95); }
+.selected-tool { background: #007aff !important; color: white !important; border-color: #007aff !important; }
+.btn-create { background: #10b981 !important; color: white !important; border-color: #10b981 !important; }
+.btn-reset  { background: #ef4444 !important; color: white !important; border-color: #ef4444 !important; }
+.btn-save   { background: #06b6d4 !important; color: white !important; border-color: #06b6d4 !important; }
+.btn-host   { background: #6366f1 !important; color: white !important; border-color: #6366f1 !important; }
+.btn-exit   { background: #71717a !important; color: white !important; border-color: #71717a !important; }
 
 /* Action Group Styling (Green/Red/Teal/etc) */
 .btn-create {
@@ -674,30 +650,80 @@
   </div>
 </div>
 
+<button id="toolbarOpenBtn" onclick="openToolbar()" style="display:none; position:fixed; top:10px; left:10px; z-index:20; padding:7px 14px; background:#fff; border:1px solid #ddd; border-radius:8px; font-family:Inter,sans-serif; font-size:13px; font-weight:500; cursor:pointer;">
+  ☰ Tools
+</button>
+
 <div id="toolbar" style="display:none;">
-  <button onclick="selectTool('box')" class="selected-tool">Box</button>
-  <button onclick="selectTool('box-pushable')">Pushable</button>
-  <button onclick="selectTool('box-stickable')">Slime</button>
-  <button onclick="selectTool('kill')">Kill Block</button>
-  <button onclick="selectTool('spawn')">Spawn Point</button>
-  <button onclick="selectTool('trigger')">Trigger</button>
-  <button onclick="selectTool('monitor')">Monitor</button>
-  <button onclick="selectTool('text')">Text</button>
-  <button onclick="selectTool('counter')">Counter</button>
-  <button onclick="selectTool('comparer')">Comparer</button>
-  <button onclick="selectTool('breakable')">Breakable</button>
-  <button onclick="selectTool('delete')">Delete</button>
-  <button onclick="selectTool('select')">Select</button>
-  <button onclick="selectTool('edit')">Edit</button>
-  <button onclick="selectTool('copy')">Copy Block</button>
-  
-  <button onclick="openBlockCreator()" class="btn-create">+ New Block</button>
-  <button onclick="resetAllTriggers()" class="btn-reset">Reset Triggers</button>
-  <button onclick="saveMap()" class="btn-save">Save Map</button>
-  
-  <div class="btn-right-group">
-    <button onclick="goToMenu()" id="exitBtn" class="btn-exit">Menu (ESC)</button>
-    <button id="hostBtn" onclick="hostGame()" class="btn-host">Host Game</button>
+  <!-- Top action bar -->
+  <div style="display:flex; align-items:center; gap:6px; padding-bottom:8px; border-bottom:1px solid #e4e4e7; margin-bottom:8px;">
+    <span style="font-size:13px; font-weight:500; color:#888; flex:1;">Map Editor</span>
+    <button onclick="openBlockCreator()" class="btn-create">+ New Block</button>
+    <button onclick="resetAllTriggers()" class="btn-reset">Reset</button>
+    <button onclick="saveMap()" class="btn-save">Save</button>
+    <button onclick="hostGame()" id="hostBtn" class="btn-host">Host</button>
+    <button onclick="goToMenu()" class="btn-exit">Menu</button>
+    <button onclick="closeToolbar()" style="background:none; border:none; font-size:18px; cursor:pointer; color:#888; padding:2px 6px;">✕</button>
+  </div>
+
+  <!-- Tool categories -->
+  <div style="display:flex; gap:16px; overflow-x:auto; scrollbar-width:none; padding-bottom:2px;">
+
+    <div>
+      <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Terrain</div>
+      <div style="display:flex; gap:4px;">
+        <button onclick="selectTool('box')" data-tool="box">Box</button>
+        <button onclick="selectTool('box-pushable')" data-tool="box-pushable">Crate</button>
+        <button onclick="selectTool('box-stickable')" data-tool="box-stickable">Slime</button>
+        <button onclick="selectTool('breakable')" data-tool="breakable">Breakable</button>
+        <button onclick="selectTool('bounce')" data-tool="bounce">Bounce</button>
+        <button onclick="selectTool('ice')" data-tool="ice">Ice</button>
+      </div>
+    </div>
+
+    <div style="width:1px; background:#e4e4e7; align-self:stretch;"></div>
+
+    <div>
+      <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Hazards</div>
+      <div style="display:flex; gap:4px;">
+        <button onclick="selectTool('kill')" data-tool="kill">Kill Block</button>
+      </div>
+    </div>
+
+    <div style="width:1px; background:#e4e4e7; align-self:stretch;"></div>
+
+    <div>
+      <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Logic</div>
+      <div style="display:flex; gap:4px;">
+        <button onclick="selectTool('trigger')" data-tool="trigger">Trigger</button>
+        <button onclick="selectTool('monitor')" data-tool="monitor">Monitor</button>
+        <button onclick="selectTool('counter')" data-tool="counter">Counter</button>
+        <button onclick="selectTool('comparer')" data-tool="comparer">Comparer</button>
+      </div>
+    </div>
+
+    <div style="width:1px; background:#e4e4e7; align-self:stretch;"></div>
+
+    <div>
+      <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Objects</div>
+      <div style="display:flex; gap:4px;">
+        <button onclick="selectTool('spawn')" data-tool="spawn">Spawn</button>
+        <button onclick="selectTool('text')" data-tool="text">Text</button>
+      </div>
+    </div>
+
+    <div style="width:1px; background:#e4e4e7; align-self:stretch;"></div>
+
+    <div>
+      <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Editor</div>
+      <div style="display:flex; gap:4px;">
+        <button onclick="selectTool('select')" data-tool="select">Select</button>
+        <button onclick="selectTool('edit')" data-tool="edit">Edit</button>
+        <button onclick="selectTool('copy')" data-tool="copy">Copy</button>
+        <button onclick="selectTool('delete')" data-tool="delete">Delete</button>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -1522,6 +1548,8 @@ function goToMenu() {
 
     canvas.style.display = "none";
     document.getElementById("toolbar").style.display = "none";
+    document.getElementById("toolbar").classList.remove("open");
+    document.getElementById("toolbarOpenBtn").style.display = "none";
     homeScreen.style.display = "flex";
 
     selectTool(null);
@@ -1710,7 +1738,9 @@ async function joinCurrentGame() {
 function startGame() {
   homeScreen.style.display = "none";
   canvas.style.display = "block";
-  document.getElementById("toolbar").style.display = "flex";
+  document.getElementById("toolbar").style.display = "block";
+  document.getElementById("toolbarOpenBtn").style.display = "block";
+  openToolbar();
   resizeCanvas(); 
   
   // Start/Restart game loop
@@ -1952,21 +1982,20 @@ function confirmCopyBlock() {
 /* ============================================================
    EDITOR TOOLBAR AND POPUP LOGIC
 ============================================================ */
+function openToolbar() {
+  document.getElementById("toolbar").classList.add("open");
+  document.getElementById("toolbarOpenBtn").style.display = "none";
+}
 
+function closeToolbar() {
+  document.getElementById("toolbar").classList.remove("open");
+  document.getElementById("toolbarOpenBtn").style.display = "block";
+}
 function selectTool(tool) {
   currentTool = tool;
-
-  // Highlight logic
-  document.querySelectorAll("#toolbar button").forEach(btn => {
-    // Check if button's onclick contains the tool name
-    const clickAttr = btn.getAttribute('onclick');
-    if (clickAttr && clickAttr.includes(`selectTool('${tool}')`)) {
-        btn.classList.add("selected-tool");
-    } else {
-        btn.classList.remove("selected-tool");
-    }
+  document.querySelectorAll("#toolbar button[data-tool]").forEach(btn => {
+    btn.classList.toggle("selected-tool", btn.getAttribute("data-tool") === tool);
   });
-
   closePopup();
   closeBlockCreator();
 }
@@ -2519,6 +2548,16 @@ if (currentTool === 'copy' && clickedObject) {
         newObj.solid = true; 
         newObj.reappearTime = 300;
         break;
+    case 'bounce':
+      newObj.tag = "bounce";
+      newObj.solid = true;
+      newObj.bounce = true;
+      break;
+    case 'ice':
+      newObj.tag = "ice";
+      newObj.solid = true;
+      newObj.ice = true;
+      break;
     default:
       builtInToolFound = false; // Not a built-in tool
   }
@@ -2660,6 +2699,11 @@ function resolveCollision(obj, collision) {
           if (settings.shake) addShake(15);
           resetPlayer(obj);
       }
+      if (other.bounce) {
+        obj.vy = -18;
+        obj.isJumping = true;
+        spawnParticles(obj.x + obj.width/2, obj.y + obj.height, 8, "#fbbf24", 5);
+      }
       // BREAKABLE TOUCH (Top/Bottom)
     
       
@@ -2739,7 +2783,11 @@ function updatePhysics() {
     if (obj.tag === "player") {
       const accel = 0.5;
       const maxSpeed = 6;
-      const friction = 0.85;
+      const onIce = objects.some(o => o.ice && o.solid &&
+  obj.x < o.x + o.width && obj.x + obj.width > o.x &&
+  Math.abs((obj.y + obj.height) - o.y) < 4
+);
+const friction = onIce ? 0.99 : 0.85;
       
       // Store the grounded state BEFORE physics updates
       const wasGrounded = !obj.isJumping;
@@ -3377,7 +3425,32 @@ function drawBlockGraphic(ctx, tag, w, h) {
             ctx.strokeRect(x, y, w, h);
             break;
         }
+        case 'bounce': {
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#fef08a';
+  ctx.beginPath();
+  ctx.moveTo(x + w*0.2, y + h*0.6);
+  ctx.quadraticCurveTo(x + w*0.5, y + h*0.1, x + w*0.8, y + h*0.6);
+  ctx.lineTo(x + w*0.8, y + h);
+  ctx.lineTo(x + w*0.2, y + h);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#d97706'; ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  break;
+}
 
+case 'ice': {
+  ctx.fillStyle = '#bae6fd';
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillRect(x + w*0.1, y + h*0.1, w*0.3, h*0.15);
+  ctx.fillRect(x + w*0.5, y + h*0.25, w*0.35, h*0.1);
+  ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  break;
+}
         case 'player': {
     // 1. Elongated Pear Body (Bottom half doubled in height)
     ctx.beginPath();
