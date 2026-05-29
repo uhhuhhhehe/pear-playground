@@ -1195,21 +1195,111 @@ function spawnParticles(x, y, count, color, speed = 5) {
 }
 
 // 2. Parallax Background
-function drawParallax() {
-    // Distant clouds/hills moving at 20% speed
-    const paraX = camera.x * 0.2; 
-    ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
-    
-    // Draw 3 simple "clouds" based on math so they loop infinitely
-    for(let i = 0; i < 5; i++) {
-        let cloudX = ((i * 400) - paraX) % 2000;
-        if (cloudX < -200) cloudX += 2000; // Wrap around
-        ctx.beginPath();
-        ctx.arc(cloudX, canvas.height/2, 60, 0, Math.PI * 2);
-        ctx.arc(cloudX + 50, canvas.height/2 - 20, 70, 0, Math.PI * 2);
-        ctx.arc(cloudX + 100, canvas.height/2, 60, 0, Math.PI * 2);
-        ctx.fill();
+function drawBackground() {
+    // --- 1. SUN ---
+    const sunX = canvas.width * 0.82;
+    const sunY = canvas.height * 0.13;
+
+    // Outer glow
+    const glow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 90);
+    glow.addColorStop(0,   'rgba(255, 236, 100, 0.55)');
+    glow.addColorStop(0.5, 'rgba(255, 200, 50,  0.12)');
+    glow.addColorStop(1,   'rgba(255, 200, 50,  0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(sunX, sunY, 90, 0, Math.PI * 2); ctx.fill();
+
+    // Sun disc
+    ctx.fillStyle = '#fef9c3';
+    ctx.beginPath(); ctx.arc(sunX, sunY, 26, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fde047';
+    ctx.beginPath(); ctx.arc(sunX, sunY, 20, 0, Math.PI * 2); ctx.fill();
+
+    // --- 2. DISTANT MOUNTAIN LAYERS ---
+    const mx = camera.x;
+    drawMountainLayer(mx * 0.03, canvas.height * 0.58, 'rgba(160, 200, 225, 0.28)', 60, 11);
+    drawMountainLayer(mx * 0.06, canvas.height * 0.64, 'rgba(120, 175, 210, 0.38)', 85, 7);
+    drawMountainLayer(mx * 0.10, canvas.height * 0.70, 'rgba(85,  150, 190, 0.48)', 100, 3);
+
+    // --- 3. CLOUDS ---
+    drawAllClouds(camera.x * 0.12);
+}
+
+// Draws one seamlessly tiling mountain range silhouette
+function drawMountainLayer(offsetX, baseY, color, height, seed) {
+    const W = canvas.width;
+    const period = W * 1.6;
+    const shift = ((offsetX % period) + period) % period;
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, canvas.height);
+    ctx.lineTo(0, baseY);
+
+    // Two full periods so seam is never on screen
+    for (let px = 0; px <= W + period; px += 20) {
+        const wx = px + shift;
+        const hy = Math.sin(wx * 0.004 + seed) * height * 0.55
+                 + Math.cos(wx * 0.009 + seed * 1.7) * height * 0.30
+                 + Math.sin(wx * 0.018 + seed * 0.5) * height * 0.15;
+        ctx.lineTo(px, baseY - hy);
     }
+
+    ctx.lineTo(W, canvas.height);
+    ctx.closePath();
+    ctx.fill();
+}
+
+// Draws all clouds based on a continuous world scroll offset
+function drawAllClouds(scrollX) {
+    const slots = [
+        { t: 0.05, y: 0.17, s: 1.15 },
+        { t: 0.22, y: 0.10, s: 0.80 },
+        { t: 0.40, y: 0.21, s: 1.00 },
+        { t: 0.58, y: 0.13, s: 1.30 },
+        { t: 0.75, y: 0.19, s: 0.90 },
+        { t: 0.90, y: 0.08, s: 1.05 },
+    ];
+
+    const period = canvas.width * 2.8;
+
+    slots.forEach(c => {
+        const base = c.t * period;
+        // Screen X with seamless wrap
+        let sx = ((base - scrollX) % period + period) % period;
+        // Remap so clouds are distributed across the screen width, not bunched left
+        sx = (sx / period) * canvas.width * 1.4 - canvas.width * 0.2;
+
+        const cy = canvas.height * c.y;
+        drawPuffyCloud(sx,          cy, c.s);
+        drawPuffyCloud(sx - period, cy, c.s); // trailing copy for seamless wrap
+    });
+}
+
+function drawPuffyCloud(x, y, scale) {
+    // Cull: skip clouds that are completely off screen
+    if (x + 120 * scale < 0 || x - 120 * scale > canvas.width) return;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+
+    // Soft shadow beneath
+    ctx.fillStyle = 'rgba(160, 210, 235, 0.35)';
+    ctx.beginPath(); ctx.ellipse(4, 10, 62, 18, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Main body puffs
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.93)';
+    ctx.beginPath(); ctx.ellipse(0,   2, 55, 22, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-30, -6, 28, 22, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-10,-16, 30, 24, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(16, -15, 35, 27, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(42,  -5, 27, 21, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Top highlight
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+    ctx.beginPath(); ctx.ellipse(6, -20, 24, 12, -0.15, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
 }
 
 // 3. Lighting Overlay
@@ -1276,12 +1366,15 @@ function getNearbyObjects(rect) {
 }
 // ---------------------------------
 function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  // BRIGHTER DAYTIME GRADIENT
-  skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  skyGradient.addColorStop(0, "#87CEEB"); // Sky Blue
-  skyGradient.addColorStop(1, "#E0F7FA"); // Very light Cyan
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    skyGradient.addColorStop(0,    '#1a5fa8'); // Deep blue at zenith
+    skyGradient.addColorStop(0.35, '#4a9fd4'); // Bright cornflower blue
+    skyGradient.addColorStop(0.72, '#89c4e8'); // Pale hazy blue
+    skyGradient.addColorStop(0.88, '#c8e8f5'); // Near-horizon haze
+    skyGradient.addColorStop(1,    '#fde8b0'); // Warm golden horizon glow
 }
 
 function loadImages(sources, callback) {
@@ -3452,7 +3545,7 @@ function draw() {
   ctx.translate(shakeX, shakeY); 
 
   // 4. Draw Parallax (Background Layer)
-  drawParallax();
+  drawBackground();
 
   // 5. Standard Drawing
   // Note: Grid and Objects need to be drawn relative to camera manually 
