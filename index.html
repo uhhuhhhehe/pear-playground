@@ -1516,20 +1516,34 @@ function showHome() {
   homeScreen.style.display = "flex";
 }
 
-// MODIFIED: Function to return to the main menu
 function goToMenu() {
     if (gameLoopId) cancelAnimationFrame(gameLoopId);
     gameLoopId = null;
-    
+
     canvas.style.display = "none";
     document.getElementById("toolbar").style.display = "none";
     homeScreen.style.display = "flex";
-    
-    // Deselect tool
+
     selectTool(null);
     stopMultiplayer();
+
+    // If we were the host, delete the game immediately and cancel the onDisconnect
+    if (isHost && currentCode) {
+        const gameRef = db.ref(`hostedGames/${currentCode}`);
+        const playersRef = db.ref(`games/${currentCode}`);
+
+        // Cancel the scheduled onDisconnect (we're cleaning up now)
+        gameRef.onDisconnect().cancel();
+        playersRef.onDisconnect().cancel();
+
+        // Delete immediately
+        gameRef.remove();
+        playersRef.remove();
+    }
+
     isHost = false;
-    document.getElementById("hostBtn").style.display = "block"; // reset for next time
+    currentCode = 0;
+    document.getElementById("hostBtn").style.display = "block";
 }
 /* ===========================================================
     Game Hosting / Joining
@@ -1563,6 +1577,11 @@ async function hostGame() {
     const data = { objects: savableObjects, customBlocks: customBlocks };
 
     await saveGameToHost([currentCode, data]);
+
+    // AUTO-CLEANUP: Firebase will delete these when the host disconnects
+    db.ref(`hostedGames/${currentCode}`).onDisconnect().remove();
+    db.ref(`games/${currentCode}`).onDisconnect().remove();
+
     isHost = true;
     document.getElementById("hostBtn").style.display = "block";
     startMultiplayer();
