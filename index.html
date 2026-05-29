@@ -1054,6 +1054,8 @@ let otherPlayers = {}; // Stores other players' positions
 let multiplayerInterval = null;
 let multiplayerInterval2 = null;
 let isHost = false;
+let bgCache = null;       // Offscreen canvas for sky/mountains/clouds
+let bgCacheLastX = null;  // Last camera.x when bg was drawn
 
 // Global Settings
 const settings = {
@@ -1194,112 +1196,103 @@ function spawnParticles(x, y, count, color, speed = 5) {
   }
 }
 
-// 2. Parallax Background
 function drawBackground() {
-    // --- 1. SUN ---
-    const sunX = canvas.width * 0.82;
-    const sunY = canvas.height * 0.13;
-
-    // Outer glow
-    const glow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 90);
-    glow.addColorStop(0,   'rgba(255, 236, 100, 0.55)');
-    glow.addColorStop(0.5, 'rgba(255, 200, 50,  0.12)');
-    glow.addColorStop(1,   'rgba(255, 200, 50,  0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath(); ctx.arc(sunX, sunY, 90, 0, Math.PI * 2); ctx.fill();
-
-    // Sun disc
-    ctx.fillStyle = '#fef9c3';
-    ctx.beginPath(); ctx.arc(sunX, sunY, 26, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#fde047';
-    ctx.beginPath(); ctx.arc(sunX, sunY, 20, 0, Math.PI * 2); ctx.fill();
-
-    // --- 2. DISTANT MOUNTAIN LAYERS ---
-    const mx = camera.x;
-    drawMountainLayer(mx * 0.03, canvas.height * 0.58, 'rgba(160, 200, 225, 0.28)', 60, 11);
-    drawMountainLayer(mx * 0.06, canvas.height * 0.64, 'rgba(120, 175, 210, 0.38)', 85, 7);
-    drawMountainLayer(mx * 0.10, canvas.height * 0.70, 'rgba(85,  150, 190, 0.48)', 100, 3);
-
-    // --- 3. CLOUDS ---
-    drawAllClouds(camera.x * 0.12);
-}
-
-// Draws one seamlessly tiling mountain range silhouette
-function drawMountainLayer(offsetX, baseY, color, height, seed) {
-    const W = canvas.width;
-    const period = W * 1.6;
-    const shift = ((offsetX % period) + period) % period;
-
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(0, canvas.height);
-    ctx.lineTo(0, baseY);
-
-    // Two full periods so seam is never on screen
-    for (let px = 0; px <= W + period; px += 20) {
-        const wx = px + shift;
-        const hy = Math.sin(wx * 0.004 + seed) * height * 0.55
-                 + Math.cos(wx * 0.009 + seed * 1.7) * height * 0.30
-                 + Math.sin(wx * 0.018 + seed * 0.5) * height * 0.15;
-        ctx.lineTo(px, baseY - hy);
+    // Rebuild offscreen canvas if screen was resized
+    if (!bgCache || bgCache.width !== canvas.width || bgCache.height !== canvas.height) {
+        bgCache = document.createElement('canvas');
+        bgCache.width = canvas.width;
+        bgCache.height = canvas.height;
+        bgCacheLastX = null;
     }
 
-    ctx.lineTo(W, canvas.height);
-    ctx.closePath();
-    ctx.fill();
+    // Only re-render when camera moves 3+ pixels (parallax shift is subtle)
+    if (bgCacheLastX === null || Math.abs(camera.x - bgCacheLastX) >= 3) {
+        bgCacheLastX = camera.x;
+        const bc = bgCache.getContext('2d');
+        const W = bgCache.width, H = bgCache.height;
+
+        // Sky gradient
+        const grad = bc.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0,    '#1a5fa8');
+        grad.addColorStop(0.35, '#4a9fd4');
+        grad.addColorStop(0.72, '#89c4e8');
+        grad.addColorStop(0.88, '#c8e8f5');
+        grad.addColorStop(1,    '#fde8b0');
+        bc.fillStyle = grad;
+        bc.fillRect(0, 0, W, H);
+
+        // Sun (flat circles - no per-frame radial gradient)
+        const sx = W * 0.82, sy = H * 0.13;
+        bc.fillStyle = 'rgba(255, 230, 80, 0.25)';
+        bc.beginPath(); bc.arc(sx, sy, 60, 0, Math.PI * 2); bc.fill();
+        bc.fillStyle = '#fef9c3';
+        bc.beginPath(); bc.arc(sx, sy, 26, 0, Math.PI * 2); bc.fill();
+        bc.fillStyle = '#fde047';
+        bc.beginPath(); bc.arc(sx, sy, 20, 0, Math.PI * 2); bc.fill();
+
+        // Mountain layers
+        const mx = camera.x;
+        cachedMountainLayer(bc, W, H, mx * 0.03, H * 0.58, 'rgba(160,200,225,0.28)', 60, 11);
+        cachedMountainLayer(bc, W, H, mx * 0.06, H * 0.64, 'rgba(120,175,210,0.38)', 85, 7);
+        cachedMountainLayer(bc, W, H, mx * 0.10, H * 0.70, 'rgba(85,150,190,0.48)',  100, 3);
+
+        // Clouds
+        cachedClouds(bc, W, H, camera.x * 0.12);
+    }
+
+    ctx.drawImage(bgCache, 0, 0);
 }
 
-// Draws all clouds based on a continuous world scroll offset
-function drawAllClouds(scrollX) {
+function cachedMountainLayer(bc, W, H, offsetX, baseY, color, height, seed) {
+    const period = W * 1.6;
+    const shift = ((offsetX % period) + period) % period;
+    bc.fillStyle = color;
+    bc.beginPath();
+    bc.moveTo(0, H);
+    bc.lineTo(0, baseY);
+    for (let px = 0; px <= W + 40; px += 40) { // 40px steps (was 20 — halves work)
+        const wx = px + shift;
+        const hy = Math.sin(wx * 0.004 + seed) * height * 0.55
+                 + Math.cos(wx * 0.009 + seed * 1.7) * height * 0.30;
+        bc.lineTo(px, baseY - hy);
+    }
+    bc.lineTo(W, H);
+    bc.closePath();
+    bc.fill();
+}
+
+function cachedClouds(bc, W, H, scrollX) {
     const slots = [
-        { t: 0.05, y: 0.17, s: 1.15 },
-        { t: 0.22, y: 0.10, s: 0.80 },
-        { t: 0.40, y: 0.21, s: 1.00 },
-        { t: 0.58, y: 0.13, s: 1.30 },
-        { t: 0.75, y: 0.19, s: 0.90 },
-        { t: 0.90, y: 0.08, s: 1.05 },
+        { t: 0.08, y: 0.17, s: 1.1  },
+        { t: 0.30, y: 0.11, s: 0.85 },
+        { t: 0.55, y: 0.20, s: 1.0  },
+        { t: 0.75, y: 0.13, s: 1.2  },
+        { t: 0.92, y: 0.18, s: 0.9  },
     ];
-
-    const period = canvas.width * 2.8;
-
+    const period = W * 2.8;
     slots.forEach(c => {
         const base = c.t * period;
-        // Screen X with seamless wrap
         let sx = ((base - scrollX) % period + period) % period;
-        // Remap so clouds are distributed across the screen width, not bunched left
-        sx = (sx / period) * canvas.width * 1.4 - canvas.width * 0.2;
-
-        const cy = canvas.height * c.y;
-        drawPuffyCloud(sx,          cy, c.s);
-        drawPuffyCloud(sx - period, cy, c.s); // trailing copy for seamless wrap
+        sx = (sx / period) * W * 1.4 - W * 0.2;
+        cachedCloud(bc, W, sx,          H * c.y, c.s);
+        cachedCloud(bc, W, sx - period, H * c.y, c.s);
     });
 }
 
-function drawPuffyCloud(x, y, scale) {
-    // Cull: skip clouds that are completely off screen
-    if (x + 120 * scale < 0 || x - 120 * scale > canvas.width) return;
-
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(scale, scale);
-
-    // Soft shadow beneath
-    ctx.fillStyle = 'rgba(160, 210, 235, 0.35)';
-    ctx.beginPath(); ctx.ellipse(4, 10, 62, 18, 0, 0, Math.PI * 2); ctx.fill();
-
-    // Main body puffs
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.93)';
-    ctx.beginPath(); ctx.ellipse(0,   2, 55, 22, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(-30, -6, 28, 22, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(-10,-16, 30, 24, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(16, -15, 35, 27, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(42,  -5, 27, 21, 0, 0, Math.PI * 2); ctx.fill();
-
-    // Top highlight
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-    ctx.beginPath(); ctx.ellipse(6, -20, 24, 12, -0.15, 0, Math.PI * 2); ctx.fill();
-
-    ctx.restore();
+function cachedCloud(bc, W, x, y, scale) {
+    if (x + 110 * scale < 0 || x - 110 * scale > W) return;
+    bc.save();
+    bc.translate(x, y);
+    bc.scale(scale, scale);
+    // Shadow
+    bc.fillStyle = 'rgba(155, 205, 230, 0.3)';
+    bc.beginPath(); bc.ellipse(4, 10, 58, 16, 0, 0, Math.PI * 2); bc.fill();
+    // 3 puffs (was 5 — saves 40% ellipse calls)
+    bc.fillStyle = 'rgba(255, 255, 255, 0.93)';
+    bc.beginPath(); bc.ellipse(0,   0, 55, 22, 0, 0, Math.PI * 2); bc.fill();
+    bc.beginPath(); bc.ellipse(-22,-14, 32, 24, 0, 0, Math.PI * 2); bc.fill();
+    bc.beginPath(); bc.ellipse(20, -12, 36, 26, 0, 0, Math.PI * 2); bc.fill();
+    bc.restore();
 }
 
 // 3. Lighting Overlay
@@ -3819,127 +3812,99 @@ function drawObjects() {
 }
 
 function drawGround() {
-    // 1. SETUP BOUNDARIES & CAMERA
-    const viewLeft = camera.x;
-    const viewRight = camera.x + canvas.width;
-    
-    const renderLeft = Math.max(0, viewLeft);
-    const renderRight = Math.min(world.width, viewRight);
-    
-    const dxStart = renderLeft - camera.x;
-    const dxEnd = renderRight - camera.x;
     const dy = ground.y - camera.y;
+    if (dy > canvas.height + 20) return; // Fully off screen, skip
 
-    // Smooth, gentle rolling hills
-    function getGentleHillY(worldX) {
-        return Math.sin(worldX * 0.005) * 6 + 
-               Math.cos(worldX * 0.01) * 3;
+    const W = canvas.width;
+    const STEP = 48; // Larger steps = fewer points, faster draw
+
+    // Helper: hill height at a given world X
+    function hillY(worldX) {
+        return dy + Math.sin(worldX * 0.005) * 6 + Math.cos(worldX * 0.01) * 3;
     }
 
-    // --- 2. GENERATE MEADOW CURVE ---
-    const points = [];
-    const stepSize = 16; 
-    
-    // Math.floor ensures the starting grid coordinate stays locked in world space
-    const startX = Math.floor(renderLeft / stepSize) * stepSize;
-    
-    for (let lx = startX; lx <= renderRight + stepSize; lx += stepSize) {
-        points.push({
-            worldX: lx, // Lock the absolute world coordinate
-            x: lx - camera.x,
-            y: dy + getGentleHillY(lx)
-        });
-    }
+    const startX = Math.floor(camera.x / STEP) * STEP - STEP;
+    const endX   = camera.x + W + STEP;
 
-    // --- 3. SOLID GRASS GREEN FILL ---
+    // --- 2. Grass fill (lineTo — much faster than quadraticCurveTo) ---
+    ctx.fillStyle = '#22c55e';
     ctx.beginPath();
-    ctx.moveTo(dxStart, dy + ground.height);
-    
-    if (points.length > 0) {
-        ctx.lineTo(points[0].x, points[0].y);
-        for (let i = 0; i < points.length - 1; i++) {
-            const xc = (points[i].x + points[i + 1].x) / 2;
-            const yc = (points[i].y + points[i + 1].y) / 2;
-            ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
-        }
+    ctx.moveTo(startX - camera.x, dy + ground.height);
+    for (let lx = startX; lx <= endX; lx += STEP) {
+        ctx.lineTo(lx - camera.x, hillY(lx));
     }
-    
-    ctx.lineTo(dxEnd, dy + ground.height);
+    ctx.lineTo(endX - camera.x, dy + ground.height);
     ctx.closePath();
-
-    ctx.fillStyle = '#22c55e'; 
     ctx.fill();
 
-    // --- 4. DARK GREEN OUTLINE ---
+    // --- 3. Dark green outline ---
+    ctx.strokeStyle = '#15803d';
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    if (points.length > 0) {
-        ctx.moveTo(points[0].x, points[0].y);
-        for (let i = 0; i < points.length - 1; i++) {
-            const xc = (points[i].x + points[i + 1].x) / 2;
-            const yc = (points[i].y + points[i + 1].y) / 2;
-            ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
-        }
+    ctx.moveTo(startX - camera.x, hillY(startX));
+    for (let lx = startX + STEP; lx <= endX; lx += STEP) {
+        ctx.lineTo(lx - camera.x, hillY(lx));
     }
-    ctx.strokeStyle = '#15803d'; 
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
     ctx.stroke();
 
-    // --- 5. FIXED DETAILS (Tufts & Flowers locked to World Coordinates) ---
-    for (let i = 0; i < points.length; i++) {
-        const pt = points[i];
-        
-        // FIX: We use the absolute grid-snapped worldX position.
-        // Because worldX is always a multiple of 16 (stepSize), it never changes 
-        // values based on camera fractions or sub-pixels.
-        const seed = Math.sin(pt.worldX) * 1000;
-        const rand = seed - Math.floor(seed); 
+    // --- 4. Sparse world-locked decorations (every 64px) ---
+    const DECO = 64;
+    const decoStart = Math.floor(camera.x / DECO) * DECO;
 
-        if (rand > 0.75) continue;
+    for (let lx = decoStart; lx <= camera.x + W; lx += DECO) {
+        const sx = lx - camera.x;
+        const ty = hillY(lx); // top of ground at this x
 
-        ctx.save();
-        ctx.translate(pt.x, pt.y);
+        // Deterministic seed locked to world position (no jitter)
+        const seed = Math.sin(lx * 0.317) * 10000;
+        const rand = seed - Math.floor(seed);
 
-        if (rand < 0.35) {
-            // Soft Grass Tufts
-            ctx.fillStyle = '#16a34a'; 
+        if (rand < 0.3) {
+            // Grass tuft
+            ctx.fillStyle = '#16a34a';
             ctx.beginPath();
-            ctx.moveTo(-3, 1);
-            ctx.quadraticCurveTo(-4, -5, -5, -7);
-            ctx.quadraticCurveTo(-2, -3, -1, 1);
-            ctx.moveTo(-1, 1);
-            ctx.quadraticCurveTo(0, -7, 1, -9);
-            ctx.quadraticCurveTo(1, -4, 1, 1);
-            ctx.moveTo(1, 1);
-            ctx.quadraticCurveTo(3, -4, 4, -6);
-            ctx.quadraticCurveTo(2, -2, 2, 1);
+            ctx.moveTo(sx - 4, ty + 1);
+            ctx.quadraticCurveTo(sx - 2, ty - 7, sx,     ty - 9);
+            ctx.quadraticCurveTo(sx + 2, ty - 7, sx + 4, ty + 1);
             ctx.fill();
-        } else if (rand < 0.60) {
-            // Dainty Wildflowers
-            const stemHeight = 5 + (rand * 5);
-            
+
+        } else if (rand < 0.55) {
+            // Wildflower with colored head
+            const stemH = 6 + (rand * 6);
             ctx.strokeStyle = '#15803d';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.moveTo(0, 1);
-            ctx.quadraticCurveTo(-0.5, -stemHeight/2, -1, -stemHeight);
+            ctx.moveTo(sx, ty + 1);
+            ctx.lineTo(sx - 1, ty - stemH);
             ctx.stroke();
 
-            const flowerColors = ['#fde047', '#3b82f6', '#ec4899']; 
-            const colorIdx = Math.floor(rand * 3) % 3;
-            
-            ctx.fillStyle = flowerColors[colorIdx];
+            const flowerColors = ['#fde047', '#3b82f6', '#ec4899', '#f97316', '#a78bfa'];
+            ctx.fillStyle = flowerColors[Math.floor(rand * 13) % 5];
             ctx.beginPath();
-            ctx.arc(-1, -stemHeight, 2.5, 0, Math.PI * 2);
+            ctx.arc(sx - 1, ty - stemH, 3, 0, Math.PI * 2);
             ctx.fill();
-            
-            ctx.fillStyle = '#ffffff';
+
+            // White centre dot
+            ctx.fillStyle = 'white';
             ctx.beginPath();
-            ctx.arc(-1, -stemHeight, 0.8, 0, Math.PI * 2);
+            ctx.arc(sx - 1, ty - stemH, 1, 0, Math.PI * 2);
+            ctx.fill();
+
+        } else if (rand < 0.68) {
+            // Double tuft (thicker grass patch)
+            ctx.fillStyle = '#166534';
+            ctx.beginPath();
+            ctx.moveTo(sx - 6, ty + 1);
+            ctx.quadraticCurveTo(sx - 3, ty - 5, sx - 1, ty - 7);
+            ctx.quadraticCurveTo(sx + 1, ty - 5, sx + 2, ty + 1);
+            ctx.fill();
+            ctx.fillStyle = '#16a34a';
+            ctx.beginPath();
+            ctx.moveTo(sx,     ty + 1);
+            ctx.quadraticCurveTo(sx + 2, ty - 6, sx + 4, ty - 8);
+            ctx.quadraticCurveTo(sx + 6, ty - 6, sx + 7, ty + 1);
             ctx.fill();
         }
-
-        ctx.restore();
     }
 }
 
