@@ -742,6 +742,7 @@
         <button onclick="selectTool('monitor')" data-tool="monitor">Monitor</button>
         <button onclick="selectTool('counter')" data-tool="counter">Counter</button>
         <button onclick="selectTool('comparer')" data-tool="comparer">Comparer</button>
+        <button onclick="selectTool('clock')" data-tool="clock">Clock</button>
       </div>
     </div>
 
@@ -772,7 +773,7 @@
     
     <div class="input-group">
         <label for="propGroup">Group:</label>
-        <input type="text" id="propGroup" placeholder="e.g., 'door_level1'">
+        <input type="text" id="propGroup" placeholder="e.g., 'door_level1, lights, puzzle_a'">
     </div>
     
     <div id="standardProps">
@@ -995,6 +996,17 @@
         <label for="propCompareOneTime">One-Time Comparer (Only triggers once)</label>
     </div>
 </div>
+    <div id="clockProps" style="display:none; padding-top:10px; border-top:1px solid #e4e4e7; margin-top:10px;">
+    <h3>Clock Settings</h3>
+    <div class="input-group">
+        <label for="propClockInterval">Interval (seconds):</label>
+        <input type="number" id="propClockInterval" value="3" step="0.5" min="0.1">
+    </div>
+    <div class="input-group">
+        <label for="propClockTarget">Target Group:</label>
+        <input type="text" id="propClockTarget" placeholder="e.g., 'moving_platform'">
+    </div>
+</div>
     <button onclick="applyProperties()">Apply Changes</button>
     <button onclick="closePopup()">Close</button>
 </div>
@@ -1119,9 +1131,9 @@ let bgCacheLastX = null;  // Last camera.x when bg was drawn
 const settings = {
     shake: true,
     particles: true,
-    grid: true,       // NEW
-    debug: true,      // NEW
-    fps: true         // NEW
+    grid: false,       // NEW
+    debug: false,      // NEW
+    fps: false         // NEW
 };
 // Firebase config
 const firebaseConfig = {
@@ -1217,6 +1229,15 @@ let currentUser = null;
 ============================================================ */
 function getRandomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+function getGroups(obj) {
+    if (!obj.group) return [];
+    if (Array.isArray(obj.group)) return obj.group;
+    return obj.group.split(',').map(g => g.trim()).filter(g => g.length > 0);
+}
+
+function hasGroup(obj, groupName) {
+    return getGroups(obj).includes(groupName);
 }
 /* ============================================================
    VISUAL FX ENGINE (NEW)
@@ -1740,6 +1761,12 @@ async function joinCurrentGame() {
   if (data.objects) {
     for (let o of Object.values(data.objects)) {
         const restored = Object.assign({}, SAVE_DEFAULTS, o);
+        if (typeof restored.group === 'string') {
+    restored.group = restored.group
+        .split(',')
+        .map(g => g.trim())
+        .filter(g => g.length > 0);
+}
         if (restored.tag === 'trigger') {
             if (restored.active === undefined) restored.active = true;
             if (restored.hasFired === undefined) restored.hasFired = false;
@@ -1836,6 +1863,13 @@ function loadMapFile(ev) {
         for (let o of data.objects) {
     // Restore any defaults that were stripped during save
     const restored = Object.assign({}, SAVE_DEFAULTS, o);
+    // Normalize group to array
+if (typeof restored.group === 'string') {
+    restored.group = restored.group
+        .split(',')
+        .map(g => g.trim())
+        .filter(g => g.length > 0);
+}
 
     // These still need explicit handling
     if (restored.opacity === undefined) restored.opacity = 1;
@@ -1895,15 +1929,17 @@ function stripObjectForSave(obj) {
     const stripped = {};
     for (const key in obj) {
         if (!obj.hasOwnProperty(key)) continue;
-
-        // Skip runtime-only properties
         if (RUNTIME_PROPS.has(key)) continue;
-
-        // Skip properties that match their default value
         if (key in SAVE_DEFAULTS && obj[key] === SAVE_DEFAULTS[key]) continue;
-
-        // Skip undefined values (e.g. empty trigger mods)
         if (obj[key] === undefined) continue;
+
+        // Convert group array back to comma string for saving
+        if (key === 'group') {
+            const groups = Array.isArray(obj[key]) ? obj[key] : [];
+            if (groups.length === 0) continue; // matches default ''
+            stripped[key] = groups.join(',');
+            continue;
+        }
 
         stripped[key] = obj[key];
     }
@@ -1977,7 +2013,7 @@ function confirmCopyBlock() {
     const newTag = document.getElementById("newBlockName").value.trim();
     
     // ... (Validation logic remains the same)
-    const reservedNames = ['box', 'box-pushable', 'box-stickable', 'kill', 'spawn', 'text', 'delete', 'edit', 'trigger', 'copy', 'select', 'monitor', 'player', 'comparer']; 
+    const reservedNames = ['box', 'box-pushable', 'box-stickable', 'kill', 'spawn', 'text', 'delete', 'edit', 'trigger', 'copy', 'select', 'monitor', 'player', 'comparer', 'clock']; 
     if (!newTag || reservedNames.includes(newTag.toLowerCase()) || customBlocks[newTag]) {
         alert(`The name "${newTag}" is invalid, already taken, or reserved.`);
         return;
@@ -2190,7 +2226,9 @@ function openPopup(obj) {
 
   // Set general properties (these are visible for all objects)
   document.getElementById("propTag").value = obj.tag;
-  document.getElementById("propGroup").value = obj.group || "";
+  document.getElementById("propGroup").value = Array.isArray(obj.group)
+    ? obj.group.join(', ')
+    : (obj.group || "");
   document.getElementById("propWidth").value = obj.width;
   document.getElementById("propHeight").value = obj.height;
   // --- LOAD NEW PROPS ---
@@ -2287,6 +2325,12 @@ function openPopup(obj) {
     document.getElementById("propCompareTriggerGroup").value = cmpProps.triggerGroup || "";
     document.getElementById("propCompareOneTime").checked = !!cmpProps.oneTime;
 }
+  const isClock = obj.tag === 'clock';
+  document.getElementById("clockProps").style.display = isClock ? 'block' : 'none';
+  if (isClock) {
+    document.getElementById("propClockInterval").value = obj.interval ?? 3;
+    document.getElementById("propClockTarget").value = obj.targetGroup || "";
+  }
 
   // Show Popup
   document.getElementById("popup").style.display = "block";
@@ -2307,7 +2351,11 @@ function applyProperties() {
   // General properties (apply to ALL)
   selectedObject.width = parseFloat(document.getElementById("propWidth").value) || GRID_SIZE;
   selectedObject.height = parseFloat(document.getElementById("propHeight").value) || GRID_SIZE;
-  selectedObject.group = document.getElementById("propGroup").value; // Save group for all
+  const rawGroup = document.getElementById("propGroup").value;
+selectedObject.group = rawGroup
+    .split(',')
+    .map(g => g.trim())
+    .filter(g => g.length > 0);
   // --- SAVE NEW PROPS ---
   // We use the existing values as fallback so typing nothing doesn't break the block
   const newX = parseFloat(document.getElementById("propX").value);
@@ -2375,7 +2423,11 @@ function applyProperties() {
     };
     // Reset fired state if it exists
     if (selectedObject.hasFired === undefined) selectedObject.hasFired = false;
-} else {
+  } else if (selectedObject.tag === 'clock') {
+    selectedObject.interval = parseFloat(document.getElementById("propClockInterval").value) || 3;
+    selectedObject.targetGroup = document.getElementById("propClockTarget").value;
+
+  } else {
     // Save standard properties (non-triggers)
     selectedObject.pushable = document.getElementById("propPushable").checked;
     selectedObject.slime = document.getElementById("propSlime").checked;
@@ -2592,6 +2644,15 @@ if (currentTool === 'copy' && clickedObject) {
       newObj.id = Date.now() + Math.random(); // Ensure unique ID for tracking!
       break;
     // Inside canvas.addEventListener("mousedown", ...) switch(currentTool)
+    case 'clock':
+      newObj.tag = "clock";
+      newObj.solid = false;
+      newObj.opacity = 0.7;
+      newObj.interval = 3;      // seconds between fires
+      newObj.targetGroup = "";  // group to trigger
+      newObj.lastFired = 0;     // runtime tracker
+      newObj.id = Date.now() + Math.random();
+      break;
     case 'counter':
       newObj.tag = "counter";
       newObj.count = 0;       // Current number
@@ -2765,11 +2826,11 @@ function resolveCollision(obj, collision) {
           if (settings.shake) addShake(15);
           resetPlayer(obj);
       }
-      if (other.bounce) {
-        obj.vy = -18;
-        obj.isJumping = true;
-        spawnParticles(obj.x + obj.width/2, obj.y + obj.height, 8, "#fbbf24", 5);
-      }
+      if (other.bounce && direction === 1) {
+    obj.vy = -18;
+    obj.isJumping = true;
+    spawnParticles(obj.x + obj.width/2, obj.y + obj.height, 8, "#fbbf24", 5);
+}
       // BREAKABLE TOUCH (Top/Bottom)
     
       
@@ -2815,47 +2876,29 @@ function resetPlayer(obj) {
 }
 
 
-function updatePhysics() {
+function updatePhysics(delta) {
   objects.forEach(obj => {
-    if (obj.tag !== "player" && !obj.pushable && obj.vx === 0 && obj.vy === 0 && obj.gravity === 0 && obj.tag !== 'breakable') {
-        return; 
-    }
-    // Reset scale toward normal
-    if (obj.tag === "player" && obj.scaleY < 1) {
-        // Only apply the position change *after* the scale has settled from the last frame.
-        // The scale difference is what determines the offset removal.
-        const prevScaleY = obj.scaleY;
-        
-        // Perform the scale change
-        obj.scaleY += (1 - obj.scaleY) * 0.2;
-        
-        // Calculate how much the scale changed this frame
-        const scaleChange = obj.scaleY - prevScaleY;
+    const isStatic = !obj.pushable && obj.gravity === 0 && obj.vx === 0 && obj.vy === 0;
+    const needsUpdate = obj.tag === 'player' || obj.tag === 'breakable' || !isStatic;
+    if (!needsUpdate) return;
 
-        // Move the player up by half the change in scale, maintaining the bottom edge position.
-        //const offsetChange = (obj.height * scaleChange) / 2;
-        //obj.y -= offsetChange;
-    } else {
-        // Standard scale reset for all other objects or when player scale is already >= 1
-        obj.scaleY += (1 - obj.scaleY) * 0.2;
-    }
-    
-    // Standard scale reset for X
-    obj.scaleX += (1 - obj.scaleX) * 0.2;
-    
+    // Scale smoothing
+    obj.scaleY += (1 - obj.scaleY) * 0.2 * delta;
+    obj.scaleX += (1 - obj.scaleX) * 0.2 * delta;
+
     if (obj.tag === "text" || obj.tag === "trigger") return;
 
     // --- 1. Player Controls ---
     if (obj.tag === "player") {
-      const accel = 0.5;
+      const accel = 0.5 * delta;
       const maxSpeed = 6;
+
       const onIce = objects.some(o => o.ice && o.solid &&
-  obj.x < o.x + o.width && obj.x + obj.width > o.x &&
-  Math.abs((obj.y + obj.height) - o.y) < 4
-);
-const friction = onIce ? 0.99 : 0.85;
-      
-      // Store the grounded state BEFORE physics updates
+        obj.x < o.x + o.width && obj.x + obj.width > o.x &&
+        Math.abs((obj.y + obj.height) - o.y) < 4
+      );
+      const friction = Math.pow(onIce ? 0.99 : 0.85, delta);
+
       const wasGrounded = !obj.isJumping;
 
       if (keys.left) obj.vx -= accel;
@@ -2864,102 +2907,67 @@ const friction = onIce ? 0.99 : 0.85;
 
       obj.vx = Math.max(Math.min(obj.vx, maxSpeed), -maxSpeed);
 
-      // ... inside updatePhysics -> if (obj.tag === "player") ...
-
       if (keys.jump && obj.jumpsLeft > 0) {
         obj.vy = obj.jumpStrength;
         obj.jumpsLeft--;
-        obj.isJumping = true; 
-        
-        // --- NEW: Jump FX ---
-        obj.scaleX = 0.5; // Stretch thin
-        obj.scaleY = 1.5; // Stretch tall
-        spawnParticles(obj.x + obj.width/2, obj.y + obj.height, 5, "#fff", 2); // Dust
+        obj.isJumping = true;
+        obj.scaleX = 0.5;
+        obj.scaleY = 1.5;
+        spawnParticles(obj.x + obj.width / 2, obj.y + obj.height, 5, "#fff", 2);
       }
       keys.jump = false;
       obj.wasGrounded = wasGrounded;
-
-      // --- NEW: Movement Tilt & Idle ---
-      // 1. Idle Breathing (when not moving)
-      //if (Math.abs(obj.vx) < 0.5 && Math.abs(obj.vy) < 0.5) {
-          //gameTime += 0.1;
-          //obj.scaleY = 1 + Math.sin(gameTime) * 0.03; // Subtle breathing
-          //obj.scaleX = 1 + Math.cos(gameTime) * 0.03;
-      //}
-      
-      // 2. Run Tilt (Lean forward when running)
-      // Note: We need to modify drawSingleObject to support rotation to see this, 
-      // or we can simulate it by offsetting y slightly. 
-      // For now, let's keep it simple with Squashing.
     }
-    
+
     // --- 2. Apply Gravity & Velocity ---
-    obj.vy += obj.gravity;
+    obj.vy += obj.gravity * delta;
     obj.vx = Math.max(Math.min(obj.vx, 20), -20);
     obj.vy = Math.max(Math.min(obj.vy, 20), -20);
 
-
     // --- 3. Horizontal Movement & Collision ---
-    obj.x += obj.vx;
+    obj.x += obj.vx * delta;
     let xCollision = checkCollisions(obj, 'x');
-    if (xCollision.overlap) {
-      resolveCollision(obj, xCollision.overlap);
-    }
-    
+    if (xCollision.overlap) resolveCollision(obj, xCollision.overlap);
+
     // --- 4. Vertical Movement & Collision ---
-    obj.y += obj.vy;
+    obj.y += obj.vy * delta;
     let yCollision = checkCollisions(obj, 'y');
-    if (yCollision.overlap) {
-      resolveCollision(obj, yCollision.overlap);
-    }
-    
+    if (yCollision.overlap) resolveCollision(obj, yCollision.overlap);
+
     if (obj.tag === "player") {
-        const currentlyGrounded = yCollision.hasGroundContact || yCollision.overlap;
-        
-        // If no ground contact was found, player is airborne
-        if (!currentlyGrounded) {
-            obj.isJumping = true;
-        }
+      const currentlyGrounded = yCollision.hasGroundContact || yCollision.overlap;
 
-        // NEW LOGIC FOR JUMP-OFF-LEDGE FIX (Prevents "technical triple jump")
-        // If the player was grounded last frame AND is now airborne (and not moving upwards due to a jump)
-        if (obj.wasGrounded && obj.isJumping && obj.vy >= 0) {
-            // This means they just walked off a ledge. Consume one jump.
-            // Check if jumpsLeft is full (maxJumps) before decrementing to ensure this only happens once per landing
-            if (obj.jumpsLeft === obj.maxJumps) {
-                 obj.jumpsLeft--; 
-            }
+      if (!currentlyGrounded) {
+        obj.isJumping = true;
+      }
+
+      if (obj.wasGrounded && obj.isJumping && obj.vy >= 0) {
+        if (obj.jumpsLeft === obj.maxJumps) {
+          obj.jumpsLeft--;
         }
+      }
     }
 
-    // --- 5. Pushable Friction/Damping ---
+    // --- 5. Pushable Friction ---
     if (obj.pushable) {
-      obj.vx *= 0.9;
+      obj.vx *= Math.pow(0.9, delta);
       if (Math.abs(obj.vx) < 0.1) obj.vx = 0;
     }
-    
-    // --- 6. World Borders (horizontal only) ---
+
+    // --- 6. World Borders ---
     if (obj.x < 0) { obj.x = 0; obj.vx = 0; }
     if (obj.x + obj.width > world.width) { obj.x = world.width - obj.width; obj.vx = 0; }
-    // --- START BREAKABLE LOGIC ---
+
+    // --- 7. Breakable Logic ---
     if (obj.tag === 'breakable' && obj.breakTimer && !obj.broken) {
-        
-        // Check if 3 seconds (3000ms) have passed
-        if (Date.now() - obj.breakTimer > 3000) { 
-            obj.broken = true; 
-            obj.solid = false; 
-            obj.opacity = 0; // Hide it
-            // Spawn particles if you have the particle system
-            if(typeof spawnParticles === 'function') spawnParticles(obj.x + obj.width/2, obj.y + obj.height/2, 10, "brown", 4);
-        }
-        
+      if (Date.now() - obj.breakTimer > 3000) {
+        obj.broken = true;
+        obj.solid = false;
+        obj.opacity = 0;
+        spawnParticles(obj.x + obj.width / 2, obj.y + obj.height / 2, 10, "brown", 4);
+      }
     }
   });
-
-    
-    // --- END BREAKABLE LOGIC ---
-    
-    // ... rest of your existing physics code ...
 }
 /**
  * Executes the logic of all permanent triggers belonging to the specified group.
@@ -2974,7 +2982,7 @@ function fireTriggerGroup(groupName) {
     
     // We look only for permanent, active triggers that belong to the group
     objects.forEach(target => {
-        if (target.tag === 'trigger' && target.active && target.group === groupName) {
+        if (target.tag === 'trigger' && target.active && hasGroup(target, groupName)) {
             // NOTE: We rely on the recursion check inside executeTriggerLogic (isTriggerFiring)
             // to stop the loop if this call is the one causing the recursion.
             
@@ -3013,7 +3021,7 @@ function executeTriggerLogic(trigger) {
 
     // 2. Iterate through all objects to find targets
     objects.forEach(target => {
-        if (target.group === mods.targetGroup) {
+    if (mods.targetGroup && hasGroup(target, mods.targetGroup)) {
             
             // ===================================
             // A. COUNTER BLOCK LOGIC (The Definitive Fix for Recursion)
@@ -3129,6 +3137,21 @@ function checkTriggers() {
     // Note: If you have logic that needs to fire when the player *leaves* a trigger, 
     // you would compare the old activeTriggers set with currentTriggers here.
 }
+function checkClocks() {
+    const now = performance.now() / 1000; // convert to seconds
+    objects.forEach(obj => {
+        if (obj.tag !== 'clock') return;
+        if (!obj.targetGroup || !obj.interval) return;
+
+        // Initialize lastFired on first run
+        if (!obj.lastFired) obj.lastFired = now;
+
+        if (now - obj.lastFired >= obj.interval) {
+            obj.lastFired = now;
+            fireTriggerGroup(obj.targetGroup);
+        }
+    });
+}
 /* ===========================================================
    MONITOR LOGIC - Player Touch Detection
 ============================================================ */
@@ -3161,7 +3184,7 @@ function checkMonitors() {
         // Check for Player Touch Collision on Target Blocks
         objects.forEach(target => {
             // Only check blocks belonging to the monitor's target group
-            if (target.group && target.group === targetGroup) {
+            if (hasGroup(target, targetGroup)) {
                 
                 // Perform Axis-Aligned Bounding Box (AABB) collision check
                 // using the predicted next position. This ignores the 'solid' property.
@@ -3524,7 +3547,62 @@ case 'grass': {
             ctx.closePath(); ctx.fill();
             break;
         }
+        case 'clock': {
+    ctx.fillStyle = '#1e293b';
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.min(w, h) * 0.45, 0, Math.PI * 2);
+    ctx.fill();
 
+    // Clock face
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.min(w, h) * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hour marks
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2 - Math.PI / 2;
+        const inner = Math.min(w, h) * 0.28;
+        const outer = Math.min(w, h) * 0.36;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+        ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+        ctx.stroke();
+    }
+
+    // Hands (static but readable)
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    // Hour hand
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(-Math.PI / 2 + 1) * Math.min(w, h) * 0.18,
+               Math.sin(-Math.PI / 2 + 1) * Math.min(w, h) * 0.18);
+    ctx.stroke();
+    // Minute hand
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(-Math.PI / 2 + 3) * Math.min(w, h) * 0.28,
+               Math.sin(-Math.PI / 2 + 3) * Math.min(w, h) * 0.28);
+    ctx.stroke();
+
+    // Center dot
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.min(w, h) * 0.45, 0, Math.PI * 2);
+    ctx.stroke();
+    break;
+}
         case 'monitor': {
             // Camera/eye sensor
             ctx.fillStyle = '#1e293b';
@@ -4291,38 +4369,37 @@ window.addEventListener('keyup', (e) => {
 /* ============================================================
    GAME LOOP
 ============================================================ */
-function gameLoop() {
-  updateSpatialGrid(); // <--- ADD THIS
-  updatePhysics();
-  checkTriggers();
-  checkMonitors();
-  checkComparers();
-  checkResetBreakables();
+let lastTime = 0;
 
-  // --- NEW: Update Particles ---
-  for (let i = particles.length - 1; i >= 0; i--) {
-      particles[i].update();
-      if (particles[i].life <= 0) particles.splice(i, 1);
-  }
+function gameLoop(timestamp) {
+    const rawDelta = timestamp - lastTime;
+    lastTime = timestamp;
 
-  // --- NEW: Smooth Camera (Lerp) ---
-  const editorPlayer = objects.find(o => o.tag === "player");
-  if (editorPlayer) {
-    // Calculate target position (centered)
-    const targetX = editorPlayer.x - canvas.width / 2;
-    const targetY = editorPlayer.y - canvas.height / 2;
+    // Cap delta so a tab losing focus doesn't cause a huge jump
+    const delta = Math.min(rawDelta, 50) / (1000 / 60); // 1.0 = exactly 60fps
 
-    // Smoothly move current camera towards target
+    updateSpatialGrid();
+    updatePhysics(delta);
+    checkClocks();
+    checkTriggers();
+    checkMonitors();
+    checkComparers();
+    checkResetBreakables();
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+
+    const targetX = player.x - canvas.width / 2;
+    const targetY = player.y - canvas.height / 2;
     camera.x += (targetX - camera.x) * CAM_SMOOTH;
     camera.y += (targetY - camera.y) * CAM_SMOOTH;
-
-    // Clamp to world bounds
     camera.x = Math.max(0, Math.min(camera.x, world.width - canvas.width));
     camera.y = Math.max(0, Math.min(camera.y, world.height - canvas.height));
-  }
 
-  draw();
-  gameLoopId = requestAnimationFrame(gameLoop);
+    draw();
+    gameLoopId = requestAnimationFrame(gameLoop);
 }
 </script>
 </body>
