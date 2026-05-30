@@ -672,7 +672,10 @@
     <div>
       <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Terrain</div>
       <div style="display:flex; gap:4px;">
-        <button onclick="selectTool('box')" data-tool="box">Box</button>
+        <button onclick="selectTool('box')" data-tool="box">Brick</button>
+        <button onclick="selectTool('wood')" data-tool="wood">Wood</button>
+        <button onclick="selectTool('metal')" data-tool="metal">Metal</button>
+        <button onclick="selectTool('grass')" data-tool="grass">Grass</button>
         <button onclick="selectTool('box-pushable')" data-tool="box-pushable">Crate</button>
         <button onclick="selectTool('box-stickable')" data-tool="box-stickable">Slime</button>
         <button onclick="selectTool('breakable')" data-tool="breakable">Breakable</button>
@@ -708,6 +711,7 @@
       <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Objects</div>
       <div style="display:flex; gap:4px;">
         <button onclick="selectTool('spawn')" data-tool="spawn">Spawn</button>
+        <button onclick="selectTool('defaultspawn')" data-tool="defaultspawn">Default Spawn</button>
         <button onclick="selectTool('text')" data-tool="text">Text</button>
       </div>
     </div>
@@ -1810,7 +1814,14 @@ function loadMapFile(ev) {
     if (restored.tag !== 'player') objects.push(restored);
 }
     }
-
+    // After the objects loop, add:
+const defaultSpawner = objects.find(o => o.tag === 'defaultspawn');
+if (defaultSpawner) {
+    START_POS.x = defaultSpawner.x + defaultSpawner.width/2 - player.width/2;
+    START_POS.y = defaultSpawner.y - player.height;
+    player.x = START_POS.x;
+    player.y = START_POS.y;
+}
     // --- LOAD CUSTOM BLOCKS ---
     clearCustomTools(); // Clear old custom buttons from toolbar
     customBlocks = {};
@@ -2481,6 +2492,15 @@ if (currentTool === 'copy' && clickedObject) {
     case 'box':
       newObj.tag = "box";
       break;
+    case 'wood':
+      newObj.tag = "wood";
+      break;
+    case 'metal':
+      newObj.tag = "metal";
+      break;
+    case 'grass':
+      newObj.tag = "grass";
+      break;
     case 'box-pushable':
       newObj.tag = "pushablebox";
       newObj.gravity = 0.6;
@@ -2503,6 +2523,18 @@ if (currentTool === 'copy' && clickedObject) {
       newObj.solid = false;
       newObj.spawn = true;
       // Loop removed so you can place multiple spawn points!
+      break;
+    case 'defaultspawn':
+      // Remove any existing default spawners first
+      for (let i = objects.length - 1; i >= 0; i--) {
+          if (objects[i].tag === 'defaultspawn') objects.splice(i, 1);
+      }
+      newObj.tag = "defaultspawn";
+      newObj.solid = false;
+      newObj.spawn = true;
+      // Set start position immediately on placement
+      START_POS.x = x + GRID_SIZE/2 - player.width/2;
+      START_POS.y = y - player.height;
       break;
     case 'text':
       newObj.tag = "text";
@@ -3248,7 +3280,69 @@ function drawBlockGraphic(ctx, tag, w, h) {
             ctx.strokeRect(x, y, w, h);
             break;
         }
+        case 'wood': {
+    ctx.fillStyle = '#a16207';
+    ctx.fillRect(x, y, w, h);
+    // Planks
+    ctx.strokeStyle = '#78350f'; ctx.lineWidth = 1.5;
+    const plankH = h / 3;
+    for (let i = 1; i < 3; i++) {
+        ctx.beginPath(); ctx.moveTo(x, y + i * plankH); ctx.lineTo(x + w, y + i * plankH); ctx.stroke();
+    }
+    // Wood grain lines
+    ctx.strokeStyle = '#92400e'; ctx.lineWidth = 0.8;
+    [0.2, 0.5, 0.8].forEach(t => {
+        ctx.beginPath(); ctx.moveTo(x + w * t, y); ctx.lineTo(x + w * t - 4, y + h); ctx.stroke();
+    });
+    ctx.strokeStyle = '#78350f'; ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    break;
+}
 
+case 'metal': {
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(x, y, w, h);
+    // Panel lines
+    ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+    ctx.strokeRect(x + 4, y + 4, w - 8, h - 8);
+    // Rivets
+    ctx.fillStyle = '#64748b';
+    [[0.15,0.15],[0.85,0.15],[0.15,0.85],[0.85,0.85]].forEach(([tx,ty]) => {
+        ctx.beginPath(); ctx.arc(x + w*tx, y + h*ty, 3, 0, Math.PI*2); ctx.fill();
+    });
+    // Sheen
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(x, y, w, h * 0.4);
+    ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    break;
+}
+
+case 'grass': {
+    // Dirt bottom
+    ctx.fillStyle = '#92400e';
+    ctx.fillRect(x, y, w, h);
+    // Dirt texture dots
+    ctx.fillStyle = '#78350f';
+    [[0.3,0.6],[0.6,0.75],[0.2,0.85],[0.7,0.55]].forEach(([tx,ty]) => {
+        ctx.beginPath(); ctx.arc(x + w*tx, y + h*ty, 2, 0, Math.PI*2); ctx.fill();
+    });
+    // Grass top
+    ctx.fillStyle = '#16a34a';
+    ctx.fillRect(x, y, w, h * 0.3);
+    // Grass blades
+    ctx.fillStyle = '#15803d';
+    for (let i = 0; i < 5; i++) {
+        const bx = x + w * (0.1 + i * 0.2);
+        ctx.beginPath();
+        ctx.moveTo(bx - 2, y + h * 0.3);
+        ctx.quadraticCurveTo(bx, y - 4, bx + 2, y + h * 0.3);
+        ctx.fill();
+    }
+    ctx.strokeStyle = '#14532d'; ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    break;
+}
         case 'pushablebox': {
             // Wooden crate
             ctx.fillStyle = '#d97706';
@@ -3343,7 +3437,26 @@ function drawBlockGraphic(ctx, tag, w, h) {
             ctx.strokeRect(x, y, w, h);
             break;
         }
-
+        case 'defaultspawn': {
+    // Green base
+    ctx.fillStyle = '#15803d';
+    ctx.fillRect(x, y, w, h);
+    // Arrow pointing up
+    ctx.fillStyle = '#4ade80';
+    ctx.beginPath();
+    ctx.moveTo(x + w*0.5, y + h*0.1);
+    ctx.lineTo(x + w*0.8, y + h*0.55);
+    ctx.lineTo(x + w*0.6, y + h*0.55);
+    ctx.lineTo(x + w*0.6, y + h*0.9);
+    ctx.lineTo(x + w*0.4, y + h*0.9);
+    ctx.lineTo(x + w*0.4, y + h*0.55);
+    ctx.lineTo(x + w*0.2, y + h*0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#14532d'; ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    break;
+}
         case 'trigger': {
             ctx.fillStyle = 'rgba(99, 102, 241, 0.12)';
             ctx.fillRect(x, y, w, h);
