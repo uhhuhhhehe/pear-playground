@@ -208,118 +208,150 @@
   border-radius: 2px;
 }
 
-    #popup, #blockCreatorPopup {
-      position: fixed;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 350px;
-      max-height: 80vh; /* Prevent popup from being too tall */
-      overflow-y: auto; /* Allow popup content to scroll */
-      padding: 20px;
-      background: #2c2c2e; /* Darker, modern background */
-      color: white;
-      border: 1px solid #444;
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-      display: none;
-      z-index: 1000;
-      text-align: left;
-    }
-    #popup input, #popup label, #popup textarea, #popup select,
-    #blockCreatorPopup input, #blockCreatorPopup label {
-      width: 100%;
-      box-sizing: border-box;
-      margin-bottom: 8px;
-    }
-    
-    /* Popup inputs/selects */
-    #popup input, #popup textarea, #popup select,
-    #blockCreatorPopup input {
-      background-color: #3a3a3c;
-      color: #f0f0f0;
-      border: 1px solid #555;
-      border-radius: 6px;
-      padding: 10px;
-    }
-     #popup input:focus, #popup textarea:focus, #popup select:focus,
-    #blockCreatorPopup input:focus {
-        border-color: #007aff;
-        box-shadow: 0 0 0 3px rgba(0,123,255,0.2);
-        outline: none;
-    }
-    
-    /* Popup labels */
-    #popup label, #blockCreatorPopup label {
-        color: white;
-        margin-top: 5px;
-        font-size: 14px;
-        font-weight: 500;
-        display: inline-block;
-    }
-    
-    #popup h3, #blockCreatorPopup h3 {
-      margin-top: 0;
-      text-align: center;
-    }
-    
-    /* Popup buttons */
-    #popup button, #blockCreatorPopup button {
-      width: 100%;
-      margin-top: 10px;
-      background-color: #007aff;
-      color: white;
-      font-weight: 500;
-    }
-    #popup button:hover, #blockCreatorPopup button:hover {
-      background-color: #0056b3;
-    }
-    /* Close/Cancel button */
-    #popup button:last-of-type, #blockCreatorPopup button:last-of-type {
-       background-color: #555;
-    }
-    #popup button:last-of-type:hover, #blockCreatorPopup button:last-of-type:hover {
-       background-color: #444;
-    }
-    
-    /* Checkbox layout */
-    .checkbox-group {
-        display: flex;
-        align-items: center;
-        margin-bottom: 8px;
-        padding: 6px;
-        border-radius: 6px;
-        transition: background-color 0.2s;
-    }
-    .checkbox-group:hover {
-        background-color: #3a3a3c;
-    }
-    .checkbox-group input {
-        width: auto;
-        margin-right: 10px;
-    }
-    .checkbox-group label {
-        width: auto;
-        margin-bottom: 0;
-        margin-top: 0; /* Override default label margin */
-        color: white;
-        font-weight: 400;
-    }
-    
-    /* Style for trigger properties divider */
-    #triggerProps {
-        border-top: 1px solid #555;
-        margin-top: 10px;
-        padding-top: 10px;
-    }
-    #triggerProps h4 {
-        margin-top: 0;
-        margin-bottom: 10px;
-        text-align: center;
-    }
-     #triggerProps h5 {
-        margin-bottom: 5px;
-        margin-top: 15px;
-     }
+#popup, #blockCreatorPopup {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 360px;
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 20px;
+    background: #ffffff;
+    color: #27272a;
+    border: 1px solid #e4e4e7;
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+    display: none;
+    z-index: 1000;
+    text-align: left;
+    scrollbar-width: thin;
+    scrollbar-color: #e4e4e7 transparent;
+}
+
+#popup input, #popup textarea, #popup select,
+#blockCreatorPopup input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+    background: #f4f4f5;
+    color: #27272a;
+    border: 1px solid #e4e4e7;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: system-ui, sans-serif;
+    font-size: 13px;
+}
+
+#popup input:focus, #popup textarea:focus, #popup select:focus,
+#blockCreatorPopup input:focus {
+    border-color: #007aff;
+    box-shadow: 0 0 0 3px rgba(0,122,255,0.1);
+    outline: none;
+    background: #fff;
+}
+
+#popup input:disabled {
+    background: #e4e4e7;
+    color: #888;
+}
+
+#popup label, #blockCreatorPopup label {
+    color: #52525b;
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    display: inline-block;
+    margin-bottom: 3px;
+}
+
+#popup h3, #blockCreatorPopup h3 {
+    margin-top: 0;
+    margin-bottom: 16px;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 600;
+    color: #18181b;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e4e4e7;
+}
+
+#popup button, #blockCreatorPopup button {
+    width: 100%;
+    margin-top: 8px;
+    background: #007aff;
+    color: white;
+    font-weight: 500;
+    font-size: 13px;
+    padding: 9px 12px;
+    border: none;
+    border-radius: 6px;
+}
+#popup button:hover, #blockCreatorPopup button:hover {
+    background: #0062cc;
+}
+#popup button:last-of-type, #blockCreatorPopup button:last-of-type {
+    background: #f4f4f5;
+    color: #52525b;
+    border: 1px solid #e4e4e7;
+}
+#popup button:last-of-type:hover, #blockCreatorPopup button:last-of-type:hover {
+    background: #e4e4e7;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    background: #f4f4f5;
+    border: 1px solid #e4e4e7;
+    transition: background 0.15s;
+}
+.checkbox-group:hover {
+    background: #e4e4e7;
+}
+.checkbox-group input {
+    width: auto !important;
+    margin-right: 8px;
+    margin-bottom: 0 !important;
+    accent-color: #007aff;
+}
+.checkbox-group label {
+    width: auto;
+    margin: 0 !important;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    color: #27272a !important;
+}
+
+#triggerProps {
+    border-top: 1px solid #e4e4e7;
+    margin-top: 12px;
+    padding-top: 12px;
+}
+#triggerProps h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #52525b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+#triggerProps h5 {
+    margin-bottom: 5px;
+    margin-top: 14px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #71717a;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
     #joinGamePopup {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: #ffffff;
@@ -1012,27 +1044,25 @@
   position: fixed;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  width: 350px;
-  max-height: 80vh; 
+  width: 360px;
   padding: 20px;
-  background: #2c2c2e; /* Darker, modern background */
-  color: white;
-  border: 1px solid #444;
+  background: #ffffff;
+  color: #27272a;
+  border: 1px solid #e4e4e7;
   border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.08);
   display: none;
-  z-index: 1001; /* Higher than other popups */
+  z-index: 1001;
   text-align: left;
 ">
   <h3>Name Your New Block Type</h3>
   
-  <label for="newBlockName" style="color: white; margin-top: 5px; font-size: 14px; font-weight: 500; display: inline-block;">New Block Name:</label>
-  <input type="text" id="newBlockName" placeholder="e.g., 'Bouncy Trigger'" 
-    style="width: 100%; box-sizing: border-box; margin-bottom: 8px; background-color: #3a3a3c; color: #f0f0f0; border: 1px solid #555; border-radius: 6px; padding: 10px;"
-  >
-
-  <button onclick="confirmCopyBlock()" style="width: 100%; margin-top: 10px; background-color: #007aff; color: white; font-weight: 500;">Create Copy</button>
-  <button onclick="closeCopyNamePopup()" style="width: 100%; margin-top: 5px; background-color: #555; color: white;">Cancel</button>
+  <label for="newBlockName" style="color:#52525b; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; display:inline-block; margin-bottom:3px;">New Block Name:</label>
+<input type="text" id="newBlockName" placeholder="e.g., 'Bouncy Trigger'"
+  style="width:100%; box-sizing:border-box; margin-bottom:8px; background:#f4f4f5; color:#27272a; border:1px solid #e4e4e7; border-radius:6px; padding:8px 10px; font-size:13px;"
+>
+<button onclick="confirmCopyBlock()" style="width:100%; margin-top:8px; background:#007aff; color:white; font-weight:500; font-size:13px; padding:9px 12px; border:none; border-radius:6px;">Create Copy</button>
+<button onclick="closeCopyNamePopup()" style="width:100%; margin-top:6px; background:#f4f4f5; color:#52525b; border:1px solid #e4e4e7; font-size:13px; padding:9px 12px; border-radius:6px;">Cancel</button>
 </div>
 <div id="hostCodePopup" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:300px; padding:30px; background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.2); z-index:2000; text-align:center;">
     <h2 style="margin-top:0; color:#333;">Game Hosted!</h2>
@@ -1243,10 +1273,10 @@ function drawBackground() {
 
         // Sky gradient
         const grad = bc.createLinearGradient(0, 0, 0, H);
-        grad.addColorStop(0,    '#1a5fa8');
-        grad.addColorStop(0.35, '#4a9fd4');
-        grad.addColorStop(0.72, '#89c4e8');
-        grad.addColorStop(0.88, '#c8e8f5');
+        grad.addColorStop(0,    '#3b82f6');
+        grad.addColorStop(0.35, '#60a5fa');
+        grad.addColorStop(0.72, '#93c5fd');
+        grad.addColorStop(0.88, '#bfdbfe');
         grad.addColorStop(1,    '#fde8b0');
         bc.fillStyle = grad;
         bc.fillRect(0, 0, W, H);
@@ -1393,11 +1423,11 @@ function resizeCanvas() {
     canvas.height = window.innerHeight;
 
     skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    skyGradient.addColorStop(0,    '#1a5fa8'); // Deep blue at zenith
-    skyGradient.addColorStop(0.35, '#4a9fd4'); // Bright cornflower blue
-    skyGradient.addColorStop(0.72, '#89c4e8'); // Pale hazy blue
-    skyGradient.addColorStop(0.88, '#c8e8f5'); // Near-horizon haze
-    skyGradient.addColorStop(1,    '#fde8b0'); // Warm golden horizon glow
+    skyGradient.addColorStop(0,    '#3b82f6');
+    skyGradient.addColorStop(0.35, '#60a5fa');
+    skyGradient.addColorStop(0.72, '#93c5fd');
+    skyGradient.addColorStop(0.88, '#bfdbfe');
+    skyGradient.addColorStop(1,    '#fde8b0');
 }
 
 function loadImages(sources, callback) {
@@ -3281,20 +3311,32 @@ function drawBlockGraphic(ctx, tag, w, h) {
             break;
         }
         case 'wood': {
-    ctx.fillStyle = '#a16207';
+    ctx.fillStyle = '#c17f3a';
     ctx.fillRect(x, y, w, h);
-    // Planks
-    ctx.strokeStyle = '#78350f'; ctx.lineWidth = 1.5;
-    const plankH = h / 3;
-    for (let i = 1; i < 3; i++) {
-        ctx.beginPath(); ctx.moveTo(x, y + i * plankH); ctx.lineTo(x + w, y + i * plankH); ctx.stroke();
+
+    // Horizontal plank lines
+    ctx.strokeStyle = '#8b5a1e';
+    ctx.lineWidth = 1.5;
+    const plankCount = Math.max(2, Math.floor(h / 16));
+    const plankH = h / plankCount;
+    for (let i = 1; i < plankCount; i++) {
+        ctx.beginPath();
+        ctx.moveTo(x, y + i * plankH);
+        ctx.lineTo(x + w, y + i * plankH);
+        ctx.stroke();
     }
-    // Wood grain lines
-    ctx.strokeStyle = '#92400e'; ctx.lineWidth = 0.8;
-    [0.2, 0.5, 0.8].forEach(t => {
-        ctx.beginPath(); ctx.moveTo(x + w * t, y); ctx.lineTo(x + w * t - 4, y + h); ctx.stroke();
-    });
-    ctx.strokeStyle = '#78350f'; ctx.lineWidth = 2;
+
+    // Single vertical offset line per plank (like the stone brick pattern)
+    for (let i = 0; i < plankCount; i++) {
+        const vx = x + ((i % 2 === 0) ? w * 0.5 : w * 0.25);
+        ctx.beginPath();
+        ctx.moveTo(vx, y + i * plankH);
+        ctx.lineTo(vx, y + (i + 1) * plankH);
+        ctx.stroke();
+    }
+
+    ctx.strokeStyle = '#6b3a10';
+    ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
     break;
 }
