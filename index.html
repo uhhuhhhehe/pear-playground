@@ -700,7 +700,15 @@
 
   <!-- Tool categories -->
   <div style="display:flex; gap:16px; overflow-x:auto; scrollbar-width:none; padding-bottom:2px;">
-
+    <div>
+      <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Editor</div>
+      <div style="display:flex; gap:4px;">
+        <button onclick="selectTool('select')" data-tool="select">Select</button>
+        <button onclick="selectTool('edit')" data-tool="edit">Edit</button>
+        <button onclick="selectTool('copy')" data-tool="copy">Copy</button>
+        <button onclick="selectTool('delete')" data-tool="delete">Delete</button>
+      </div>
+    </div>
     <div>
       <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Terrain</div>
       <div style="display:flex; gap:4px;">
@@ -749,16 +757,6 @@
     </div>
 
     <div style="width:1px; background:#e4e4e7; align-self:stretch;"></div>
-
-    <div>
-      <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Editor</div>
-      <div style="display:flex; gap:4px;">
-        <button onclick="selectTool('select')" data-tool="select">Select</button>
-        <button onclick="selectTool('edit')" data-tool="edit">Edit</button>
-        <button onclick="selectTool('copy')" data-tool="copy">Copy</button>
-        <button onclick="selectTool('delete')" data-tool="delete">Delete</button>
-      </div>
-    </div>
 
   </div>
 </div>
@@ -1191,7 +1189,7 @@ const player = {
   shape: "box",
   x: START_POS.x,
   y: START_POS.y,
-  width: 50,
+  width: 40,
   height: 50,
   vx: 0,
   vy: 0,
@@ -1588,6 +1586,7 @@ function goToMenu() {
 
     selectTool(null);
     stopMultiplayer();
+    otherPlayers = {}; // ADD THIS
 
     // If we were the host, delete the game immediately and cancel the onDisconnect
     if (isHost && currentCode) {
@@ -1802,6 +1801,12 @@ function startCreate() {
   editorPlayer.vx = 0;
   editorPlayer.vy = 0;
   editorPlayer.isJumping = true;
+    // ADD THESE:
+  editorPlayer.width = 34;
+  editorPlayer.height = 50;
+  editorPlayer.opacity = 1;
+  editorPlayer.scaleX = 1;
+  editorPlayer.scaleY = 1;
   
   // Clear any existing custom blocks and their toolbar buttons
   clearCustomTools();
@@ -3342,46 +3347,46 @@ function drawBlockGraphic(ctx, tag, w, h) {
 }
 
 case 'metal': {
-    ctx.fillStyle = '#475569';
-    ctx.fillRect(x, y, w, h);
-    // Panel lines
-    ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
-    ctx.strokeRect(x + 4, y + 4, w - 8, h - 8);
-    // Rivets
     ctx.fillStyle = '#64748b';
-    [[0.15,0.15],[0.85,0.15],[0.15,0.85],[0.85,0.85]].forEach(([tx,ty]) => {
-        ctx.beginPath(); ctx.arc(x + w*tx, y + h*ty, 3, 0, Math.PI*2); ctx.fill();
-    });
-    // Sheen
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillRect(x, y, w, h * 0.4);
-    ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 2;
+    ctx.fillRect(x, y, w, h);
+
+    // Subtle sheen across the top
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(x, y, w, h * 0.35);
+
+    // Single panel inset line
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 4, y + 4, w - 8, h - 8);
+
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
     break;
 }
 
 case 'grass': {
-    // Dirt bottom
+    // Dirt
     ctx.fillStyle = '#92400e';
     ctx.fillRect(x, y, w, h);
-    // Dirt texture dots
-    ctx.fillStyle = '#78350f';
-    [[0.3,0.6],[0.6,0.75],[0.2,0.85],[0.7,0.55]].forEach(([tx,ty]) => {
-        ctx.beginPath(); ctx.arc(x + w*tx, y + h*ty, 2, 0, Math.PI*2); ctx.fill();
-    });
-    // Grass top
+
+    // Grass top strip
     ctx.fillStyle = '#16a34a';
-    ctx.fillRect(x, y, w, h * 0.3);
-    // Grass blades
+    ctx.fillRect(x, y, w, h * 0.35);
+
+    // Grass blades along the border
     ctx.fillStyle = '#15803d';
-    for (let i = 0; i < 5; i++) {
-        const bx = x + w * (0.1 + i * 0.2);
+    const bladeCount = Math.floor(w / 10);
+    for (let i = 0; i < bladeCount; i++) {
+        const bx = x + (i / bladeCount) * w + 4;
         ctx.beginPath();
-        ctx.moveTo(bx - 2, y + h * 0.3);
-        ctx.quadraticCurveTo(bx, y - 4, bx + 2, y + h * 0.3);
+        ctx.moveTo(bx - 2, y + h * 0.35);
+        ctx.quadraticCurveTo(bx, y + h * 0.1, bx + 2, y + h * 0.35);
         ctx.fill();
     }
-    ctx.strokeStyle = '#14532d'; ctx.lineWidth = 2;
+
+    ctx.strokeStyle = '#14532d';
+    ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
     break;
 }
@@ -3580,30 +3585,68 @@ case 'grass': {
             break;
         }
         case 'bounce': {
-  ctx.fillStyle = '#fbbf24';
-  ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = '#fef08a';
-  ctx.beginPath();
-  ctx.moveTo(x + w*0.2, y + h*0.6);
-  ctx.quadraticCurveTo(x + w*0.5, y + h*0.1, x + w*0.8, y + h*0.6);
-  ctx.lineTo(x + w*0.8, y + h);
-  ctx.lineTo(x + w*0.2, y + h);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = '#d97706'; ctx.lineWidth = 2;
-  ctx.strokeRect(x, y, w, h);
-  break;
+    // Base
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(x, y, w, h);
+
+    // Darker bottom strip to suggest compression
+    ctx.fillStyle = '#d97706';
+    ctx.fillRect(x, y + h * 0.75, w, h * 0.25);
+
+    // Arrow pointing up
+    ctx.fillStyle = '#fef08a';
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.5,  y + h * 0.12);
+    ctx.lineTo(x + w * 0.78, y + h * 0.48);
+    ctx.lineTo(x + w * 0.62, y + h * 0.48);
+    ctx.lineTo(x + w * 0.62, y + h * 0.72);
+    ctx.lineTo(x + w * 0.38, y + h * 0.72);
+    ctx.lineTo(x + w * 0.38, y + h * 0.48);
+    ctx.lineTo(x + w * 0.22, y + h * 0.48);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = '#fef08a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.strokeStyle = '#b45309';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    break;
 }
 
 case 'ice': {
-  ctx.fillStyle = '#bae6fd';
-  ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.fillRect(x + w*0.1, y + h*0.1, w*0.3, h*0.15);
-  ctx.fillRect(x + w*0.5, y + h*0.25, w*0.35, h*0.1);
-  ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 2;
-  ctx.strokeRect(x, y, w, h);
-  break;
+    // Base
+    ctx.fillStyle = '#7dd3fc';
+    ctx.fillRect(x, y, w, h);
+
+    // Lighter inner panel
+    ctx.fillStyle = '#bae6fd';
+    ctx.fillRect(x + 4, y + 4, w - 8, h - 8);
+
+    // Sheen strip
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillRect(x + 4, y + 4, w - 8, (h - 8) * 0.3);
+
+    // Crack lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.35, y + h * 0.3);
+    ctx.lineTo(x + w * 0.55, y + h * 0.55);
+    ctx.lineTo(x + w * 0.45, y + h * 0.75);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.55, y + h * 0.55);
+    ctx.lineTo(x + w * 0.72, y + h * 0.5);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    break;
 }
         case 'player': {
     // 1. Elongated Pear Body (Bottom half doubled in height)
@@ -3971,8 +4014,16 @@ if (obj.tag !== "text") {
         // Custom blocks still use their uploaded image
         ctx.drawImage(images[obj.tag], -obj.width / 2, -obj.height / 2, obj.width, obj.height);
     } else {
+        if (obj.tag === 'player') {
+          // Draw the pear wider than the hitbox so it looks right
+          ctx.save();
+          ctx.scale(50 / 40, 1);
+          drawBlockGraphic(ctx, obj.tag, 40, obj.height);
+          ctx.restore();
+        } else {
         // All built-in blocks use procedural drawing
         drawBlockGraphic(ctx, obj.tag, obj.width, obj.height);
+    }
     }
 }
 
