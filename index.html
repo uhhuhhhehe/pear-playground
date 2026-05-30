@@ -1557,8 +1557,8 @@ function goToMenu() {
 
     // If we were the host, delete the game immediately and cancel the onDisconnect
     if (isHost && currentCode) {
-        const gameRef = db.ref(`hostedGames/${currentCode}`);
-        const playersRef = db.ref(`games/${currentCode}`);
+        db.ref(`games/${currentCode}`).onDisconnect().cancel();
+        db.ref(`games/${currentCode}`).remove();
 
         // Cancel the scheduled onDisconnect (we're cleaning up now)
         gameRef.onDisconnect().cancel();
@@ -1577,19 +1577,18 @@ function goToMenu() {
     Game Hosting / Joining
 =========================================================== */
 async function getGames() {
-  const snapshot = await db.ref('hostedGames').once('value');
+  const snapshot = await db.ref('games').once('value');
   const gamesObj = snapshot.val() || {};
-  // Convert back to the [[code, data], ...] array format the rest of the code expects
   return Object.entries(gamesObj).map(([code, data]) => [parseInt(code), data]);
 }
 
 async function saveGameToHost(gameArray) {
   const [code, data] = gameArray;
-  await db.ref(`hostedGames/${code}`).set(data);
+  await db.ref(`games/${code}/mapData`).set(data);
 }
 
 async function deleteHostedGame(code) {
-  await db.ref(`hostedGames/${code}`).remove();
+  await db.ref(`games/${code}`).remove();
 }
 
 async function hostGame() {
@@ -1601,13 +1600,19 @@ async function hostGame() {
     } while (currentGames.some(item => item[0] === newCode));
     currentCode = newCode;
 
-    const savableObjects = objects.filter(o => o.tag !== "player");
-    const data = { objects: savableObjects, customBlocks: customBlocks };
+    const savableObjects = objects
+    .filter(o => o.tag !== "player")
+    .map(o => stripObjectForSave(o));
+
+const rawData = { objects: savableObjects, customBlocks: customBlocks };
+
+// Strip undefined values — Firebase rejects them silently
+const data = JSON.parse(JSON.stringify(rawData));
 
     await saveGameToHost([currentCode, data]);
 
     // AUTO-CLEANUP: Firebase will delete these when the host disconnects
-    db.ref(`hostedGames/${currentCode}`).onDisconnect().remove();
+    db.ref(`games/${currentCode}`).onDisconnect().remove();
     db.ref(`games/${currentCode}`).onDisconnect().remove();
 
     isHost = true;
@@ -1685,31 +1690,31 @@ function closeJoinGame() {
   document.getElementById("overlay").style.display = "none";
 }
 async function joinCurrentGame() {
-  const code = parseInt(joinCode.value);
-  const games = await getGames();
+  const code = parseInt(joinCode.value.trim());
+  const snapshot = await db.ref(`games/${code}/mapData`).once('value');
+  const data = snapshot.val();
+  console.log("Join attempt, code:", code, "data:", data); // ADD THIS
 
-  const foundGame = games.find(item => item[0] === code);
-
-  if (!foundGame) {
+  if (!data) {
     alert("Game not found! Check the code and try again.");
     return;
   }
-
-  // Load the game data (same logic as loadMapFile)
-  const data = foundGame[1];
 
   for (let i = objects.length - 1; i >= 0; i--) {
     if (objects[i].tag !== "player") objects.splice(i, 1);
   }
 
   if (data.objects) {
-    for (let o of data.objects) {
-      if (o.opacity === undefined) o.opacity = 1;
-      if (o.group === undefined) o.group = "";
-      if (o.tag === 'trigger' && o.active === undefined) o.active = true;
-      if (o.tag !== "player") objects.push(o);
+    for (let o of Object.values(data.objects)) {
+        const restored = Object.assign({}, SAVE_DEFAULTS, o);
+        if (restored.tag === 'trigger') {
+            if (restored.active === undefined) restored.active = true;
+            if (restored.hasFired === undefined) restored.hasFired = false;
+            if (!restored.mods) restored.mods = {};
+        }
+        if (restored.tag !== 'player') objects.push(restored);
     }
-  }
+}
 
   clearCustomTools();
   customBlocks = {};
