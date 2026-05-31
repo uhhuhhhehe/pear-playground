@@ -1263,7 +1263,7 @@ const CASES = {
 let playerCoins = 0;
 let playerInventory = ['default']; // skin IDs owned
 let equippedSkin = 'default';
-
+let playMode = false;
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const loginScreen = document.getElementById("loginScreen");
@@ -1330,6 +1330,48 @@ function getGroups(obj) {
 
 function hasGroup(obj, groupName) {
     return getGroups(obj).includes(groupName);
+}
+function setPlayMode(enabled) {
+    playMode = enabled;
+
+    // Hide/show the edit-only toolbar buttons
+    const editOnlyTools = ['select', 'edit', 'copy', 'delete', 'box', 'wood', 'metal',
+        'grass', 'box-pushable', 'box-stickable', 'breakable', 'bounce', 'ice',
+        'kill', 'trigger', 'monitor', 'counter', 'comparer', 'clock',
+        'spawn', 'defaultspawn', 'text'];
+
+    document.querySelectorAll('#toolbar button[data-tool]').forEach(btn => {
+        const tool = btn.getAttribute('data-tool');
+        if (editOnlyTools.includes(tool)) {
+            btn.style.display = enabled ? 'none' : '';
+        }
+    });
+
+    // Hide the whole top action row except Menu
+    document.querySelectorAll('#toolbar .btn-create, #toolbar .btn-reset, #toolbar .btn-save').forEach(btn => {
+        btn.style.display = enabled ? 'none' : '';
+    });
+
+    // Hide custom block buttons
+    document.querySelectorAll('.custom-tool-btn').forEach(btn => {
+        btn.style.display = enabled ? 'none' : '';
+    });
+
+    // Hide the category label rows if all their tools are hidden
+    // (optional cosmetic — hides empty category headers too)
+    document.querySelectorAll('#toolbar > div > div').forEach(group => {
+        const buttons = group.querySelectorAll('button[data-tool]');
+        if (buttons.length > 0) {
+            const allHidden = Array.from(buttons).every(b => b.style.display === 'none');
+            group.style.display = allHidden ? 'none' : '';
+        }
+    });
+
+    if (enabled) {
+        selectTool(null); // Deselect any active tool
+        closePopup();
+        closeBlockCreator();
+    }
 }
 /* ============================================================
    VISUAL FX ENGINE (NEW)
@@ -2235,6 +2277,7 @@ function goToMenu() {
 
     selectTool(null);
     stopMultiplayer();
+    setPlayMode(false);
     otherPlayers = {};
 
     if (isHost && currentCode) {
@@ -2252,7 +2295,7 @@ function goToMenu() {
 async function getGames() {
   const snapshot = await db.ref('games').once('value');
   const gamesObj = snapshot.val() || {};
-  return Object.entries(gamesObj).map(([code, data]) => [parseInt(code), data]);
+  return Object.entries(gamesObj).map(([code, data]) => [parseInat(code), data]);
 }
 
 async function saveGameToHost(gameArray) {
@@ -2291,6 +2334,7 @@ const data = JSON.parse(JSON.stringify(rawData));
     isHost = true;
     document.getElementById("hostBtn").style.display = "block";
     startMultiplayer();
+    setPlayMode(true); 
     showHostCodePopup(currentCode);
   } catch (err) {
     alert("Failed to host game: " + err.message);
@@ -2421,6 +2465,7 @@ async function joinCurrentGame() {
   isHost = false;
   document.getElementById("hostBtn").style.display = "none";
   startMultiplayer();
+  setPlayMode(true); 
   startGame();
 }
 /* ============================================================
@@ -3085,6 +3130,7 @@ document.getElementById("propModTextCheck").addEventListener("change", (e) => {
 
 canvas.addEventListener("mousedown", e => {
   if (!currentTool) return;
+  if (playMode) return;
 
   const rect = canvas.getBoundingClientRect();
   const clickX = e.clientX - rect.left + camera.x;
