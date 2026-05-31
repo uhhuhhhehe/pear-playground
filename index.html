@@ -3,6 +3,7 @@
 <head>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
 
@@ -665,6 +666,14 @@
         <label for="setFps" style="color:#333; margin:0;">Show FPS</label>
         <input type="checkbox" id="setFps" onchange="toggleSetting('fps')">
     </div>
+    <div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+    <label for="setMusic" style="color:#333; margin:0;">Music</label>
+    <input type="checkbox" id="setMusic" onchange="toggleSetting('music')">
+</div>
+<div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+    <label for="setSfx" style="color:#333; margin:0;">Sound Effects</label>
+    <input type="checkbox" id="setSfx" onchange="toggleSetting('sfx')">
+</div>
 
     <button onclick="closeSettings()" style="width:100%; padding:10px; background:#007aff; color:white; border:none; border-radius:8px; cursor:pointer;">Close</button>
 </div>
@@ -695,6 +704,7 @@
     <button onclick="resetAllTriggers()" class="btn-reset">Reset</button>
     <button onclick="saveMap()" class="btn-save">Save</button>
     <button onclick="hostGame()" id="hostBtn" class="btn-host">Host</button>
+    <button onclick="toggleTestMode()" id="testModeBtn" style="background:#f59e0b !important; color:white !important; border-color:#f59e0b !important;">▶ Test</button>
     <button onclick="goToMenu()" class="btn-exit">Menu</button>
     <button onclick="closeToolbar()" style="background:none; border:none; font-size:18px; cursor:pointer; color:#888; padding:2px 6px;">✕</button>
   </div>
@@ -755,6 +765,8 @@
         <button onclick="selectTool('spawn')" data-tool="spawn">Spawn</button>
         <button onclick="selectTool('defaultspawn')" data-tool="defaultspawn">Default Spawn</button>
         <button onclick="selectTool('text')" data-tool="text">Text</button>
+        <button onclick="selectTool('platform')" data-tool="platform">Platform</button>
+        <button onclick="selectTool('goal')" data-tool="goal">Goal</button>
       </div>
     </div>
 
@@ -1008,9 +1020,41 @@
         <input type="text" id="propClockTarget" placeholder="e.g., 'moving_platform'">
     </div>
 </div>
+    <div id="platformProps" style="display:none; padding-top:10px; border-top:1px solid #e4e4e7; margin-top:10px;">
+    <h3>Platform Settings</h3>
+    <div class="input-group">
+        <label for="propPlatStartX">Start X:</label>
+        <input type="number" id="propPlatStartX">
+    </div>
+    <div class="input-group">
+        <label for="propPlatStartY">Start Y:</label>
+        <input type="number" id="propPlatStartY">
+    </div>
+    <div class="input-group">
+        <label for="propPlatEndX">End X:</label>
+        <input type="number" id="propPlatEndX">
+    </div>
+    <div class="input-group">
+        <label for="propPlatEndY">End Y:</label>
+        <input type="number" id="propPlatEndY">
+    </div>
+    <div class="input-group">
+        <label for="propPlatSpeed">Speed:</label>
+        <input type="number" id="propPlatSpeed" step="0.5" min="0.5" value="2">
+    </div>
+</div>
+  <div id="goalProps" style="display:none; padding-top:10px; border-top:1px solid #e4e4e7; margin-top:10px;">
+    <h3>Goal Settings</h3>
+    <div class="input-group">
+        <label for="propGoalReward">Coin Reward:</label>
+        <input type="number" id="propGoalReward" value="100" min="0">
+    </div>
+</div>
     <button onclick="applyProperties()">Apply Changes</button>
     <button onclick="closePopup()">Close</button>
 </div>
+
+
 
 <div id="blockCreatorPopup">
   <h3>Create New Block Type</h3>
@@ -1143,21 +1187,38 @@ const SPATIAL_CELL_SIZE = 200; // Size of grid buckets
 let spatialGrid = new Map();
 let currentCode = 0;
 let currentGames = [];
-
+let musicStarted = false;
+let bgSynth = null;
+let bgLoop = null;
 let otherPlayers = {}; // Stores other players' positions
 let multiplayerInterval = null;
 let multiplayerInterval2 = null;
 let isHost = false;
 let bgCache = null;       // Offscreen canvas for sky/mountains/clouds
 let bgCacheLastX = null;  // Last camera.x when bg was drawn
-
+const undoStack = [];
+const MAX_UNDO = 50;
+let testMode = false;
+let testModeSnapshot = []; // stores object state before testing
 // Global Settings
+let isResizing = false;
+let resizeObject = null;
+let resizeHandle = null; // 'se', 'sw', 'ne', 'nw'
+let resizeStartMouse = { x: 0, y: 0 };
+let resizeStartRect = { x: 0, y: 0, width: 0, height: 0 };
+const RESIZE_HANDLE_SIZE = 10;
+const MIN_BLOCK_SIZE = 10;
+let isMoving = false;
+let moveStartMouse = { x: 0, y: 0 };
+let moveStartPos = { x: 0, y: 0 };
 const settings = {
     shake: true,
     particles: true,
     grid: false,       // NEW
     debug: false,      // NEW
-    fps: false         // NEW
+    fps: false,       // NEW
+    music: true,   // ADD
+    sfx: true      // ADD
 };
 // Firebase config
 const firebaseConfig = {
@@ -1174,7 +1235,8 @@ const RUNTIME_PROPS = new Set([
     'isFiringOutput', 'hasFiredTouch', 'hasFiredClick',
     'hasFired', 'broken', 'breakTimer'
 ]);
-
+let isMouseDown = false;
+let lastPlacedCell = { x: -1, y: -1 }; // prevents placing same cell twice per drag
 // Properties that are just default values — no point saving them
 const SAVE_DEFAULTS = {
     shape: 'box',
@@ -1319,6 +1381,271 @@ let currentUser = null;
 /* ============================================================
    UTILITY FUNCTIONS
 ============================================================ */
+const SFX = {
+    jump: null,
+    land: null,
+    die: null,
+    coin: null,
+    goal: null,
+    click: null
+};
+
+function setupSFX() {
+    // Jump — quick upward blip
+    SFX.jump = () => {
+        const synth = new Tone.Synth({
+            oscillator: { type: "square" },
+            envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
+            volume: -10
+        }).toDestination();
+        synth.triggerAttackRelease("C5", "16n");
+        synth.frequency.rampTo("G5", 0.08);
+        setTimeout(() => synth.dispose(), 500);
+    };
+
+    // Land — thud
+    SFX.land = (velocity) => {
+        if (velocity < 4) return;
+        const synth = new Tone.NoiseSynth({
+            noise: { type: "brown" },
+            envelope: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.05 },
+            volume: -14
+        }).toDestination();
+        synth.triggerAttackRelease("16n");
+        setTimeout(() => synth.dispose(), 500);
+    };
+
+    // Die — descending blip
+    SFX.die = () => {
+        const synth = new Tone.Synth({
+            oscillator: { type: "square" },
+            envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.1 },
+            volume: -8
+        }).toDestination();
+        synth.triggerAttackRelease("A4", "8n");
+        synth.frequency.rampTo("C3", 0.3);
+        setTimeout(() => synth.dispose(), 800);
+    };
+
+    // Coin — bright ding
+    SFX.coin = () => {
+        const synth = new Tone.Synth({
+            oscillator: { type: "triangle" },
+            envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 },
+            volume: -10
+        }).toDestination();
+        synth.triggerAttackRelease("E6", "16n");
+        setTimeout(() => synth.dispose(), 500);
+    };
+
+    // Goal — fanfare
+    SFX.goal = () => {
+        const synth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "triangle" },
+            envelope: { attack: 0.01, decay: 0.2, sustain: 0.3, release: 0.4 },
+            volume: -8
+        }).toDestination();
+        const now = Tone.now();
+        synth.triggerAttackRelease("C4", "8n", now);
+        synth.triggerAttackRelease("E4", "8n", now + 0.1);
+        synth.triggerAttackRelease("G4", "8n", now + 0.2);
+        synth.triggerAttackRelease(["C4","E4","G4","C5"], "4n", now + 0.3);
+        setTimeout(() => synth.dispose(), 2000);
+    };
+
+    // Click — UI feedback
+    SFX.click = () => {
+        const synth = new Tone.Synth({
+            oscillator: { type: "sine" },
+            envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 },
+            volume: -16
+        }).toDestination();
+        synth.triggerAttackRelease("G5", "32n");
+        setTimeout(() => synth.dispose(), 200);
+    };
+}
+
+function playSFX(name, ...args) {
+    if (!settings.sfx) return;
+    if (SFX[name]) SFX[name](...args);
+}
+function setupMusic() {
+    if (musicStarted) return;
+    musicStarted = true;
+
+    // Reverb for atmosphere
+    const reverb = new Tone.Reverb({ decay: 3, wet: 0.3 }).toDestination();
+    const delay = new Tone.FeedbackDelay("8n", 0.3).connect(reverb);
+
+    // Soft pad synth
+    bgSynth = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: "sine" },
+        envelope: { attack: 0.8, decay: 0.4, sustain: 0.6, release: 2 },
+        volume: -18
+    }).connect(delay);
+
+    // Melody notes
+    const melody = [
+        ["C4", "2n"], ["E4", "4n"], ["G4", "4n"],
+        ["A4", "2n"], ["G4", "4n"], ["E4", "4n"],
+        ["F4", "2n"], ["A4", "4n"], ["C5", "4n"],
+        ["G4", "1n"],
+        ["E4", "2n"], ["G4", "4n"], ["B4", "4n"],
+        ["C5", "2n"], ["B4", "4n"], ["A4", "4n"],
+        ["F4", "2n"], ["G4", "4n"], ["E4", "4n"],
+        ["C4", "1n"],
+    ];
+
+    let index = 0;
+    bgLoop = new Tone.Sequence((time, step) => {
+        const [note, dur] = melody[index % melody.length];
+        bgSynth.triggerAttackRelease(note, dur, time);
+        index++;
+    }, melody.map((_, i) => i), "2n");
+
+    bgLoop.start(0);
+    Tone.Transport.bpm.value = 90;
+    Tone.Transport.start();
+}
+
+const MUSIC_TRACKS = [
+    'assets/lo-fi_lobotomy.mp3'
+];
+
+let bgMusic = null;
+
+function setupMusic() {
+    if (bgMusic) return;
+    const track = MUSIC_TRACKS[Math.floor(Math.random() * MUSIC_TRACKS.length)];
+    bgMusic = new Audio(track);
+    bgMusic.loop = false;
+    bgMusic.volume = 0.4;
+    // Play next random track when one ends
+    bgMusic.addEventListener('ended', () => {
+        const next = MUSIC_TRACKS[Math.floor(Math.random() * MUSIC_TRACKS.length)];
+        bgMusic.src = next;
+        bgMusic.play().catch(() => {});
+    });
+    if (settings.music) bgMusic.play().catch(() => {});
+}
+
+function stopMusic() {
+    if (bgMusic) {
+        bgMusic.pause();
+        bgMusic.currentTime = 0;
+    }
+}
+function enterResizeMode() {
+    if (!selectedObject) return;
+    const obj = selectedObject;
+    closePopup(); // closes popup, clears selectedObject so we need to re-set it
+    selectedObject = obj; // re-set after closePopup clears it
+    showCoinToast('Drag a corner to resize — click elsewhere to finish', '#f59e0b');
+}
+function getResizeHandles(obj) {
+    const sx = obj.x - camera.x;
+    const sy = obj.y - camera.y;
+    const w = obj.width;
+    const h = obj.height;
+    return {
+        nw: { x: sx,         y: sy         },
+        ne: { x: sx + w,     y: sy         },
+        sw: { x: sx,         y: sy + h     },
+        se: { x: sx + w,     y: sy + h     },
+    };
+}
+
+function getHandleAtPoint(obj, mx, my) {
+    const handles = getResizeHandles(obj);
+    for (const key in handles) {
+        const h = handles[key];
+        if (Math.abs(mx - h.x) <= RESIZE_HANDLE_SIZE &&
+            Math.abs(my - h.y) <= RESIZE_HANDLE_SIZE) {
+            return key;
+        }
+    }
+    return null;
+}
+function toggleTestMode() {
+    if (!testMode) {
+        enterTestMode();
+    } else {
+        exitTestMode();
+    }
+}
+
+function enterTestMode() {
+    testMode = true;
+
+    // Save full snapshot of current map state
+    testModeSnapshot = objects
+        .filter(o => o.tag !== 'player')
+        .map(o => JSON.parse(JSON.stringify(o)));
+
+    // Reset player to start
+    player.x = START_POS.x;
+    player.y = START_POS.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.isJumping = true;
+    player.jumpsLeft = 0;
+    player.width = 34;
+    player.height = 50;
+    player.scaleX = 1;
+    player.scaleY = 1;
+
+    // Reset all triggers and coins
+    resetAllTriggers();
+
+    // Lock editing
+    setPlayMode(true);
+
+    // Update button
+    const btn = document.getElementById('testModeBtn');
+    btn.textContent = '◼ Stop';
+    btn.style.background = '#ef4444 !important';
+    btn.style.cssText = btn.style.cssText.replace('#f59e0b', '#ef4444');
+
+    // Show toast
+    showCoinToast('Test mode — ESC or Stop to exit', '#f59e0b');
+}
+
+function exitTestMode() {
+    testMode = false;
+
+    // Restore map to pre-test state
+    for (let i = objects.length - 1; i >= 0; i--) {
+        if (objects[i].tag !== 'player') objects.splice(i, 1);
+    }
+    testModeSnapshot.forEach(o => objects.push(JSON.parse(JSON.stringify(o))));
+    testModeSnapshot = [];
+
+    // Reset player
+    player.x = START_POS.x;
+    player.y = START_POS.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.isJumping = true;
+    player.width = 34;
+    player.height = 50;
+    player.scaleX = 1;
+    player.scaleY = 1;
+
+    // Restore editing
+    setPlayMode(false);
+
+    // Update button
+    const btn = document.getElementById('testModeBtn');
+    if (btn) {
+        btn.textContent = '▶ Test';
+        btn.style.background = '';
+        btn.style.cssText = '';
+        btn.style.background = '#f59e0b';
+        btn.style.color = 'white';
+    }
+
+    showCoinToast('Back to editor', '#71717a');
+}
 function getRandomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -1333,6 +1660,8 @@ function hasGroup(obj, groupName) {
 }
 function setPlayMode(enabled) {
     playMode = enabled;
+    const testBtn = document.getElementById('testModeBtn');
+    if (testBtn) testBtn.style.display = enabled ? 'none' : '';
 
     // Hide/show the edit-only toolbar buttons
     const editOnlyTools = ['select', 'edit', 'copy', 'delete', 'box', 'wood', 'metal',
@@ -1372,6 +1701,38 @@ function setPlayMode(enabled) {
         closePopup();
         closeBlockCreator();
     }
+}
+function saveUndoState() {
+    const snapshot = objects
+        .filter(o => o.tag !== 'player')
+        .map(o => JSON.parse(JSON.stringify(o)));
+    undoStack.push(snapshot);
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+}
+
+function undo() {
+    if (undoStack.length === 0) {
+        showCoinToast('Nothing to undo', '#71717a');
+        return;
+    }
+    const snapshot = undoStack.pop();
+
+    for (let i = objects.length - 1; i >= 0; i--) {
+        if (objects[i].tag !== 'player') objects.splice(i, 1);
+    }
+
+    snapshot.forEach(o => objects.push(o));
+
+    // Clean up any active resize/select state
+    selectedObject = null;
+    selectedObjectIndex = -1;
+    isResizing = false;
+    resizeObject = null;
+    resizeHandle = null;
+    isMoving = false;
+
+    closePopup();
+    showCoinToast('Undone', '#71717a');
 }
 /* ============================================================
    VISUAL FX ENGINE (NEW)
@@ -1614,6 +1975,8 @@ function openSettings() {
     document.getElementById("setGrid").checked     = settings.grid;
     document.getElementById("setDebug").checked    = settings.debug;
     document.getElementById("setFps").checked      = settings.fps;
+    document.getElementById("setMusic").checked = settings.music;
+    document.getElementById("setSfx").checked   = settings.sfx;
 }
 
 function closeSettings() {
@@ -1626,7 +1989,11 @@ function closeSettings() {
 // Replace your existing toggleSetting function:
 function toggleSetting(key) {
     settings[key] = !settings[key];
-    saveSettings(); // Auto-save to Firebase on every toggle
+    if (key === 'music') {
+    if (settings.music && bgMusic) bgMusic.play().catch(() => {});
+    else if (bgMusic) bgMusic.pause();
+}
+    saveSettings();
 }
 function rectsCollide(a, b) {
   return (
@@ -2274,7 +2641,10 @@ function goToMenu() {
     document.getElementById("toolbar").classList.remove("open");
     document.getElementById("toolbarOpenBtn").style.display = "none";
     homeScreen.style.display = "flex";
-
+    if (testMode) {
+      testMode = false;
+      testModeSnapshot = [];
+    }
     selectTool(null);
     stopMultiplayer();
     setPlayMode(false);
@@ -2284,7 +2654,7 @@ function goToMenu() {
         db.ref(`games/${currentCode}`).onDisconnect().cancel();
         db.ref(`games/${currentCode}`).remove();
     }
-
+    stopMusic(); // ADD
     isHost = false;
     currentCode = 0;
     document.getElementById("hostBtn").style.display = "block";
@@ -2478,7 +2848,8 @@ function startGame() {
   document.getElementById("toolbarOpenBtn").style.display = "block";
   openToolbar();
   resizeCanvas(); 
-  
+  setupSFX(); // ADD
+  if (settings.music) setupMusic(); // ADD
   // Start/Restart game loop
   if (gameLoopId) cancelAnimationFrame(gameLoopId);
   loadImages(sources, () => { 
@@ -2507,6 +2878,7 @@ function startCreate() {
   editorPlayer.scaleY = 1;
   
   // Clear any existing custom blocks and their toolbar buttons
+  undoStack.length = 0; // ADD THIS
   clearCustomTools();
   customBlocks = {};
 
@@ -2589,6 +2961,8 @@ if (defaultSpawner) {
     editorPlayer.vx = 0;
     editorPlayer.vy = 0;
     editorPlayer.isJumping = true;
+
+    undoStack.length = 0; // ADD THIS
 
     startGame();
   };
@@ -2684,7 +3058,7 @@ function confirmCopyBlock() {
     const newTag = document.getElementById("newBlockName").value.trim();
     
     // ... (Validation logic remains the same)
-    const reservedNames = ['box', 'box-pushable', 'box-stickable', 'kill', 'spawn', 'text', 'delete', 'edit', 'trigger', 'copy', 'select', 'monitor', 'player', 'comparer', 'clock']; 
+    const reservedNames = ['box', 'box-pushable', 'box-stickable', 'kill', 'spawn', 'text', 'delete', 'edit', 'trigger', 'copy', 'select', 'monitor', 'player', 'comparer', 'clock', 'platform', 'goal']; 
     if (!newTag || reservedNames.includes(newTag.toLowerCase()) || customBlocks[newTag]) {
         alert(`The name "${newTag}" is invalid, already taken, or reserved.`);
         return;
@@ -3002,7 +3376,21 @@ function openPopup(obj) {
     document.getElementById("propClockInterval").value = obj.interval ?? 3;
     document.getElementById("propClockTarget").value = obj.targetGroup || "";
   }
-
+  const isPlatform = obj.tag === 'platform';
+document.getElementById("platformProps").style.display = isPlatform ? 'block' : 'none';
+if (isPlatform) {
+    const pp = obj.platformProps || {};
+    document.getElementById("propPlatStartX").value = pp.startX ?? obj.x;
+    document.getElementById("propPlatStartY").value = pp.startY ?? obj.y;
+    document.getElementById("propPlatEndX").value = pp.endX ?? obj.x + 200;
+    document.getElementById("propPlatEndY").value = pp.endY ?? obj.y;
+    document.getElementById("propPlatSpeed").value = pp.speed ?? 2;
+}
+const isGoal = obj.tag === 'goal';
+document.getElementById("goalProps").style.display = isGoal ? 'block' : 'none';
+if (isGoal) {
+    document.getElementById("propGoalReward").value = obj.coinReward ?? 100;
+}
   // Show Popup
   document.getElementById("popup").style.display = "block";
   document.getElementById("overlay").style.display = "block";
@@ -3018,6 +3406,7 @@ function closePopup() {
 
 function applyProperties() {
   if (!selectedObject) return;
+  saveUndoState(); // ADD THIS
 
   // General properties (apply to ALL)
   selectedObject.width = parseFloat(document.getElementById("propWidth").value) || GRID_SIZE;
@@ -3098,7 +3487,19 @@ selectedObject.group = rawGroup
     selectedObject.interval = parseFloat(document.getElementById("propClockInterval").value) || 3;
     selectedObject.targetGroup = document.getElementById("propClockTarget").value;
 
-  } else {
+  } else if (selectedObject.tag === 'platform') {
+    selectedObject.platformProps = {
+        startX: parseFloat(document.getElementById("propPlatStartX").value),
+        startY: parseFloat(document.getElementById("propPlatStartY").value),
+        endX:   parseFloat(document.getElementById("propPlatEndX").value),
+        endY:   parseFloat(document.getElementById("propPlatEndY").value),
+        speed:  parseFloat(document.getElementById("propPlatSpeed").value) || 2,
+        progress: selectedObject.platformProps?.progress ?? 0,
+        direction: selectedObject.platformProps?.direction ?? 1
+    };
+}  else if (selectedObject.tag === 'goal') {
+    selectedObject.coinReward = parseInt(document.getElementById("propGoalReward").value) || 100;
+} else {
     // Save standard properties (non-triggers)
     selectedObject.pushable = document.getElementById("propPushable").checked;
     selectedObject.slime = document.getElementById("propSlime").checked;
@@ -3125,31 +3526,48 @@ document.getElementById("overlay").addEventListener("click", () => {
 document.getElementById("propModTextCheck").addEventListener("change", (e) => {
     document.getElementById("propModText").style.display = e.target.checked ? 'block' : 'none';
 });
+canvas.addEventListener("mouseup", () => {
+    isMouseDown = false;
+    lastPlacedCell = { x: -1, y: -1 };
+    isResizing = false;
+    resizeObject = null;
+    resizeHandle = null;
+    isMoving = false;   // ADD
+});
 
+canvas.addEventListener("mouseleave", () => {
+    isMouseDown = false;
+    lastPlacedCell = { x: -1, y: -1 };
+    isResizing = false;
+    resizeObject = null;
+    resizeHandle = null;
+    isMoving = false;   // ADD
+});
 // --- CANVAS MOUSELISTENER ---
 
 canvas.addEventListener("mousedown", e => {
-  if (!currentTool) return;
-  if (playMode) return;
+    if (playMode) return;
 
-  const rect = canvas.getBoundingClientRect();
-  const clickX = e.clientX - rect.left + camera.x;
-  const clickY = e.clientY - rect.top + camera.y;
-  if (!editorMode) { // Only run in game mode
+    isMouseDown = true;
+    lastPlacedCell = { x: -1, y: -1 };
+
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left + camera.x;
+    const clickY = e.clientY - rect.top + camera.y;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    // Monitor click detection (game mode)
+    if (!editorMode) {
         objects.forEach(monitor => {
             if (monitor.tag !== 'monitor') return;
-
             const monProps = monitor.monProps || {};
             const targetGroup = monProps.targetGroup;
             const outputClick = monProps.outputClick;
             const oneTime = monProps.oneTime;
-
             if (!targetGroup || !outputClick) return;
-
-            // Skip if one-time and already fired (click)
             if (oneTime && monitor.hasFiredClick) return;
-            
-            // Check if the click hit any target block
+
             let clickHit = false;
             objects.forEach(target => {
                 if (target.group && target.group === targetGroup) {
@@ -3161,222 +3579,432 @@ canvas.addEventListener("mousedown", e => {
             });
 
             if (clickHit) {
-                // Click hit a target block. Trigger the click output.
                 monitor.hasFiredClick = true;
-                
-                // Re-use executeTriggerLogic to fire the output group
                 executeTriggerLogic({
                     tag: 'trigger',
-                    mods: {
-                        targetGroup: outputClick,
-                        active: "fire" 
-                    },
-                    hasFired: null 
+                    mods: { targetGroup: outputClick, active: "fire" },
+                    hasFired: null
                 });
             }
         });
     }
 
-  // Snap to grid for placement tools
-  let x = Math.floor(clickX / GRID_SIZE) * GRID_SIZE;
-  let y = Math.floor(clickY / GRID_SIZE) * GRID_SIZE;
+    // Snap to grid for placement tools
+    let x = Math.floor(clickX / GRID_SIZE) * GRID_SIZE;
+    let y = Math.floor(clickY / GRID_SIZE) * GRID_SIZE;
 
-  // Find object under click (used for delete and edit)
-  let clickedObject = objects.slice().reverse().find(obj =>
-    clickX >= obj.x && clickX <= obj.x + obj.width &&
-    clickY >= obj.y && clickY <= obj.y + obj.height
-  );
-  
-  // --- 1. Handle Non-Placement Tools ---
-  if (currentTool === 'delete' && clickedObject) {
-    const index = objects.indexOf(clickedObject);
-    if (index !== -1) {
-      objects.splice(index, 1);
-      closePopup();
+    // Find object under click
+    let clickedObject = objects.slice().reverse().find(obj =>
+        clickX >= obj.x && clickX <= obj.x + obj.width &&
+        clickY >= obj.y && clickY <= obj.y + obj.height
+    );
+
+    // --- DELETE tool ---
+    if (currentTool === 'delete' && clickedObject) {
+        const index = objects.indexOf(clickedObject);
+        if (index !== -1) {
+            saveUndoState();
+            objects.splice(index, 1);
+            closePopup();
+        }
+        return;
     }
-    return;
-  }
-  // ... inside canvas.addEventListener('mousedown', (e) => { ...
 
-  if (currentTool === 'edit' && clickedObject) {
-    openPopup(clickedObject);
-    return;
-  }
-  // START: NEW CODE FOR COPY TOOL ACTION
-if (currentTool === 'copy' && clickedObject) {
-    openCopyNamePopup(clickedObject);
+    // --- EDIT tool ---
+    if (currentTool === 'edit') {
+        if (selectedObject) {
+            // Check resize handles first
+            const handle = getHandleAtPoint(selectedObject, mx, my);
+            if (handle) {
+                isResizing = true;
+                resizeObject = selectedObject;
+                resizeHandle = handle;
+                resizeStartMouse = { x: mx, y: my };
+                resizeStartRect = {
+                    x: selectedObject.x,
+                    y: selectedObject.y,
+                    width: selectedObject.width,
+                    height: selectedObject.height
+                };
+                saveUndoState();
+                return;
+            }
+
+            // Check if clicking inside selected object body — move it
+            const insideSelected = clickX >= selectedObject.x &&
+                                   clickX <= selectedObject.x + selectedObject.width &&
+                                   clickY >= selectedObject.y &&
+                                   clickY <= selectedObject.y + selectedObject.height;
+            if (insideSelected) {
+                isMoving = true;
+                moveStartMouse = { x: mx, y: my };
+                moveStartPos = { x: selectedObject.x, y: selectedObject.y };
+                saveUndoState();
+                return;
+            }
+
+            // Clicked outside selected object — deselect
+            selectedObject = null;
+        }
+
+        // Nothing selected — open popup on clicked object
+        // Single click — just select the object, enabling drag/resize
+if (clickedObject) {
+    selectedObject = clickedObject;
+    selectedObjectIndex = objects.indexOf(clickedObject);
     return;
 }
-  // --- 2. Handle CUSTOM Block Placement ---
-  if (customBlocks[currentTool]) {
-      const def = customBlocks[currentTool];
-      const newObj = {
-          ...def, // Copy all properties from the definition
-          x: x,  // Set instance-specific properties
-          y: y,
-          vx: 0, // Reset velocity/scale
-          vy: 0,
-          scaleX: 1,
-          scaleY: 1,
-          opacity: 1,
-          group: "" 
-      };
-      objects.push(newObj);
-      return; // Block placed, we are done.
-  }
+        return;
+    }
 
-  // --- 3. Handle BUILT-IN Block Placement ---
-  let newObj = {
-      tag: "box",
-      shape: "box",
-      x: x, y: y,
-      width: GRID_SIZE, height: GRID_SIZE,
-      vx: 0, vy: 0,
-      gravity: 0,
-      pushable: false,
-      scaleX: 1, scaleY: 1,
-      slime: false,
-      solid: true,
-      kill: false,
-      spawn: false,
-      text: "",
-      opacity: 1,
-      group: "" ,
-      solid: true // Default solid state
-  };
-  
-  let builtInToolFound = true; // Flag to track if we placed a block
+    // --- COPY tool ---
+    if (currentTool === 'copy' && clickedObject) {
+        openCopyNamePopup(clickedObject);
+        return;
+    }
 
-  switch (currentTool) {
-    case 'box':
-      newObj.tag = "box";
-      break;
-    case 'wood':
-      newObj.tag = "wood";
-      break;
-    case 'metal':
-      newObj.tag = "metal";
-      break;
-    case 'grass':
-      newObj.tag = "grass";
-      break;
-    case 'box-pushable':
-      newObj.tag = "pushablebox";
-      newObj.gravity = 0.6;
-      newObj.pushable = true;
-      break;
-    case 'monitor':
-      newObj.tag = "monitor";
-      newObj.solid = false;
-      break;
-    case 'box-stickable':
-      newObj.tag = "sticky";
-      newObj.slime = true;
-      break;
-    case 'kill':
-      newObj.tag = "kill";
-      newObj.kill = true;
-      break;
-    case 'spawn':
-      newObj.tag = "spawn";
-      newObj.solid = false;
-      newObj.spawn = true;
-      // Loop removed so you can place multiple spawn points!
-      break;
-    case 'defaultspawn':
-      // Remove any existing default spawners first
-      for (let i = objects.length - 1; i >= 0; i--) {
-          if (objects[i].tag === 'defaultspawn') objects.splice(i, 1);
-      }
-      newObj.tag = "defaultspawn";
-      newObj.solid = false;
-      newObj.spawn = true;
-      // Set start position immediately on placement
-      START_POS.x = x + GRID_SIZE/2 - player.width/2;
-      START_POS.y = y - player.height;
-      break;
-    case 'text':
-      newObj.tag = "text";
-      newObj.shape = "text";
-      newObj.width = 150;
-      newObj.height = 40;
-      newObj.solid = false;
-      newObj.text = "Hello world!";
-      break;
-    case 'trigger':
-      newObj.tag = "trigger";
-      newObj.solid = false;
-      newObj.gravity = 0;
-      newObj.pushable = false;
-      newObj.hasFired = false;
-      newObj.active = true; // Triggers are active by default
-      newObj.opacity = 0.5;
-      newObj.group = ""; // Triggers can now have groups
-      newObj.mods = {};
-      newObj.id = Date.now() + Math.random(); // Ensure unique ID for tracking!
-      break;
-    // Inside canvas.addEventListener("mousedown", ...) switch(currentTool)
-    case 'clock':
-      newObj.tag = "clock";
-      newObj.solid = false;
-      newObj.opacity = 0.7;
-      newObj.interval = 3;      // seconds between fires
-      newObj.targetGroup = "";  // group to trigger
-      newObj.lastFired = 0;     // runtime tracker
-      newObj.id = Date.now() + Math.random();
-      break;
-    case 'counter':
-      newObj.tag = "counter";
-      newObj.count = 0;       // Current number
-      newObj.limit = 3;       // Default limit
-      newObj.countGroup = ""; // For future reading
-      newObj.targetGroup = "";// Trigger this when full
-      newObj.solid = true;    // Counters are usually solid walls
-      newObj.id = Date.now() + Math.random(); // Ensure unique ID for tracking!
-      break;
-    case 'comparer':
-      newObj.tag = "comparer";
-      newObj.solid = false; // Comparers are invisible/non-solid
-      newObj.opacity = 0.7;
-      newObj.comparerProps = {
-          group1: "",
-          group2: "",
-          operator: "==",
-          triggerGroup: "",
-          oneTime: false
-      };
-      newObj.hasFired = false;
-      newObj.id = Date.now() + Math.random();
-      break;
-    case 'breakable':
-        newObj.tag = "breakable";
-        newObj.solid = true; 
-        newObj.reappearTime = 300;
-        break;
-    case 'bounce':
-      newObj.tag = "bounce";
-      newObj.solid = true;
-      newObj.bounce = true;
-      break;
-    case 'ice':
-      newObj.tag = "ice";
-      newObj.solid = true;
-      newObj.ice = true;
-      break;
-    default:
-      builtInToolFound = false; // Not a built-in tool
-  }
-  
-  if (builtInToolFound) {
-      objects.push(newObj);
-  }
+    // Save undo state before placing
+    if (!['select'].includes(currentTool)) {
+        saveUndoState();
+    }
+
+    // --- CUSTOM block placement ---
+    if (customBlocks[currentTool]) {
+        const def = customBlocks[currentTool];
+        const newObj = {
+            ...def,
+            x, y,
+            vx: 0, vy: 0,
+            scaleX: 1, scaleY: 1,
+            opacity: 1,
+            group: []
+        };
+        objects.push(newObj);
+        return;
+    }
+
+    // --- BUILT-IN block placement ---
+    let newObj = {
+        tag: "box",
+        shape: "box",
+        x, y,
+        width: GRID_SIZE, height: GRID_SIZE,
+        vx: 0, vy: 0,
+        gravity: 0,
+        pushable: false,
+        scaleX: 1, scaleY: 1,
+        slime: false,
+        solid: true,
+        kill: false,
+        spawn: false,
+        text: "",
+        opacity: 1,
+        group: [],
+        bounce: false,
+        ice: false
+    };
+
+    let builtInToolFound = true;
+
+    switch (currentTool) {
+        case 'box':
+            newObj.tag = "box";
+            break;
+        case 'wood':
+            newObj.tag = "wood";
+            break;
+        case 'metal':
+            newObj.tag = "metal";
+            break;
+        case 'grass':
+            newObj.tag = "grass";
+            break;
+        case 'box-pushable':
+            newObj.tag = "pushablebox";
+            newObj.gravity = 0.6;
+            newObj.pushable = true;
+            break;
+        case 'monitor':
+            newObj.tag = "monitor";
+            newObj.solid = false;
+            break;
+        case 'box-stickable':
+            newObj.tag = "sticky";
+            newObj.slime = true;
+            break;
+        case 'kill':
+            newObj.tag = "kill";
+            newObj.kill = true;
+            break;
+        case 'spawn':
+            newObj.tag = "spawn";
+            newObj.solid = false;
+            newObj.spawn = true;
+            break;
+        case 'defaultspawn':
+            for (let i = objects.length - 1; i >= 0; i--) {
+                if (objects[i].tag === 'defaultspawn') objects.splice(i, 1);
+            }
+            newObj.tag = "defaultspawn";
+            newObj.solid = false;
+            newObj.spawn = true;
+            START_POS.x = x + GRID_SIZE/2 - player.width/2;
+            START_POS.y = y - player.height;
+            break;
+        case 'text':
+            newObj.tag = "text";
+            newObj.shape = "text";
+            newObj.width = 150;
+            newObj.height = 40;
+            newObj.solid = false;
+            newObj.text = "Hello world!";
+            break;
+        case 'trigger':
+            newObj.tag = "trigger";
+            newObj.solid = false;
+            newObj.gravity = 0;
+            newObj.pushable = false;
+            newObj.hasFired = false;
+            newObj.active = true;
+            newObj.opacity = 0.5;
+            newObj.group = [];
+            newObj.mods = {};
+            newObj.id = Date.now() + Math.random();
+            break;
+        case 'clock':
+            newObj.tag = "clock";
+            newObj.solid = false;
+            newObj.opacity = 0.7;
+            newObj.interval = 3;
+            newObj.targetGroup = "";
+            newObj.lastFired = 0;
+            newObj.id = Date.now() + Math.random();
+            break;
+        case 'counter':
+            newObj.tag = "counter";
+            newObj.count = 0;
+            newObj.limit = 3;
+            newObj.countGroup = "";
+            newObj.targetGroup = "";
+            newObj.solid = true;
+            newObj.id = Date.now() + Math.random();
+            break;
+        case 'comparer':
+            newObj.tag = "comparer";
+            newObj.solid = false;
+            newObj.opacity = 0.7;
+            newObj.comparerProps = {
+                group1: "", group2: "",
+                operator: "==", triggerGroup: "", oneTime: false
+            };
+            newObj.hasFired = false;
+            newObj.id = Date.now() + Math.random();
+            break;
+        case 'breakable':
+            newObj.tag = "breakable";
+            newObj.solid = true;
+            newObj.reappearTime = 300;
+            break;
+        case 'bounce':
+            newObj.tag = "bounce";
+            newObj.solid = true;
+            newObj.bounce = true;
+            break;
+        case 'ice':
+            newObj.tag = "ice";
+            newObj.solid = true;
+            newObj.ice = true;
+            break;
+        case 'platform':
+            newObj.tag = "platform";
+            newObj.solid = true;
+            newObj.width = 100;
+            newObj.height = 20;
+            newObj.platformProps = {
+                startX: x, startY: y,
+                endX: x + 200, endY: y,
+                speed: 2, progress: 0, direction: 1
+            };
+            break;
+        case 'goal':
+            newObj.tag = "goal";
+            newObj.solid = false;
+            newObj.opacity = 0.9;
+            newObj.coinReward = 100;
+            newObj.id = Date.now() + Math.random();
+            break;
+        case 'coin':
+            newObj.tag = "coin";
+            newObj.solid = false;
+            newObj.width = 30;
+            newObj.height = 30;
+            newObj.coinValue = 10;
+            newObj.id = Date.now() + Math.random();
+            break;
+        default:
+            builtInToolFound = false;
+    }
+
+    if (builtInToolFound) {
+        objects.push(newObj);
+    }
 });
+canvas.addEventListener("dblclick", e => {
+    if (currentTool !== 'edit') return;
+    if (playMode) return;
 
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left + camera.x;
+    const clickY = e.clientY - rect.top + camera.y;
+
+    const clickedObject = objects.slice().reverse().find(obj =>
+        clickX >= obj.x && clickX <= obj.x + obj.width &&
+        clickY >= obj.y && clickY <= obj.y + obj.height
+    );
+
+    if (clickedObject) {
+        openPopup(clickedObject);
+    }
+});
 canvas.addEventListener("mousemove", e => {
-  if (!currentTool) return;
-  const rect = canvas.getBoundingClientRect();
-  ghostX = Math.floor((e.clientX - rect.left + camera.x) / GRID_SIZE) * GRID_SIZE;
-  ghostY = Math.floor((e.clientY - rect.top + camera.y) / GRID_SIZE) * GRID_SIZE;
+    if (!currentTool) return;
+    const rect = canvas.getBoundingClientRect();
+    ghostX = Math.floor((e.clientX - rect.left + camera.x) / GRID_SIZE) * GRID_SIZE;
+    ghostY = Math.floor((e.clientY - rect.top + camera.y) / GRID_SIZE) * GRID_SIZE;
+
+    // Drag to place
+    if (!isMouseDown) return;
+    if (playMode) return;
+    if (isResizing && resizeObject) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const dx = mx - resizeStartMouse.x;
+    const dy = my - resizeStartMouse.y;
+
+    let newX = resizeStartRect.x;
+    let newY = resizeStartRect.y;
+    let newW = resizeStartRect.width;
+    let newH = resizeStartRect.height;
+
+    if (resizeHandle === 'se') {
+        newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  + dx);
+        newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height + dy);
+    } else if (resizeHandle === 'sw') {
+        newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  - dx);
+        newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height + dy);
+        newX = resizeStartRect.x + resizeStartRect.width - newW;
+    } else if (resizeHandle === 'ne') {
+        newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  + dx);
+        newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height - dy);
+        newY = resizeStartRect.y + resizeStartRect.height - newH;
+    } else if (resizeHandle === 'nw') {
+        newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  - dx);
+        newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height - dy);
+        newX = resizeStartRect.x + resizeStartRect.width  - newW;
+        newY = resizeStartRect.y + resizeStartRect.height - newH;
+    }
+
+    resizeObject.x = newX;
+    resizeObject.y = newY;
+    resizeObject.width  = newW;
+    resizeObject.height = newH;
+    return;
+}
+    // Only drag-place for block tools, not editor tools or special blocks
+    const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
+        'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform'];
+    if (dragBlacklist.includes(currentTool)) return;
+
+    // Don't place in the same grid cell twice
+    if (ghostX === lastPlacedCell.x && ghostY === lastPlacedCell.y) return;
+    lastPlacedCell = { x: ghostX, y: ghostY };
+
+    const clickX = ghostX;
+    const clickY = ghostY;
+    const x = clickX;
+    const y = clickY;
+
+    // Don't place on top of existing objects
+    const occupied = objects.some(obj =>
+        obj.x === x && obj.y === y && obj.tag !== 'player'
+    );
+    if (occupied) return;
+
+    // Handle custom blocks
+    if (customBlocks[currentTool]) {
+        const def = customBlocks[currentTool];
+        objects.push({
+            ...def,
+            x, y,
+            vx: 0, vy: 0,
+            scaleX: 1, scaleY: 1,
+            opacity: 1,
+            group: []
+        });
+        return;
+    }
+
+    // Handle built-in blocks
+    const tagMap = {
+        'box':          { tag: 'box' },
+        'wood':         { tag: 'wood' },
+        'metal':        { tag: 'metal' },
+        'grass':        { tag: 'grass' },
+        'kill':         { tag: 'kill', kill: true },
+        'bounce':       { tag: 'bounce', solid: true, bounce: true },
+        'ice':          { tag: 'ice', solid: true, ice: true },
+        'breakable':    { tag: 'breakable', solid: true, reappearTime: 300 },
+        'box-pushable': { tag: 'pushablebox', gravity: 0.6, pushable: true },
+        'box-stickable':{ tag: 'sticky', slime: true },
+    };
+
+    const preset = tagMap[currentTool];
+    if (!preset) return;
+
+    objects.push({
+        tag: "box",
+        shape: "box",
+        x, y,
+        width: GRID_SIZE, height: GRID_SIZE,
+        vx: 0, vy: 0,
+        gravity: 0,
+        pushable: false,
+        scaleX: 1, scaleY: 1,
+        slime: false,
+        solid: true,
+        kill: false,
+        spawn: false,
+        text: "",
+        opacity: 1,
+        group: [],
+        bounce: false,
+        ice: false,
+        ...preset
+    });
+    // Cursor hint for resize handles
+if (currentTool === 'edit' && selectedObject && !isResizing && !isMoving) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const handle = getHandleAtPoint(selectedObject, mx, my);
+    if (handle) {
+        const cursors = { nw: 'nw-resize', ne: 'ne-resize', sw: 'sw-resize', se: 'se-resize' };
+        canvas.style.cursor = cursors[handle];
+    } else {
+        const worldX = mx + camera.x;
+        const worldY = my + camera.y;
+        const inside = worldX >= selectedObject.x &&
+                       worldX <= selectedObject.x + selectedObject.width &&
+                       worldY >= selectedObject.y &&
+                       worldY <= selectedObject.y + selectedObject.height;
+        canvas.style.cursor = inside ? 'grab' : 'default';
+    }
+} else if (isMoving) {
+    canvas.style.cursor = 'grabbing';
+} else if (!isResizing) {
+    canvas.style.cursor = 'default';
+}
 });
 
 
@@ -3477,6 +4105,7 @@ function resolveCollision(obj, collision) {
             obj.scaleY = 0.8;
             if (settings.particles) spawnParticles(obj.x + obj.width/2, obj.y + obj.height, 10, "#888", 3);
             if (settings.shake && obj.vy > 10) addShake(5);
+            playSFX('land', obj.vy); // ADD
         }
         obj.vy = 0;
         obj.isJumping = false;
@@ -3538,6 +4167,7 @@ function resolveCollision(obj, collision) {
 }
 
 function resetPlayer(obj) {
+  playSFX('die'); // ADD
   // Always use START_POS, which we will update whenever a checkpoint is touched
   obj.x = START_POS.x;
   obj.y = START_POS.y;
@@ -3563,12 +4193,12 @@ function updatePhysics(delta) {
     // --- 1. Player Controls ---
     if (obj.tag === "player") {
       const accel = 0.5 * delta;
-      const maxSpeed = onIce ? 10 : 6;
 
       const onIce = objects.some(o => o.ice && o.solid &&
         obj.x < o.x + o.width && obj.x + obj.width > o.x &&
         Math.abs((obj.y + obj.height) - o.y) < 4
       );
+      const maxSpeed = onIce ? 10 : 6;
       const friction = Math.pow(onIce ? 0.99 : 0.85, delta);
 
       const wasGrounded = !obj.isJumping;
@@ -3586,6 +4216,7 @@ function updatePhysics(delta) {
         obj.scaleX = 0.5;
         obj.scaleY = 1.5;
         spawnParticles(obj.x + obj.width / 2, obj.y + obj.height, 5, "#fff", 2);
+        playSFX('jump'); // ADD
       }
       keys.jump = false;
       obj.wasGrounded = wasGrounded;
@@ -3829,6 +4460,129 @@ function checkClocks() {
         }
     });
 }
+function updatePlatforms(delta) {
+    objects.forEach(obj => {
+        if (obj.tag !== 'platform') return;
+        const pp = obj.platformProps;
+        if (!pp) return;
+
+        // Move progress
+        pp.progress += pp.direction * pp.speed * 0.01 * delta;
+
+        // Bounce at ends
+        if (pp.progress >= 1) { pp.progress = 1; pp.direction = -1; }
+        if (pp.progress <= 0) { pp.progress = 0; pp.direction = 1;  }
+
+        // Calculate new position
+        const newX = pp.startX + (pp.endX - pp.startX) * pp.progress;
+        const newY = pp.startY + (pp.endY - pp.startY) * pp.progress;
+
+        // Carry the player if standing on top
+        const dx = newX - obj.x;
+        const dy = newY - obj.y;
+
+        if (Math.abs(player.x + player.width/2 - (obj.x + obj.width/2)) < obj.width/2 + player.width/2 - 2 &&
+            Math.abs(player.y + player.height - obj.y) < 6) {
+            player.x += dx;
+            player.y += dy;
+        }
+
+        obj.x = newX;
+        obj.y = newY;
+    });
+}
+function checkGoal() {
+    objects.forEach(obj => {
+        if (obj.tag !== 'goal') return;
+        if (obj._completed) return;
+
+        if (rectsCollide(player, obj)) {
+          playSFX('goal'); // ADD
+            obj._completed = true;
+            const reward = obj.coinReward ?? 100;
+            if (!testMode) addCoins(reward, 'map complete!');
+            if (!testMode) showVictoryScreen(reward);
+            else showCoinToast('Goal reached! (test mode)', '#10b981');
+        }
+    });
+}
+function showVictoryScreen(reward) {
+    if (!document.getElementById('caseKeyframes')) {
+        const styleEl = document.createElement('style');
+        styleEl.id = 'caseKeyframes';
+        styleEl.textContent = [
+            '@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}',
+            '@keyframes confettiFall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}'
+        ].join('');
+        document.head.appendChild(styleEl);
+    }
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+        position:fixed; inset:0; background:rgba(0,0,0,0.6);
+        display:flex; align-items:center; justify-content:center;
+        z-index:5000; font-family:system-ui;
+        animation:fadeUp 0.4s ease forwards;
+    `;
+
+    const box = document.createElement('div');
+    box.style.cssText = `
+        background:#ffffff; border-radius:16px; padding:40px 48px;
+        text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.15);
+        border:1px solid #e4e4e7; min-width:320px;
+    `;
+
+    // Draw a little pear preview
+    const pearCanvas = document.createElement('canvas');
+    pearCanvas.width = 80; pearCanvas.height = 100;
+    pearCanvas.style.cssText = 'width:80px;height:100px;display:block;margin:0 auto 16px;';
+    box.appendChild(pearCanvas);
+
+    box.innerHTML += `
+        <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#10b981;margin-bottom:8px;">Level Complete!</div>
+        <div style="font-size:32px;font-weight:800;color:#18181b;margin-bottom:4px;">You made it!</div>
+        <div style="font-size:15px;color:#71717a;margin-bottom:6px;">Reward earned</div>
+        <div style="font-size:28px;font-weight:700;color:#f59e0b;margin-bottom:24px;">🪙 +${reward} coins</div>
+        <div style="display:flex;gap:10px;justify-content:center;">
+            <button id="victoryMenuBtn" style="background:#f4f4f5;color:#27272a;border:1px solid #e4e4e7;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:600;cursor:pointer;">Menu</button>
+            <button id="victoryPlayBtn" style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:600;cursor:pointer;">Play Again</button>
+        </div>
+    `;
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    // Draw pear
+    requestAnimationFrame(() => {
+        const c = pearCanvas.getContext('2d');
+        c.save();
+        c.translate(40, 50);
+        drawBlockGraphic(c, 'player', 60, 75);
+        c.restore();
+    });
+
+    // Confetti
+    spawnConfetti(overlay, '#10b981');
+
+    document.getElementById('victoryMenuBtn').addEventListener('click', () => {
+        overlay.remove();
+        goToMenu();
+    });
+    document.getElementById('victoryPlayBtn').addEventListener('click', () => {
+        overlay.remove();
+        // Reset goal and player
+        objects.forEach(o => { if (o.tag === 'goal') o._completed = false; });
+        resetPlayer(player);
+        resetAllTriggers();
+    });
+}
+function startAudioContext() {
+    if (Tone.context.state !== 'running') {
+        Tone.start();
+    }
+}
+window.addEventListener('keydown', startAudioContext, { once: false });
+canvas.addEventListener('mousedown', startAudioContext, { once: false });
 /* ===========================================================
    MONITOR LOGIC - Player Touch Detection
 ============================================================ */
@@ -4171,6 +4925,39 @@ case 'grass': {
     ctx.restore();
     break;
 }
+case 'goal': {
+    // Flagpole base
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(x + w*0.45, y, w*0.1, h);
+
+    // Flag
+    ctx.fillStyle = '#10b981';
+    ctx.beginPath();
+    ctx.moveTo(x + w*0.55, y + h*0.05);
+    ctx.lineTo(x + w*0.55, y + h*0.45);
+    ctx.lineTo(x + w*0.88, y + h*0.25);
+    ctx.closePath();
+    ctx.fill();
+
+    // Checkered base
+    const tileSize = w * 0.2;
+    const colors = ['#ffffff', '#18181b'];
+    for (let col = 0; col < 5; col++) {
+        for (let row = 0; row < 2; row++) {
+            ctx.fillStyle = colors[(col + row) % 2];
+            ctx.fillRect(
+                x + col * tileSize,
+                y + h - tileSize * 2 + row * tileSize,
+                tileSize, tileSize
+            );
+        }
+    }
+
+    ctx.strokeStyle = '#d97706';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    break;
+}
 
         case 'spawn': {
             // Checkpoint with star
@@ -4399,6 +5186,33 @@ case 'ice': {
     ctx.stroke();
 
     ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    break;
+}
+        case 'platform': {
+    // Main body
+    ctx.fillStyle = '#7c3aed';
+    ctx.fillRect(x, y, w, h);
+
+    // Light top strip
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillRect(x, y, w, h * 0.35);
+
+    // Arrow pattern showing movement direction
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    const arrowCount = Math.floor(w / 20);
+    for (let i = 0; i < arrowCount; i++) {
+        const ax = x + i * 20 + 10;
+        ctx.beginPath();
+        ctx.moveTo(ax - 4, y + h * 0.55);
+        ctx.lineTo(ax,     y + h * 0.75);
+        ctx.lineTo(ax + 4, y + h * 0.55);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    ctx.strokeStyle = '#5b21b6';
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
     break;
@@ -4911,7 +5725,31 @@ if (obj.tag !== "text") {
     }
     }
 }
-
+if (obj.tag === 'platform' && currentTool === 'edit') {
+    const pp = obj.platformProps;
+    if (pp) {
+        ctx.save();
+        ctx.strokeStyle = '#a78bfa';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(pp.startX - camera.x + obj.width/2, pp.startY - camera.y + obj.height/2);
+        ctx.lineTo(pp.endX - camera.x + obj.width/2,   pp.endY - camera.y + obj.height/2);
+        ctx.stroke();
+        // Start dot
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.arc(pp.startX - camera.x + obj.width/2, pp.startY - camera.y + obj.height/2, 5, 0, Math.PI*2);
+        ctx.fill();
+        // End dot
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(pp.endX - camera.x + obj.width/2, pp.endY - camera.y + obj.height/2, 5, 0, Math.PI*2);
+        ctx.fill();
+        ctx.setLineDash([]);
+        ctx.restore();
+    }
+}
     // START: NEW DRAW LOGIC FOR COUNTER TEXT
     if (obj.tag === 'counter') {
         ctx.fillStyle = "white";
@@ -4947,10 +5785,26 @@ if (obj.tag === 'comparer') {
     
     // Draw selection border for Edit tool
     if (currentTool === 'edit' && selectedObject === obj) {
-        ctx.strokeStyle = "yellow";
-        ctx.lineWidth = 4;
-        ctx.strokeRect(obj.x - camera.x, obj.y - camera.y, obj.width, obj.height);
+    ctx.strokeStyle = "#007aff";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(obj.x - camera.x, obj.y - camera.y, obj.width, obj.height);
+    ctx.setLineDash([]);
+
+    // Draw corner handles
+    const handles = getResizeHandles(obj);
+    for (const key in handles) {
+        const hx = handles[key].x;
+        const hy = handles[key].y;
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#007aff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.rect(hx - RESIZE_HANDLE_SIZE/2, hy - RESIZE_HANDLE_SIZE/2, RESIZE_HANDLE_SIZE, RESIZE_HANDLE_SIZE);
+        ctx.fill();
+        ctx.stroke();
     }
+}
 }
 
 // Draw triggers first, then other objects
@@ -5135,6 +5989,11 @@ function drawDebug() {
 ============================================================ */
 
 window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
+        e.preventDefault();
+        undo();
+        return;
+    }
     switch (e.code) {
         case 'ArrowLeft':
         case 'KeyA':
@@ -5157,9 +6016,13 @@ window.addEventListener('keydown', (e) => {
             keys.down = true;
             break;
         case 'Escape':
-            goToMenu();
-            break;
-    }
+          if (testMode) {
+              exitTestMode();
+          } else {
+              goToMenu();
+          }
+          break;
+        }
 });
 
 window.addEventListener('keyup', (e) => {
@@ -5187,6 +6050,11 @@ window.addEventListener('keyup', (e) => {
 let lastTime = 0;
 
 function gameLoop(timestamp) {
+    if (!world) {
+        // Map isn't loaded yet, request the next frame and wait
+        requestAnimationFrame(gameLoop);
+        return;
+    }
     const rawDelta = timestamp - lastTime;
     lastTime = timestamp;
 
@@ -5199,7 +6067,9 @@ function gameLoop(timestamp) {
     checkTriggers();
     checkMonitors();
     checkComparers();
+    updatePlatforms(delta);
     checkResetBreakables();
+    checkGoal();
 
     for (let i = particles.length - 1; i >= 0; i--) {
         particles[i].update();
