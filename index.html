@@ -3563,7 +3563,7 @@ function updatePhysics(delta) {
     // --- 1. Player Controls ---
     if (obj.tag === "player") {
       const accel = 0.5 * delta;
-      const maxSpeed = 6;
+      const maxSpeed = onIce ? 10 : 6;
 
       const onIce = objects.some(o => o.ice && o.solid &&
         obj.x < o.x + o.width && obj.x + obj.width > o.x &&
