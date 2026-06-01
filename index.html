@@ -3823,42 +3823,53 @@ canvas.addEventListener("mousemove", e => {
     // Drag to place
     if (!isMouseDown) return;
     if (playMode) return;
+
     if (isResizing && resizeObject) {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const dx = mx - resizeStartMouse.x;
-    const dy = my - resizeStartMouse.y;
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const dx = mx - resizeStartMouse.x;
+        const dy = my - resizeStartMouse.y;
 
-    let newX = resizeStartRect.x;
-    let newY = resizeStartRect.y;
-    let newW = resizeStartRect.width;
-    let newH = resizeStartRect.height;
+        let newX = resizeStartRect.x;
+        let newY = resizeStartRect.y;
+        let newW = resizeStartRect.width;
+        let newH = resizeStartRect.height;
 
-    if (resizeHandle === 'se') {
-        newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  + dx);
-        newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height + dy);
-    } else if (resizeHandle === 'sw') {
-        newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  - dx);
-        newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height + dy);
-        newX = resizeStartRect.x + resizeStartRect.width - newW;
-    } else if (resizeHandle === 'ne') {
-        newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  + dx);
-        newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height - dy);
-        newY = resizeStartRect.y + resizeStartRect.height - newH;
-    } else if (resizeHandle === 'nw') {
-        newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  - dx);
-        newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height - dy);
-        newX = resizeStartRect.x + resizeStartRect.width  - newW;
-        newY = resizeStartRect.y + resizeStartRect.height - newH;
+        if (resizeHandle === 'se') {
+            newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  + dx);
+            newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height + dy);
+        } else if (resizeHandle === 'sw') {
+            newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  - dx);
+            newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height + dy);
+            newX = resizeStartRect.x + resizeStartRect.width - newW;
+        } else if (resizeHandle === 'ne') {
+            newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  + dx);
+            newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height - dy);
+            newY = resizeStartRect.y + resizeStartRect.height - newH;
+        } else if (resizeHandle === 'nw') {
+            newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  - dx);
+            newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height - dy);
+            newX = resizeStartRect.x + resizeStartRect.width  - newW;
+            newY = resizeStartRect.y + resizeStartRect.height - newH;
+        }
+
+        resizeObject.x = newX;
+        resizeObject.y = newY;
+        resizeObject.width  = newW;
+        resizeObject.height = newH;
+        return;
     }
 
-    resizeObject.x = newX;
-    resizeObject.y = newY;
-    resizeObject.width  = newW;
-    resizeObject.height = newH;
-    return;
-}
+    if (isMoving && selectedObject) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        selectedObject.x = moveStartPos.x + (mx - moveStartMouse.x);
+        selectedObject.y = moveStartPos.y + (my - moveStartMouse.y);
+        return;
+    }
+
     // Only drag-place for block tools, not editor tools or special blocks
     const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
         'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform'];
@@ -3930,29 +3941,30 @@ canvas.addEventListener("mousemove", e => {
         ice: false,
         ...preset
     });
+
     // Cursor hint for resize handles
-if (currentTool === 'edit' && selectedObject && !isResizing && !isMoving) {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const handle = getHandleAtPoint(selectedObject, mx, my);
-    if (handle) {
-        const cursors = { nw: 'nw-resize', ne: 'ne-resize', sw: 'sw-resize', se: 'se-resize' };
-        canvas.style.cursor = cursors[handle];
-    } else {
-        const worldX = mx + camera.x;
-        const worldY = my + camera.y;
-        const inside = worldX >= selectedObject.x &&
-                       worldX <= selectedObject.x + selectedObject.width &&
-                       worldY >= selectedObject.y &&
-                       worldY <= selectedObject.y + selectedObject.height;
-        canvas.style.cursor = inside ? 'grab' : 'default';
+    if (currentTool === 'edit' && selectedObject && !isResizing && !isMoving) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const handle = getHandleAtPoint(selectedObject, mx, my);
+        if (handle) {
+            const cursors = { nw: 'nw-resize', ne: 'ne-resize', sw: 'sw-resize', se: 'se-resize' };
+            canvas.style.cursor = cursors[handle];
+        } else {
+            const worldX = mx + camera.x;
+            const worldY = my + camera.y;
+            const inside = worldX >= selectedObject.x &&
+                           worldX <= selectedObject.x + selectedObject.width &&
+                           worldY >= selectedObject.y &&
+                           worldY <= selectedObject.y + selectedObject.height;
+            canvas.style.cursor = inside ? 'grab' : 'default';
+        }
+    } else if (isMoving) {
+        canvas.style.cursor = 'grabbing';
+    } else if (!isResizing) {
+        canvas.style.cursor = 'default';
     }
-} else if (isMoving) {
-    canvas.style.cursor = 'grabbing';
-} else if (!isResizing) {
-    canvas.style.cursor = 'default';
-}
 });
 
 
