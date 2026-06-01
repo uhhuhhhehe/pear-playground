@@ -655,9 +655,20 @@
         <input type="checkbox" id="setParticles" onchange="toggleSetting('particles')">
     </div>
     <div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
-        <label for="setGrid" style="color:#333; margin:0;">Show Grid</label>
-        <input type="checkbox" id="setGrid" onchange="toggleSetting('grid')">
-    </div>
+    <label for="setGrid" style="color:#333; margin:0;">Show Grid</label>
+    <input type="checkbox" id="setGrid" onchange="toggleSetting('grid')">
+</div>
+<div id="gridSizeRow" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+    <label style="color:#333; margin:0;">Grid Size</label>
+    <select id="setGridSize" onchange="changeGridSize()" style="border:1px solid #ddd; border-radius:6px; padding:4px 8px; font-size:14px;">
+    <option value="10">10 x 10</option>
+    <option value="25">25 x 25</option>
+    <option value="50" selected>50 x 50</option>
+    <option value="100">100 x 100</option>
+    <option value="150">150 x 150</option>
+    <option value="200">200 x 200</option>
+</select>
+</div>
     <div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
         <label for="setDebug" style="color:#333; margin:0;">Show Debug Info</label>
         <input type="checkbox" id="setDebug" onchange="toggleSetting('debug')">
@@ -678,12 +689,19 @@
     <button onclick="closeSettings()" style="width:100%; padding:10px; background:#007aff; color:white; border:none; border-radius:8px; cursor:pointer;">Close</button>
 </div>
 
-<div id="joinGamePopup" style="display: none;">
+<div id="joinGamePopup" style="display:none;">
   <h2>Join Game</h2>
-  
+
   <div class="popup-input-group">
     <label for="joinGameCode">Room Code</label>
-    <input type="text" id="joinGameCode" placeholder="Enter code..." pattern="[0-9]*" inputmode="numeric">
+    <input type="text" id="joinGameCode" placeholder="Enter code..."
+           pattern="[0-9]*" inputmode="numeric"
+           oninput="previewMapThumbnail(this.value)">
+  </div>
+
+  <div id="joinThumbnailBox" style="display:none; margin-bottom:16px; border-radius:8px; overflow:hidden; border:1px solid #e4e4e7;">
+    <img id="joinThumbnailImg" style="width:100%; display:block;" src="" alt="Map preview">
+    <div id="joinThumbnailLabel" style="font-size:12px; color:#71717a; padding:6px 10px; background:#f4f4f5;">Loading preview...</div>
   </div>
 
   <div class="popup-actions">
@@ -790,45 +808,63 @@
     </div>
     
     <div id="standardProps">
-        
-        <div class="input-group">
-            <label for="propText" id="labelPropText" style="display:none;">Text Content:</label>
-            <textarea id="propText" style="display:none;"></textarea>
-        </div>
-        <div class="input-group">
-            <label for="propX">X Position:</label>
-            <input type="number" id="propX">
-        </div>
-        <div class="input-group">
-            <label for="propY">Y Position:</label>
-            <input type="number" id="propY">
-        </div>
-        <div class="input-group">
-            <label for="propOpacity">Opacity (0-1):</label>
-            <input type="number" id="propOpacity" step="0.1" min="0" max="1">
-        </div>
-        <div class="input-group">
-            <label for="propWidth">Width:</label>
-            <input type="number" id="propWidth">
-        </div>
-        <div class="input-group">
-            <label for="propHeight">Height:</label>
-            <input type="number" id="propHeight">
-        </div>
-        
-        <div class="checkbox-group" id="groupPropPushable">
-            <input type="checkbox" id="propPushable">
-            <label for="propPushable">Pushable</label>
-        </div>
-        <div class="checkbox-group" id="groupPropSlime">
-            <input type="checkbox" id="propSlime">
-            <label for="propSlime">Sticky/Slime</label>
-        </div>
-        <div class="checkbox-group" id="groupPropKill">
-            <input type="checkbox" id="propKill">
-            <label for="propKill">Kill Block</label>
-        </div>
+    <div class="input-group">
+        <label for="propText" id="labelPropText" style="display:none;">Text Content:</label>
+        <textarea id="propText" style="display:none;"></textarea>
     </div>
+    <div class="input-group">
+        <label for="propX">X Position:</label>
+        <input type="number" id="propX">
+    </div>
+    <div class="input-group">
+        <label for="propY">Y Position:</label>
+        <input type="number" id="propY">
+    </div>
+    <div class="input-group">
+        <label for="propWidth">Width:</label>
+        <input type="number" id="propWidth">
+    </div>
+    <div class="input-group">
+        <label for="propHeight">Height:</label>
+        <input type="number" id="propHeight">
+    </div>
+    <div class="input-group">
+        <label for="propOpacity">Opacity (0–1):</label>
+        <input type="number" id="propOpacity" step="0.1" min="0" max="1">
+    </div>
+    <div class="input-group">
+        <label for="propGravity">Gravity:</label>
+        <input type="number" id="propGravity" step="0.1" min="0">
+    </div>
+    <div class="checkbox-group" id="groupPropVisible">
+        <input type="checkbox" id="propVisible">
+        <label for="propVisible">Visible</label>
+    </div>
+    <div class="checkbox-group" id="groupPropSolid">
+        <input type="checkbox" id="propSolid">
+        <label for="propSolid">Solid</label>
+    </div>
+    <div class="checkbox-group" id="groupPropPushable">
+        <input type="checkbox" id="propPushable">
+        <label for="propPushable">Pushable</label>
+    </div>
+    <div class="checkbox-group" id="groupPropSlime">
+        <input type="checkbox" id="propSlime">
+        <label for="propSlime">Sticky/Slime</label>
+    </div>
+    <div class="checkbox-group" id="groupPropKill">
+        <input type="checkbox" id="propKill">
+        <label for="propKill">Kill Block</label>
+    </div>
+    <div class="checkbox-group" id="groupPropBounce">
+        <input type="checkbox" id="propBounce">
+        <label for="propBounce">Bounce</label>
+    </div>
+    <div class="checkbox-group" id="groupPropIce">
+        <input type="checkbox" id="propIce">
+        <label for="propIce">Ice</label>
+    </div>
+</div>
     
     <div id="triggerProps" style="display:none;">
         <h4>Trigger Settings</h4>
@@ -1059,7 +1095,7 @@
 <div id="blockCreatorPopup">
   <h3>Create New Block Type</h3>
 
-  <label for="blockTag">Block Name (e.g., "Bouncy Pad"):</label>
+  <label for="blockTag">Block Name:</label>
   <input type="text" id="blockTag"><br>
 
   <label for="blockImageUrl">Image URL (texture):</label>
@@ -1070,13 +1106,20 @@
 
   <label for="blockHeight">Height:</label>
   <input type="number" id="blockHeight" value="50"><br>
-  
+
   <label for="blockGravity">Gravity (0 = static, 0.6 = falls):</label>
   <input type="number" id="blockGravity" value="0" step="0.1"><br>
 
+  <label for="blockOpacity">Opacity (0–1):</label>
+  <input type="number" id="blockOpacity" value="1" step="0.1" min="0" max="1"><br>
+
+  <div class="checkbox-group">
+    <input type="checkbox" id="blockVisible" checked>
+    <label for="blockVisible">Visible</label>
+  </div>
   <div class="checkbox-group">
     <input type="checkbox" id="blockSolid" checked>
-    <label for="blockSolid">Solid (Blocks player)</label>
+    <label for="blockSolid">Solid</label>
   </div>
   <div class="checkbox-group">
     <input type="checkbox" id="blockPushable">
@@ -1090,7 +1133,14 @@
     <input type="checkbox" id="blockKill">
     <label for="blockKill">Kill Block</label>
   </div>
-  
+  <div class="checkbox-group">
+    <input type="checkbox" id="blockBounce">
+    <label for="blockBounce">Bounce</label>
+  </div>
+  <div class="checkbox-group">
+    <input type="checkbox" id="blockIce">
+    <label for="blockIce">Ice</label>
+  </div>
 
   <button onclick="createCustomBlock()">Create Block</button>
   <button onclick="closeBlockCreator()">Cancel</button>
@@ -1167,7 +1217,7 @@ let selectedObjectIndex = -1;
 let ghostX = 0;
 let ghostY = 0;
 let currentTool = null;
-const GRID_SIZE = 50; 
+let GRID_SIZE = 50;
 let START_POS = { x: 200, y: 0 };
 let camera = { x: 0, y: 0 };
 const keys = { left: false, right: false, jump: false, down: false };
@@ -1381,6 +1431,53 @@ let currentUser = null;
 /* ============================================================
    UTILITY FUNCTIONS
 ============================================================ */
+function changeGridSize() {
+    GRID_SIZE = parseInt(document.getElementById("setGridSize").value);
+    saveSettings();
+}
+function snap(val) {
+    if (!settings.grid) return val;
+    return Math.round(val / GRID_SIZE) * GRID_SIZE;
+}
+let thumbnailDebounce = null;
+
+async function previewMapThumbnail(value) {
+    const code = parseInt(value.trim());
+    const box = document.getElementById('joinThumbnailBox');
+    const img = document.getElementById('joinThumbnailImg');
+    const label = document.getElementById('joinThumbnailLabel');
+
+    if (!code || value.trim().length < 3) {
+        box.style.display = 'none';
+        return;
+    }
+
+    clearTimeout(thumbnailDebounce);
+    thumbnailDebounce = setTimeout(async () => {
+        try {
+            const snapshot = await db.ref(`games/${code}/mapData`).once('value');
+            const data = snapshot.val();
+
+            if (!data) {
+                box.style.display = 'none';
+                return;
+            }
+
+            box.style.display = 'block';
+
+            if (data.thumbnail) {
+                img.src = data.thumbnail;
+                img.style.display = 'block';
+                label.textContent = `Room ${code} — tap Join to play`;
+            } else {
+                img.style.display = 'none';
+                label.textContent = `Room ${code} found — no preview available`;
+            }
+        } catch (err) {
+            box.style.display = 'none';
+        }
+    }, 600); // wait 600ms after typing stops
+}
 const SFX = {
     jump: null,
     land: null,
@@ -1915,14 +2012,17 @@ function openSettings() {
     document.getElementById("settingsPopup").style.display = "block";
     document.getElementById("overlay").style.display = "block";
 
-    // Sync all checkboxes with current state
-    document.getElementById("setShake").checked    = settings.shake;
+    document.getElementById("setShake").checked     = settings.shake;
     document.getElementById("setParticles").checked = settings.particles;
-    document.getElementById("setGrid").checked     = settings.grid;
-    document.getElementById("setDebug").checked    = settings.debug;
-    document.getElementById("setFps").checked      = settings.fps;
-    document.getElementById("setMusic").checked = settings.music;
-    document.getElementById("setSfx").checked   = settings.sfx;
+    document.getElementById("setGrid").checked      = settings.grid;
+    document.getElementById("setDebug").checked     = settings.debug;
+    document.getElementById("setFps").checked       = settings.fps;
+    document.getElementById("setMusic").checked     = settings.music;
+    document.getElementById("setSfx").checked       = settings.sfx;
+
+    // Sync grid size dropdown
+    document.getElementById("setGridSize").value = GRID_SIZE;
+    document.getElementById("gridSizeRow").style.display = settings.grid ? "flex" : "none";
 }
 
 function closeSettings() {
@@ -1936,9 +2036,12 @@ function closeSettings() {
 function toggleSetting(key) {
     settings[key] = !settings[key];
     if (key === 'music') {
-    if (settings.music && bgMusic) bgMusic.play().catch(() => {});
-    else if (bgMusic) bgMusic.pause();
-}
+        if (settings.music && bgMusic) bgMusic.play().catch(() => {});
+        else if (bgMusic) bgMusic.pause();
+    }
+    if (key === 'grid') {
+        document.getElementById("gridSizeRow").style.display = settings.grid ? "flex" : "none";
+    }
     saveSettings();
 }
 function rectsCollide(a, b) {
@@ -1952,7 +2055,7 @@ function rectsCollide(a, b) {
 async function saveSettings() {
     if (!currentUser) return;
     try {
-        await db.ref(`userSettings/${currentUser}`).set(settings);
+        await db.ref(`userSettings/${currentUser}`).set({ ...settings, gridSize: GRID_SIZE });
     } catch (err) {
         console.error("Failed to save settings:", err);
     }
@@ -1964,8 +2067,8 @@ async function loadSettings() {
         const snapshot = await db.ref(`userSettings/${currentUser}`).once('value');
         const saved = snapshot.val();
         if (saved) {
-            // Merge saved values into settings, keeping defaults for any missing keys
             Object.assign(settings, saved);
+            if (saved.gridSize) GRID_SIZE = saved.gridSize;
         }
     } catch (err) {
         console.error("Failed to load settings:", err);
@@ -2638,7 +2741,7 @@ async function hostGame() {
     .filter(o => o.tag !== "player")
     .map(o => stripObjectForSave(o));
 
-const rawData = { objects: savableObjects, customBlocks: customBlocks };
+const rawData = { objects: savableObjects, customBlocks: customBlocks, thumbnail: generateMapThumbnail()};
 
 // Strip undefined values — Firebase rejects them silently
 const data = JSON.parse(JSON.stringify(rawData));
@@ -3111,7 +3214,70 @@ function resetAllTriggers() {
         }
     });
 }
+function generateMapThumbnail() {
+    const thumbCanvas = document.createElement('canvas');
+    thumbCanvas.width = 320;
+    thumbCanvas.height = 180;
+    const tc = thumbCanvas.getContext('2d');
 
+    // Sky background
+    const grad = tc.createLinearGradient(0, 0, 0, 180);
+    grad.addColorStop(0, '#3b82f6');
+    grad.addColorStop(1, '#bfdbfe');
+    tc.fillStyle = grad;
+    tc.fillRect(0, 0, 320, 180);
+
+    // Find map bounds to fit all objects
+    const nonPlayer = objects.filter(o => o.tag !== 'player');
+    if (nonPlayer.length === 0) return thumbCanvas.toDataURL('image/jpeg', 0.6);
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nonPlayer.forEach(o => {
+        minX = Math.min(minX, o.x);
+        minY = Math.min(minY, o.y);
+        maxX = Math.max(maxX, o.x + o.width);
+        maxY = Math.max(maxY, o.y + o.height);
+    });
+
+    // Add padding
+    const pad = 50;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const mapW = maxX - minX;
+    const mapH = maxY - minY;
+
+    // Scale to fit thumb
+    const scale = Math.min(320 / mapW, 180 / mapH);
+    const offX = (320 - mapW * scale) / 2 - minX * scale;
+    const offY = (180 - mapH * scale) / 2 - minY * scale;
+
+    // Draw ground line
+    const groundY = (ground.y * scale + offY);
+    tc.fillStyle = '#22c55e';
+    tc.fillRect(0, groundY, 320, 180 - groundY);
+
+    // Draw each object as a colored rect
+    const tagColors = {
+        box: '#94a3b8', wood: '#c17f3a', metal: '#64748b', grass: '#16a34a',
+        pushablebox: '#d97706', sticky: '#4ade80', kill: '#ef4444',
+        bounce: '#f59e0b', ice: '#7dd3fc', breakable: '#94a3b8',
+        platform: '#7c3aed', spawn: '#1d4ed8', defaultspawn: '#15803d',
+        goal: '#10b981', trigger: 'rgba(99,102,241,0.5)', text: 'rgba(100,100,100,0.5)',
+        counter: '#1d4ed8', comparer: '#6d28d9', monitor: '#1e293b', clock: '#1e293b'
+    };
+
+    nonPlayer.forEach(o => {
+        const col = tagColors[o.tag] || '#6366f1';
+        tc.fillStyle = col;
+        tc.fillRect(
+            o.x * scale + offX,
+            o.y * scale + offY,
+            Math.max(2, o.width * scale),
+            Math.max(2, o.height * scale)
+        );
+    });
+
+    return thumbCanvas.toDataURL('image/jpeg', 0.6);
+}
 // --- Functions for Block Creator Popup ---
 
 function openBlockCreator() {
@@ -3125,6 +3291,10 @@ function openBlockCreator() {
     document.getElementById("blockPushable").checked = false;
     document.getElementById("blockSlime").checked = false;
     document.getElementById("blockKill").checked = false;
+    document.getElementById("blockOpacity").value      = 1;
+document.getElementById("blockVisible").checked    = true;
+document.getElementById("blockBounce").checked     = false;
+document.getElementById("blockIce").checked        = false;
     
     // Show popup
     document.getElementById("blockCreatorPopup").style.display = "block";
@@ -3153,18 +3323,23 @@ function createCustomBlock() {
 
     // --- Create Definition ---
     const definition = {
-        tag: tag,
-        shape: "box", // Custom blocks are always boxes for now
-        imageUrl: imageUrl,
-        width: parseFloat(document.getElementById("blockWidth").value) || 50,
-        height: parseFloat(document.getElementById("blockHeight").value) || 50,
-        gravity: parseFloat(document.getElementById("blockGravity").value) || 0,
-        solid: document.getElementById("blockSolid").checked,
-        pushable: document.getElementById("blockPushable").checked,
-        slime: document.getElementById("blockSlime").checked,
-        kill: document.getElementById("blockKill").checked,
-        spawn: false // Custom blocks can't be spawn points
-    };
+    tag: tag,
+    shape: "box",
+    imageUrl: imageUrl,
+    width:    parseFloat(document.getElementById("blockWidth").value)   || 50,
+    height:   parseFloat(document.getElementById("blockHeight").value)  || 50,
+    gravity:  parseFloat(document.getElementById("blockGravity").value) || 0,
+    opacity:  document.getElementById("blockVisible").checked
+                ? parseFloat(document.getElementById("blockOpacity").value) ?? 1
+                : 0,
+    solid:    document.getElementById("blockSolid").checked,
+    pushable: document.getElementById("blockPushable").checked,
+    slime:    document.getElementById("blockSlime").checked,
+    kill:     document.getElementById("blockKill").checked,
+    bounce:   document.getElementById("blockBounce").checked,
+    ice:      document.getElementById("blockIce").checked,
+    spawn:    false
+};
 
     // --- Store Definition ---
     customBlocks[tag] = definition;
@@ -3217,133 +3392,131 @@ function openPopup(obj) {
   selectedObject = obj;
   selectedObjectIndex = objects.indexOf(obj);
 
-  // Set general properties (these are visible for all objects)
-  document.getElementById("propTag").value = obj.tag;
-  document.getElementById("propGroup").value = Array.isArray(obj.group)
-    ? obj.group.join(', ')
-    : (obj.group || "");
-  document.getElementById("propWidth").value = obj.width;
-  document.getElementById("propHeight").value = obj.height;
-  // --- LOAD NEW PROPS ---
-  document.getElementById("propX").value = Math.round(obj.x); // Rounding helps cleanup float errors
-  document.getElementById("propY").value = Math.round(obj.y);
-  document.getElementById("propOpacity").value = obj.opacity !== undefined ? obj.opacity : 1;
-  // ----------------------
-  
-  document.getElementById("propPushable").checked = !!obj.pushable;
-  document.getElementById("propSlime").checked = !!obj.slime;
-  document.getElementById("propKill").checked = !!obj.kill;
-  
-  // Define Object Types
-  const isText = obj.tag === "text";
-  const isTrigger = obj.tag === "trigger";
-  const isMonitor = obj.tag === 'monitor';
-  const isCounter = obj.tag === 'counter'; // NEW CHECK
-  const isComparer = obj.tag === 'comparer';
+  const isText     = obj.tag === "text";
+  const isTrigger  = obj.tag === "trigger";
+  const isMonitor  = obj.tag === "monitor";
+  const isCounter  = obj.tag === "counter";
+  const isComparer = obj.tag === "comparer";
+  const isClock    = obj.tag === "clock";
+  const isPlatform = obj.tag === "platform";
+  const isGoal     = obj.tag === "goal";
+  const isSpawn    = obj.tag === "spawn" || obj.tag === "defaultspawn";
 
-  // --- 1. CORE VISIBILITY FIX ---
-  
-  // Text properties visibility
-  document.getElementById("propText").value = isText ? obj.text : "";
-  document.getElementById("propText").style.display = isText ? "block" : "none";
-  document.getElementById("labelPropText").style.display = isText ? "block" : "none";
-  document.getElementById("comparerProps").style.display = isComparer ? 'block' : 'none';
-  document.getElementById("counterProps").style.display = isCounter ? 'block' : 'none'; 
-  
-  // Show only the relevant custom panel
-  document.getElementById("triggerProps").style.display = isTrigger ? "block" : "none";
-  document.getElementById("monitorProps").style.display = isMonitor ? 'block' : 'none'; 
-  
-  
-  // --- 2. Hide irrelevant standard properties (Pushable, Slime, Kill checkboxes) ---
-  // If the main standardProps container is hidden, these should be too.
-  // We explicitly check for spawn, text, trigger, and monitor.
-  const showPhysicsProps = !(obj.tag === "spawn" || isTrigger || isMonitor || isText);
-  document.getElementById("groupPropPushable").style.display = showPhysicsProps ? "flex" : "none";
-  document.getElementById("groupPropSlime").style.display = showPhysicsProps ? "flex" : "none";
-  document.getElementById("groupPropKill").style.display = showPhysicsProps ? "flex" : "none";
-  
-  
-  // --- 3. Populate Custom Fields ---
-  
-  // If it's a trigger, populate the trigger fields
+  // General
+  document.getElementById("propTag").value     = obj.tag;
+  document.getElementById("propGroup").value   = Array.isArray(obj.group) ? obj.group.join(', ') : (obj.group || "");
+  document.getElementById("propX").value       = Math.round(obj.x);
+  document.getElementById("propY").value       = Math.round(obj.y);
+  document.getElementById("propWidth").value   = obj.width;
+  document.getElementById("propHeight").value  = obj.height;
+  document.getElementById("propOpacity").value = obj.opacity !== undefined ? obj.opacity : 1;
+  document.getElementById("propGravity").value = obj.gravity ?? 0;
+
+  // Text
+  document.getElementById("propText").value                  = isText ? obj.text : "";
+  document.getElementById("propText").style.display          = isText ? "block" : "none";
+  document.getElementById("labelPropText").style.display     = isText ? "block" : "none";
+
+  // Physics checkboxes
+  const showPhysics = !(isSpawn || isTrigger || isMonitor || isText);
+  document.getElementById("propVisible").checked  = (obj.opacity ?? 1) > 0;
+  document.getElementById("propSolid").checked    = obj.solid !== false;
+  document.getElementById("propPushable").checked = !!obj.pushable;
+  document.getElementById("propSlime").checked    = !!obj.slime;
+  document.getElementById("propKill").checked     = !!obj.kill;
+  document.getElementById("propBounce").checked   = !!obj.bounce;
+  document.getElementById("propIce").checked      = !!obj.ice;
+
+  document.getElementById("groupPropVisible").style.display  = showPhysics ? "flex" : "none";
+  document.getElementById("groupPropSolid").style.display    = showPhysics ? "flex" : "none";
+  document.getElementById("groupPropPushable").style.display = showPhysics ? "flex" : "none";
+  document.getElementById("groupPropSlime").style.display    = showPhysics ? "flex" : "none";
+  document.getElementById("groupPropKill").style.display     = showPhysics ? "flex" : "none";
+  document.getElementById("groupPropBounce").style.display   = showPhysics ? "flex" : "none";
+  document.getElementById("groupPropIce").style.display      = showPhysics ? "flex" : "none";
+
+  // Section panels
+  document.getElementById("triggerProps").style.display  = isTrigger  ? "block" : "none";
+  document.getElementById("monitorProps").style.display  = isMonitor  ? "block" : "none";
+  document.getElementById("counterProps").style.display  = isCounter  ? "block" : "none";
+  document.getElementById("comparerProps").style.display = isComparer ? "block" : "none";
+  document.getElementById("clockProps").style.display    = isClock    ? "block" : "none";
+  document.getElementById("platformProps").style.display = isPlatform ? "block" : "none";
+  document.getElementById("goalProps").style.display     = isGoal     ? "block" : "none";
+
+  // Trigger fields
   if (isTrigger) {
     const mods = obj.mods || {};
-
-    document.getElementById("counterProps").style.display = isCounter ? 'block' : 'none';
-
-    document.getElementById("propTargetGroup").value = mods.targetGroup || "";
-    document.getElementById("propModDelay").value = mods.delay ?? "";
-    document.getElementById("propModOneTime").checked = !!mods.oneTime;
-    
-    document.getElementById("propModX").value = mods.x ?? "";
-    document.getElementById("propModY").value = mods.y ?? "";
-    document.getElementById("propModVX").value = mods.vx ?? "";
-    document.getElementById("propModVY").value = mods.vy ?? "";
-    document.getElementById("propModOpacity").value = mods.opacity ?? "";
-    document.getElementById("propModWidth").value = mods.width ?? "";
-    document.getElementById("propModHeight").value = mods.height ?? "";
-    
-    document.getElementById("propModSolidVal").value = mods.solid ?? "";
-    document.getElementById("propModKillVal").value = mods.kill ?? "";
-    document.getElementById("propModSlimeVal").value = mods.slime ?? "";
-    
-    document.getElementById("propModActiveVal").value = mods.active ?? "";
-    
-    const modText = mods.text ?? "";
+    document.getElementById("propTargetGroup").value    = mods.targetGroup || "";
+    document.getElementById("propModDelay").value       = mods.delay ?? "";
+    document.getElementById("propModOneTime").checked   = !!mods.oneTime;
+    document.getElementById("propModX").value           = mods.x ?? "";
+    document.getElementById("propModY").value           = mods.y ?? "";
+    document.getElementById("propModVX").value          = mods.vx ?? "";
+    document.getElementById("propModVY").value          = mods.vy ?? "";
+    document.getElementById("propModOpacity").value     = mods.opacity ?? "";
+    document.getElementById("propModWidth").value       = mods.width ?? "";
+    document.getElementById("propModHeight").value      = mods.height ?? "";
+    document.getElementById("propModSolidVal").value    = mods.solid ?? "";
+    document.getElementById("propModKillVal").value     = mods.kill ?? "";
+    document.getElementById("propModSlimeVal").value    = mods.slime ?? "";
+    document.getElementById("propModActiveVal").value   = mods.active ?? "";
     const changeText = mods.text !== undefined;
-    document.getElementById("propModTextCheck").checked = changeText;
-    document.getElementById("propModText").value = modText;
-    document.getElementById("propModText").style.display = changeText ? 'block' : 'none';
+    document.getElementById("propModTextCheck").checked      = changeText;
+    document.getElementById("propModText").value             = mods.text ?? "";
+    document.getElementById("propModText").style.display     = changeText ? "block" : "none";
   }
-  
-  // If it's a monitor, populate the fields
-    if (isMonitor) {
-        const monProps = obj.monProps || {};
-        document.getElementById("monTargetGroup").value = monProps.targetGroup || "";
-        document.getElementById("monOutputTouch").value = monProps.outputTouch || "";
-        document.getElementById("monOutputClick").value = monProps.outputClick || "";
-        document.getElementById("monOneTime").checked = !!monProps.oneTime;
-    }
+
+  // Monitor fields
+  if (isMonitor) {
+    const mp = obj.monProps || {};
+    document.getElementById("monTargetGroup").value  = mp.targetGroup || "";
+    document.getElementById("monOutputTouch").value  = mp.outputTouch || "";
+    document.getElementById("monOutputClick").value  = mp.outputClick || "";
+    document.getElementById("monOneTime").checked    = !!mp.oneTime;
+  }
+
+  // Counter fields
   if (isCounter) {
-      document.getElementById("propCountLimit").value = obj.limit || 5;
-      document.getElementById("propCountTarget").value = obj.targetGroup || "";
-      document.getElementById("propCountGroup").value = obj.countGroup || "";
+    document.getElementById("propCountLimit").value  = obj.limit || 5;
+    document.getElementById("propCountTarget").value = obj.targetGroup || "";
+    document.getElementById("propCountGroup").value  = obj.countGroup || "";
   }
+
+  // Comparer fields
   if (isComparer) {
-    const cmpProps = obj.comparerProps || {};
-    document.getElementById("propCompareGroup1").value = cmpProps.group1 || "";
-    document.getElementById("propCompareOperator").value = cmpProps.operator || "==";
-    document.getElementById("propCompareGroup2").value = cmpProps.group2 || "";
-    document.getElementById("propCompareTriggerGroup").value = cmpProps.triggerGroup || "";
-    document.getElementById("propCompareOneTime").checked = !!cmpProps.oneTime;
-}
-  const isClock = obj.tag === 'clock';
-  document.getElementById("clockProps").style.display = isClock ? 'block' : 'none';
+    const cp = obj.comparerProps || {};
+    document.getElementById("propCompareGroup1").value      = cp.group1 || "";
+    document.getElementById("propCompareOperator").value    = cp.operator || "==";
+    document.getElementById("propCompareGroup2").value      = cp.group2 || "";
+    document.getElementById("propCompareTriggerGroup").value = cp.triggerGroup || "";
+    document.getElementById("propCompareOneTime").checked   = !!cp.oneTime;
+  }
+
+  // Clock fields
   if (isClock) {
     document.getElementById("propClockInterval").value = obj.interval ?? 3;
-    document.getElementById("propClockTarget").value = obj.targetGroup || "";
+    document.getElementById("propClockTarget").value   = obj.targetGroup || "";
   }
-  const isPlatform = obj.tag === 'platform';
-document.getElementById("platformProps").style.display = isPlatform ? 'block' : 'none';
-if (isPlatform) {
+
+  // Platform fields
+  if (isPlatform) {
     const pp = obj.platformProps || {};
     document.getElementById("propPlatStartX").value = pp.startX ?? obj.x;
     document.getElementById("propPlatStartY").value = pp.startY ?? obj.y;
-    document.getElementById("propPlatEndX").value = pp.endX ?? obj.x + 200;
-    document.getElementById("propPlatEndY").value = pp.endY ?? obj.y;
-    document.getElementById("propPlatSpeed").value = pp.speed ?? 2;
-}
-const isGoal = obj.tag === 'goal';
-document.getElementById("goalProps").style.display = isGoal ? 'block' : 'none';
-if (isGoal) {
+    document.getElementById("propPlatEndX").value   = pp.endX ?? obj.x + 200;
+    document.getElementById("propPlatEndY").value   = pp.endY ?? obj.y;
+    document.getElementById("propPlatSpeed").value  = pp.speed ?? 2;
+  }
+
+  // Goal fields
+  if (isGoal) {
     document.getElementById("propGoalReward").value = obj.coinReward ?? 100;
-}
-  // Show Popup
-  document.getElementById("popup").style.display = "block";
+  }
+
+  document.getElementById("popup").style.display   = "block";
   document.getElementById("overlay").style.display = "block";
 }
-
 function closePopup() {
   document.getElementById("popup").style.display = "none";
   document.getElementById("overlay").style.display = "none";
@@ -3448,13 +3621,19 @@ selectedObject.group = rawGroup
 }  else if (selectedObject.tag === 'goal') {
     selectedObject.coinReward = parseInt(document.getElementById("propGoalReward").value) || 100;
 } else {
-    // Save standard properties (non-triggers)
+    selectedObject.gravity  = parseFloat(document.getElementById("propGravity").value) || 0;
+    selectedObject.solid    = document.getElementById("propSolid").checked;
     selectedObject.pushable = document.getElementById("propPushable").checked;
-    selectedObject.slime = document.getElementById("propSlime").checked;
-    selectedObject.kill = document.getElementById("propKill").checked;
+    selectedObject.slime    = document.getElementById("propSlime").checked;
+    selectedObject.kill     = document.getElementById("propKill").checked;
+    selectedObject.bounce   = document.getElementById("propBounce").checked;
+    selectedObject.ice      = document.getElementById("propIce").checked;
+
+    const visible = document.getElementById("propVisible").checked;
+    if (!visible) selectedObject.opacity = 0;
 
     if (selectedObject.tag === "text") {
-      selectedObject.text = document.getElementById("propText").value;
+        selectedObject.text = document.getElementById("propText").value;
     }
 }// <--- VITAL: This brace closes the 'else if (monitor)' CODE BLOCK
 
@@ -3636,7 +3815,7 @@ if (clickedObject) {
         tag: "box",
         shape: "box",
         x, y,
-        width: GRID_SIZE, height: GRID_SIZE,
+        width: 50, height: 50,  // was GRID_SIZE — now always 50
         vx: 0, vy: 0,
         gravity: 0,
         pushable: false,
@@ -3837,22 +4016,22 @@ canvas.addEventListener("mousemove", e => {
         let newH = resizeStartRect.height;
 
         if (resizeHandle === 'se') {
-            newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  + dx);
-            newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height + dy);
-        } else if (resizeHandle === 'sw') {
-            newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  - dx);
-            newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height + dy);
-            newX = resizeStartRect.x + resizeStartRect.width - newW;
-        } else if (resizeHandle === 'ne') {
-            newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  + dx);
-            newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height - dy);
-            newY = resizeStartRect.y + resizeStartRect.height - newH;
-        } else if (resizeHandle === 'nw') {
-            newW = Math.max(MIN_BLOCK_SIZE, resizeStartRect.width  - dx);
-            newH = Math.max(MIN_BLOCK_SIZE, resizeStartRect.height - dy);
-            newX = resizeStartRect.x + resizeStartRect.width  - newW;
-            newY = resizeStartRect.y + resizeStartRect.height - newH;
-        }
+    newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  + dx));
+    newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height + dy));
+} else if (resizeHandle === 'sw') {
+    newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  - dx));
+    newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height + dy));
+    newX = resizeStartRect.x + resizeStartRect.width - newW;
+} else if (resizeHandle === 'ne') {
+    newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  + dx));
+    newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height - dy));
+    newY = resizeStartRect.y + resizeStartRect.height - newH;
+} else if (resizeHandle === 'nw') {
+    newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  - dx));
+    newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height - dy));
+    newX = resizeStartRect.x + resizeStartRect.width  - newW;
+    newY = resizeStartRect.y + resizeStartRect.height - newH;
+}
 
         resizeObject.x = newX;
         resizeObject.y = newY;
@@ -3862,14 +4041,13 @@ canvas.addEventListener("mousemove", e => {
     }
 
     if (isMoving && selectedObject) {
-        const rect = canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        selectedObject.x = moveStartPos.x + (mx - moveStartMouse.x);
-        selectedObject.y = moveStartPos.y + (my - moveStartMouse.y);
-        return;
-    }
-
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    selectedObject.x = snap(moveStartPos.x + (mx - moveStartMouse.x));
+    selectedObject.y = snap(moveStartPos.y + (my - moveStartMouse.y));
+    return;
+}
     // Only drag-place for block tools, not editor tools or special blocks
     const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
         'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform'];
@@ -3885,9 +4063,14 @@ canvas.addEventListener("mousemove", e => {
     const y = clickY;
 
     // Don't place on top of existing objects
-    const occupied = objects.some(obj =>
-        obj.x === x && obj.y === y && obj.tag !== 'player'
-    );
+    // NEW — checks actual overlap based on block size
+const placeW = customBlocks[currentTool]?.width ?? 50;
+const placeH = customBlocks[currentTool]?.height ?? 50;
+const occupied = objects.some(o =>
+    o.tag !== 'player' &&
+    x < o.x + o.width  && x + placeW > o.x &&
+    y < o.y + o.height && y + placeH > o.y
+);
     if (occupied) return;
 
     // Handle custom blocks
@@ -3925,7 +4108,7 @@ canvas.addEventListener("mousemove", e => {
         tag: "box",
         shape: "box",
         x, y,
-        width: GRID_SIZE, height: GRID_SIZE,
+        width: 50, height: 50,  // was GRID_SIZE
         vx: 0, vy: 0,
         gravity: 0,
         pushable: false,
@@ -3966,7 +4149,234 @@ canvas.addEventListener("mousemove", e => {
         canvas.style.cursor = 'default';
     }
 });
+function drawScaledBlock(ctx, tag, w, h) {
+    const x = -w / 2, y = -h / 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
 
+    switch (tag) {
+        case 'box': {
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = '#64748b';
+            ctx.lineWidth = 1.5;
+            const bH = 16, bW = 32;
+            const numRows = Math.ceil(h / bH);
+            // Horizontal mortar
+            for (let r = 1; r < numRows; r++) {
+                ctx.beginPath();
+                ctx.moveTo(x, y + r * bH);
+                ctx.lineTo(x + w, y + r * bH);
+                ctx.stroke();
+            }
+            // Vertical mortar — fixed brick width, alternating offset
+            for (let r = 0; r < numRows; r++) {
+                const offset = r % 2 === 0 ? bW : bW / 2;
+                for (let vx = offset; vx < w; vx += bW) {
+                    ctx.beginPath();
+                    ctx.moveTo(x + vx, y + r * bH);
+                    ctx.lineTo(x + vx, Math.min(y + (r + 1) * bH, y + h));
+                    ctx.stroke();
+                }
+            }
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+        case 'wood': {
+            ctx.fillStyle = '#c17f3a';
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = '#8b5a1e';
+            ctx.lineWidth = 1.5;
+            const pH = 16, pW = 48;
+            const numPlanks = Math.ceil(h / pH);
+            for (let r = 1; r < numPlanks; r++) {
+                ctx.beginPath();
+                ctx.moveTo(x, y + r * pH);
+                ctx.lineTo(x + w, y + r * pH);
+                ctx.stroke();
+            }
+            for (let r = 0; r < numPlanks; r++) {
+                const offset = r % 2 === 0 ? pW : pW / 2;
+                for (let vx = offset; vx < w; vx += pW) {
+                    ctx.beginPath();
+                    ctx.moveTo(x + vx, y + r * pH);
+                    ctx.lineTo(x + vx, Math.min(y + (r + 1) * pH, y + h));
+                    ctx.stroke();
+                }
+            }
+            ctx.strokeStyle = '#6b3a10'; ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+        case 'metal': {
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(x, y, w, h);
+            // Sheen only at very top
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.fillRect(x, y, w, Math.min(h * 0.15, 10));
+            // Panel grid at 50px intervals
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 1.5;
+            for (let px = 50; px < w; px += 50) {
+                ctx.beginPath(); ctx.moveTo(x + px, y + 4); ctx.lineTo(x + px, y + h - 4); ctx.stroke();
+            }
+            for (let py = 50; py < h; py += 50) {
+                ctx.beginPath(); ctx.moveTo(x + 4, y + py); ctx.lineTo(x + w - 4, y + py); ctx.stroke();
+            }
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+        case 'grass': {
+            // Dirt body
+            ctx.fillStyle = '#92400e';
+            ctx.fillRect(x, y, w, h);
+            // Green strip only at top
+            const grassH = Math.min(14, h * 0.3);
+            ctx.fillStyle = '#16a34a';
+            ctx.fillRect(x, y, w, grassH);
+            // Grass blades along top edge
+            ctx.fillStyle = '#15803d';
+            const blades = Math.floor(w / 10);
+            for (let i = 0; i < blades; i++) {
+                const bx = x + (i / blades) * w + 4;
+                ctx.beginPath();
+                ctx.moveTo(bx - 2, y + grassH);
+                ctx.quadraticCurveTo(bx, y + grassH * 0.3, bx + 2, y + grassH);
+                ctx.fill();
+            }
+            ctx.strokeStyle = '#14532d'; ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+        case 'sticky': {
+            ctx.fillStyle = '#4ade80';
+            ctx.fillRect(x, y, w, h);
+            ctx.fillStyle = '#86efac';
+            const count = Math.max(3, Math.floor((w * h) / 500));
+            for (let i = 0; i < count; i++) {
+                ctx.beginPath();
+                ctx.arc(
+                    x + 5 + ((i * 137) % Math.max(1, w - 10)),
+                    y + 5 + ((i * 97)  % Math.max(1, h - 10)),
+                    4, 0, Math.PI * 2
+                );
+                ctx.fill();
+            }
+            // Slime drip at bottom
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath();
+            ctx.arc(x + w * 0.5, y + h + 2, w * 0.08, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+        case 'kill': {
+            ctx.fillStyle = '#8e8e93';
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = '#48484a'; ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            // Centered warning sign
+            ctx.save();
+            const signSize = Math.min(w, h) * 0.55;
+            ctx.scale(signSize / 20, signSize / 20);
+            ctx.fillStyle = '#fbbf24';
+            ctx.lineJoin = 'round'; ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, -9); ctx.lineTo(9, 8); ctx.lineTo(-9, 8);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.moveTo(-1,-3); ctx.lineTo(1,-3); ctx.lineTo(0.7,2); ctx.lineTo(-0.7,2);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, 4.5, 0.9, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+            break;
+        }
+        case 'breakable': {
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(x, y, w, h);
+            // Crack lines scaled to full block
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(x+w*0.5, y);
+            ctx.lineTo(x+w*0.38, y+h*0.38);
+            ctx.lineTo(x+w*0.6,  y+h*0.58);
+            ctx.lineTo(x+w*0.5,  y+h);
+            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x+w*0.38,y+h*0.38); ctx.lineTo(x,y+h*0.5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x+w*0.6,y+h*0.58); ctx.lineTo(x+w,y+h*0.45); ctx.stroke();
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+        case 'bounce': {
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillRect(x, y, w, h);
+            // Darker bottom strip
+            ctx.fillStyle = '#d97706';
+            ctx.fillRect(x, y + h * 0.75, w, h * 0.25);
+            // Arrow centered on full block
+            ctx.fillStyle = '#fef08a';
+            ctx.beginPath();
+            ctx.moveTo(x+w*0.5,  y+h*0.12); ctx.lineTo(x+w*0.78, y+h*0.48);
+            ctx.lineTo(x+w*0.62, y+h*0.48); ctx.lineTo(x+w*0.62, y+h*0.72);
+            ctx.lineTo(x+w*0.38, y+h*0.72); ctx.lineTo(x+w*0.38, y+h*0.48);
+            ctx.lineTo(x+w*0.22, y+h*0.48);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#fef08a'; ctx.lineWidth = 1; ctx.stroke();
+            ctx.strokeStyle = '#b45309'; ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+        case 'ice': {
+            ctx.fillStyle = '#7dd3fc';
+            ctx.fillRect(x, y, w, h);
+            ctx.fillStyle = '#bae6fd';
+            ctx.fillRect(x + 4, y + 4, w - 8, h - 8);
+            // Sheen only at top
+            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            ctx.fillRect(x + 4, y + 4, w - 8, Math.min((h - 8) * 0.2, 8));
+            // Single crack across full block
+            ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+            ctx.lineWidth = 1.2; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(x+w*0.35, y+h*0.3);
+            ctx.lineTo(x+w*0.55, y+h*0.55);
+            ctx.lineTo(x+w*0.45, y+h*0.75);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x+w*0.55, y+h*0.55);
+            ctx.lineTo(x+w*0.72, y+h*0.5);
+            ctx.stroke();
+            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+        case 'pushablebox': {
+            ctx.fillStyle = '#d97706';
+            ctx.fillRect(x, y, w, h);
+            // X lines across full block
+            ctx.strokeStyle = '#a16207'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x+w, y+h); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x+w, y); ctx.lineTo(x, y+h); ctx.stroke();
+            // Inset border
+            const inset = Math.min(w, h) * 0.06;
+            ctx.strokeStyle = '#92400e'; ctx.lineWidth = 3;
+            ctx.strokeRect(x+inset, y+inset, w-inset*2, h-inset*2);
+            ctx.strokeStyle = '#78350f'; ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            break;
+        }
+        default:
+            drawBlockGraphic(ctx, tag, w, h);
+    }
+
+    ctx.restore();
+}
 
 /* ============================================================
    PHYSICS
@@ -4010,7 +4420,8 @@ function checkCollisions(obj, axis) {
     if (other === obj || !other.solid || other.tag === 'trigger') continue;
     // --- ADD THIS LINE ---
     // Optimization: simple distance check. If 'other' is too far away (e.g. > 200px), skip complex collision math.
-    if (Math.abs(obj.x - other.x) > 200 || Math.abs(obj.y - other.y) > 200) continue; 
+    const maxReach = Math.max(obj.width, obj.height, other.width, other.height) + 10;
+if (Math.abs(obj.x - other.x) > maxReach || Math.abs(obj.y - other.y) > maxReach) continue;
     // --------------------
     
     // *** NEW LOGIC: Prevent pushing the player unless the object is the player. ***
@@ -4811,7 +5222,7 @@ case 'grass': {
             ctx.strokeStyle = '#a16207'; ctx.lineWidth = 1.5;
             ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y + h); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x, y + h); ctx.stroke();
-            ctx.strokeStyle = '#92400e'; ctx.lineWidth = 3;
+            ctx.strokeStyle = '#92400e'; ctx.lineWidth = 2;
             ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
             ctx.strokeStyle = '#78350f'; ctx.lineWidth = 2;
             ctx.strokeRect(x, y, w, h);
@@ -4839,7 +5250,7 @@ case 'grass': {
 
     // 2. DARK GRAY OUTLINE
     ctx.strokeStyle = '#48484a'; // Rich, darker gray for definition
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
 
     // 3. WARNING TRIANGLE IN THE MIDDLE
@@ -5082,7 +5493,7 @@ case 'goal': {
             ctx.beginPath();
             ctx.moveTo(x + w * 0.6, y + h * 0.58);
             ctx.lineTo(x + w, y + h * 0.45); ctx.stroke();
-            ctx.strokeStyle = '#475569'; ctx.lineWidth = 2;
+            ctx.strokeStyle = '#475569';ctx.lineWidth = 2;
             ctx.strokeRect(x, y, w, h);
             break;
         }
@@ -5238,7 +5649,7 @@ case 'ice': {
   if (skin.cracks) {
     ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x+w*0.5,y+h*0.2); ctx.lineTo(x+w*0.35,y+h*0.5); ctx.lineTo(x+w*0.55,y+h*0.65); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x+w*0.35,y+h*0.5); ctx.lineTo(x,y+h*0.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x+w*0.35,y+h*0.5); ctx.lineTo(x,y+h*0.5); ctx.stroke(); 
   }
   if (skin.gold) {
     ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.2;
@@ -5254,7 +5665,7 @@ case 'ice': {
     ctx.closePath(); ctx.fill();
   }
   if (skin.neon) {
-    ctx.strokeStyle = '#f0abfc'; ctx.lineWidth = 2;
+    ctx.strokeStyle = '#f0abfc'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(x+w*0.5, y+h*0.6, w*0.3, 0, Math.PI*2); ctx.stroke();
     ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(x+w*0.5, y+h*0.35, w*0.17, 0, Math.PI*2); ctx.stroke();
@@ -5272,7 +5683,7 @@ case 'ice': {
     ctx.strokeRect(x+w*0.54, y+h*0.6, w*0.18, h*0.14);
   }
   if (skin.swirl) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(x+w*0.5, y+h*0.6, w*0.25, 0, Math.PI*1.5);
     ctx.stroke();
@@ -5529,8 +5940,8 @@ function drawGhost() {
     
     // --- Handle Built-in Block Ghost ---
     } else {
-        let width = (currentTool === 'text') ? 150 : GRID_SIZE;
-        let height = (currentTool === 'text') ? 40 : GRID_SIZE;
+        let width = (currentTool === 'text') ? 150 : 50;
+let height = (currentTool === 'text') ? 40 : 50;
         if (currentTool === 'trigger') {
             width = GRID_SIZE;
             height = GRID_SIZE;
@@ -5606,165 +6017,173 @@ function drawFPS() {
     
     ctx.restore();
 }
-// Re-usable function to draw a single object
+
 function drawSingleObject(obj) {
     ctx.save();
     
-    // Apply object opacity
-    // If trigger is inactive, make it more transparent
     let opacity = obj.opacity ?? 1;
-    if (obj.tag === 'trigger' && !obj.active) {
-        opacity *= 0.3; // Make inactive triggers much fainter
-    }
+    if (obj.tag === 'trigger' && !obj.active) opacity *= 0.3;
     ctx.globalAlpha = opacity;
 
-    // center of the object
     const centerX = obj.x - camera.x + obj.width / 2;
     const centerY = obj.y - camera.y + obj.height / 2;
 
-    // Move to center and scale
     ctx.translate(centerX, centerY);
     ctx.scale(obj.scaleX, obj.scaleY);
-    
-    // Draw Text blocks
-    // ... inside drawSingleObject(obj) ...
 
-    // Draw Text blocks
+    // Text blocks
     if (obj.tag === "text") {
-      // Background box drawing remains the same
-      ctx.fillStyle = "rgba(100,100,100,0.5)";
-      ctx.fillRect(-obj.width/2, -obj.height/2, obj.width, obj.height);
-      
-      // Text Style
-      ctx.fillStyle = "white";
-      const fontSize = 16;
-      ctx.font = `${fontSize}px sans-serif`;
-      
-      // Calculate the padding inside the box (e.g., 10 pixels from the edge)
-      const textMaxWidth = obj.width - 20;
-      const lineHeight = fontSize + 4; // 20px line height (16px font + 4px spacing)
-      
-      // --- WRAPPING LOGIC ---
-      // Step 1: Combine multiline text (separated by '\n') into a single string for wrapping
-      const fullText = obj.text.replace(/\\n/g, ' '); 
-
-      // Step 2: Use the helper function to generate the wrapped lines
-      const wrappedLines = wrapText(ctx, fullText, textMaxWidth);
-
-      // Step 3: Draw each wrapped line
-      wrappedLines.forEach((line, index) => {
-          // Calculate the vertical position based on index
-          const textY = (index * lineHeight) - obj.height/2 + lineHeight + 5; // +5 for a small top margin
-
-          // Draw the text
-          // Positioned 10px from the left edge of the block
-          ctx.fillText(line, -obj.width/2 + 10, textY); 
-      });
+        ctx.fillStyle = "rgba(100,100,100,0.5)";
+        ctx.fillRect(-obj.width/2, -obj.height/2, obj.width, obj.height);
+        ctx.fillStyle = "white";
+        const fontSize = 16;
+        ctx.font = `${fontSize}px sans-serif`;
+        const textMaxWidth = obj.width - 20;
+        const lineHeight = fontSize + 4;
+        const fullText = obj.text.replace(/\\n/g, ' ');
+        const wrappedLines = wrapText(ctx, fullText, textMaxWidth);
+        wrappedLines.forEach((line, index) => {
+            const textY = (index * lineHeight) - obj.height/2 + lineHeight + 5;
+            ctx.fillText(line, -obj.width/2 + 10, textY);
+        });
     }
 
-// ... rest of drawSingleObject(obj) ...
+    // Block drawing
+    if (obj.tag !== "text") {
+        const SCALEABLE = new Set(['box','wood','metal','grass','pushablebox',
+                                   'sticky','kill','breakable','bounce','ice']);
 
-    // Use image for ALL block types (built-in and custom)
-    const img = images[obj.tag];
-
-    // WITH THIS:
-if (obj.tag !== "text") {
-    if (customBlocks[obj.tag] && images[obj.tag] && images[obj.tag].complete) {
-        // Custom blocks still use their uploaded image
-        ctx.drawImage(images[obj.tag], -obj.width / 2, -obj.height / 2, obj.width, obj.height);
-    } else {
-        if (obj.tag === 'player') {
-          // Draw the pear wider than the hitbox so it looks right
-          ctx.save();
-          ctx.scale(50 / 40, 1);
-          drawBlockGraphic(ctx, obj.tag, 40, obj.height);
-          ctx.restore();
+        if (customBlocks[obj.tag] && images[obj.tag] && images[obj.tag].complete) {
+            // Custom block — tile the image
+            const TILE = 50;
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(-obj.width/2, -obj.height/2, obj.width, obj.height);
+            ctx.clip();
+            for (let row = 0; row < Math.ceil(obj.height / TILE); row++) {
+                for (let col = 0; col < Math.ceil(obj.width / TILE); col++) {
+                    ctx.drawImage(images[obj.tag],
+                        -obj.width/2 + col * TILE,
+                        -obj.height/2 + row * TILE,
+                        TILE, TILE);
+                }
+            }
+            ctx.restore();
+        } else if (SCALEABLE.has(obj.tag)) {
+            // Use default graphic at 50x50, scaled version otherwise
+            if (obj.width === 50 && obj.height === 50) {
+                drawBlockGraphic(ctx, obj.tag, obj.width, obj.height);
+            } else {
+                drawScaledBlock(ctx, obj.tag, obj.width, obj.height);
+            }
+        } else if (obj.tag === 'player') {
+            ctx.save();
+            ctx.scale(50 / 40, 1);
+            drawBlockGraphic(ctx, obj.tag, 40, obj.height);
+            ctx.restore();
         } else {
-        // All built-in blocks use procedural drawing
-        drawBlockGraphic(ctx, obj.tag, obj.width, obj.height);
+            drawBlockGraphic(ctx, obj.tag, obj.width, obj.height);
+        }
     }
+
+    // Platform path preview in edit mode
+    if (obj.tag === 'platform' && currentTool === 'edit') {
+        const pp = obj.platformProps;
+        if (pp) {
+            ctx.save();
+            ctx.strokeStyle = '#a78bfa';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            ctx.moveTo(pp.startX - camera.x + obj.width/2 - centerX, pp.startY - camera.y + obj.height/2 - centerY);
+            ctx.lineTo(pp.endX   - camera.x + obj.width/2 - centerX, pp.endY   - camera.y + obj.height/2 - centerY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath();
+            ctx.arc(pp.startX - camera.x + obj.width/2 - centerX, pp.startY - camera.y + obj.height/2 - centerY, 5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.arc(pp.endX - camera.x + obj.width/2 - centerX, pp.endY - camera.y + obj.height/2 - centerY, 5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.restore();
+        }
     }
-}
-if (obj.tag === 'platform' && currentTool === 'edit') {
-    const pp = obj.platformProps;
-    if (pp) {
-        ctx.save();
-        ctx.strokeStyle = '#a78bfa';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([5, 4]);
-        ctx.beginPath();
-        ctx.moveTo(pp.startX - camera.x + obj.width/2, pp.startY - camera.y + obj.height/2);
-        ctx.lineTo(pp.endX - camera.x + obj.width/2,   pp.endY - camera.y + obj.height/2);
-        ctx.stroke();
-        // Start dot
-        ctx.fillStyle = '#22c55e';
-        ctx.beginPath();
-        ctx.arc(pp.startX - camera.x + obj.width/2, pp.startY - camera.y + obj.height/2, 5, 0, Math.PI*2);
-        ctx.fill();
-        // End dot
-        ctx.fillStyle = '#ef4444';
-        ctx.beginPath();
-        ctx.arc(pp.endX - camera.x + obj.width/2, pp.endY - camera.y + obj.height/2, 5, 0, Math.PI*2);
-        ctx.fill();
-        ctx.setLineDash([]);
-        ctx.restore();
-    }
-}
-    // START: NEW DRAW LOGIC FOR COUNTER TEXT
+
+    // Counter label
     if (obj.tag === 'counter') {
         ctx.fillStyle = "white";
         ctx.font = "bold 20px Arial";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        // Draw "Current / Limit" centered on the block
         ctx.fillText(`${obj.count || 0}`, 0, 0);
     }
-    // Draw comparer visual
-if (obj.tag === 'comparer') {
-    const cmpProps = obj.comparerProps || {};
-    ctx.fillStyle = "white";
-    ctx.font = "bold 16px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    
-    // Draw the operator symbol
-    const operatorSymbol = {
-        "==": "=",
-        "!=": "≠",
-        ">": ">",
-        "<": "<",
-        ">=": "≥",
-        "<=": "≤"
-    }[cmpProps.operator] || "?";
-    
-    ctx.fillText(operatorSymbol, 0, 0);
-}
-    // END: NEW DRAW LOGIC
+
+    // Comparer label
+    if (obj.tag === 'comparer') {
+        const cmpProps = obj.comparerProps || {};
+        ctx.fillStyle = "white";
+        ctx.font = "bold 16px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const operatorSymbol = {"==":"=","!=":"≠",">":">","<":"<",">=":"≥","<=":"≤"}[cmpProps.operator] || "?";
+        ctx.fillText(operatorSymbol, 0, 0);
+    }
 
     ctx.restore();
-    
-    // Draw selection border for Edit tool
-    if (currentTool === 'edit' && selectedObject === obj) {
-    ctx.strokeStyle = "#007aff";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 3]);
-    ctx.strokeRect(obj.x - camera.x, obj.y - camera.y, obj.width, obj.height);
-    ctx.setLineDash([]);
 
-    // Draw corner handles
-    const handles = getResizeHandles(obj);
-    for (const key in handles) {
-        const hx = handles[key].x;
-        const hy = handles[key].y;
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = '#007aff';
+    // Selection handles (drawn outside the save/restore so they aren't affected by scale)
+    if (currentTool === 'edit' && selectedObject === obj) {
+        ctx.strokeStyle = "#007aff";
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.rect(hx - RESIZE_HANDLE_SIZE/2, hy - RESIZE_HANDLE_SIZE/2, RESIZE_HANDLE_SIZE, RESIZE_HANDLE_SIZE);
-        ctx.fill();
-        ctx.stroke();
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(obj.x - camera.x, obj.y - camera.y, obj.width, obj.height);
+        ctx.setLineDash([]);
+
+        const handles = getResizeHandles(obj);
+        for (const key in handles) {
+            const hx = handles[key].x;
+            const hy = handles[key].y;
+            const isEdge = key.length === 1;
+
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#007aff';
+            ctx.lineWidth = 2;
+
+            if (isEdge) {
+                const hw = key === 'n' || key === 's' ? 16 : 6;
+                const hh = key === 'n' || key === 's' ? 6 : 16;
+                ctx.beginPath();
+                ctx.roundRect(hx - hw/2, hy - hh/2, hw, hh, 3);
+                ctx.fill();
+                ctx.stroke();
+            } else {
+                ctx.beginPath();
+                ctx.rect(hx - RESIZE_HANDLE_SIZE/2, hy - RESIZE_HANDLE_SIZE/2, RESIZE_HANDLE_SIZE, RESIZE_HANDLE_SIZE);
+                ctx.fill();
+                ctx.stroke();
+            }
+        }
+
+        // Live dimension label while resizing
+        if (isResizing) {
+            const label = `${Math.round(obj.width)} × ${Math.round(obj.height)}`;
+            const lx = obj.x - camera.x + obj.width / 2;
+            const ly = obj.y - camera.y - 14;
+            ctx.font = 'bold 12px system-ui';
+            const tw = ctx.measureText(label).width;
+            ctx.fillStyle = '#007aff';
+            ctx.beginPath();
+            ctx.roundRect(lx - tw/2 - 6, ly - 11, tw + 12, 18, 4);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, lx, ly - 2);
+            ctx.textAlign = 'left';
+        }
     }
-}
 }
 
 // Draw triggers first, then other objects
@@ -5913,27 +6332,26 @@ function drawGround() {
 }
 
 function drawGrid(spacing = GRID_SIZE) {
-  ctx.strokeStyle = "#ccc";
-  ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(0,0,0,0.08)";
+    ctx.lineWidth = 0.5;
 
-  const startX = -camera.x % spacing;
-  const startY = -camera.y % spacing;
+    const startX = -camera.x % spacing;
+    const startY = -camera.y % spacing;
 
-  for (let x = startX; x < canvas.width; x += spacing) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
+    for (let x = startX; x < canvas.width; x += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+    }
 
-  for (let y = startY; y < canvas.height; y += spacing) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(canvas.width, y);
-    ctx.stroke();
-  }
+    for (let y = startY; y < canvas.height; y += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+    }
 }
-
 function drawDebug() {
   const editorPlayer = objects.find(o => o.tag === "player");
   if (!editorPlayer) return; // Don't draw if player doesn't exist
@@ -5955,6 +6373,12 @@ window.addEventListener('keydown', (e) => {
         return;
     }
     switch (e.code) {
+        case 'KeyE':
+    selectTool('edit');
+    break;
+case 'KeyQ':
+    selectTool('delete');
+    break;
         case 'ArrowLeft':
         case 'KeyA':
             keys.left = true;
@@ -5983,6 +6407,7 @@ window.addEventListener('keydown', (e) => {
           }
           break;
         }
+        
 });
 
 window.addEventListener('keyup', (e) => {
