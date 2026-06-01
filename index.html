@@ -1623,46 +1623,29 @@ function hasGroup(obj, groupName) {
 }
 function setPlayMode(enabled) {
     playMode = enabled;
+
     const testBtn = document.getElementById('testModeBtn');
-    if (testBtn) testBtn.style.display = enabled ? 'none' : '';
-
-    // Hide/show the edit-only toolbar buttons
-    const editOnlyTools = ['select', 'edit', 'copy', 'delete', 'box', 'wood', 'metal',
-        'grass', 'box-pushable', 'box-stickable', 'breakable', 'bounce', 'ice',
-        'kill', 'trigger', 'monitor', 'counter', 'comparer', 'clock',
-        'spawn', 'defaultspawn', 'text'];
-
-    document.querySelectorAll('#toolbar button[data-tool]').forEach(btn => {
-        const tool = btn.getAttribute('data-tool');
-        if (editOnlyTools.includes(tool)) {
-            btn.style.display = enabled ? 'none' : '';
-        }
-    });
-
-    // Hide the whole top action row except Menu
-    document.querySelectorAll('#toolbar .btn-create, #toolbar .btn-reset, #toolbar .btn-save').forEach(btn => {
-        btn.style.display = enabled ? 'none' : '';
-    });
-
-    // Hide custom block buttons
-    document.querySelectorAll('.custom-tool-btn').forEach(btn => {
-        btn.style.display = enabled ? 'none' : '';
-    });
-
-    // Hide the category label rows if all their tools are hidden
-    // (optional cosmetic — hides empty category headers too)
-    document.querySelectorAll('#toolbar > div > div').forEach(group => {
-        const buttons = group.querySelectorAll('button[data-tool]');
-        if (buttons.length > 0) {
-            const allHidden = Array.from(buttons).every(b => b.style.display === 'none');
-            group.style.display = allHidden ? 'none' : '';
-        }
-    });
+    const topBar  = document.querySelector('#toolbar > div:first-child');
+    const catRow  = document.querySelector('#toolbar > div:nth-child(2)');
+    const label   = document.querySelector('#toolbar span');
+    const menuBtn = document.querySelector('#toolbar .btn-exit');
 
     if (enabled) {
-        selectTool(null); // Deselect any active tool
+        if (topBar) topBar.querySelectorAll('button').forEach(btn => {
+            if (testMode && btn === testBtn) return;
+            if (!testMode && btn === menuBtn) return;
+            btn.style.display = 'none';
+        });
+        if (catRow) catRow.style.display = 'none';
+        if (label) label.style.display = 'none';
+
+        selectTool(null);
         closePopup();
         closeBlockCreator();
+    } else {
+        if (topBar) topBar.querySelectorAll('button').forEach(btn => btn.style.display = '');
+        if (catRow) catRow.style.display = 'flex';
+        if (label) label.style.display = '';
     }
 }
 function saveUndoState() {
@@ -2596,6 +2579,8 @@ function showHome() {
 }
 
 function goToMenu() {
+  document.getElementById("toolbar").style.display = "none";  // ADD
+    document.getElementById("toolbar").classList.remove("open"); // ADD
     if (gameLoopId) cancelAnimationFrame(gameLoopId);
     gameLoopId = null;
 
