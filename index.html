@@ -1469,44 +1469,7 @@ function playSFX(name, ...args) {
     if (!settings.sfx) return;
     if (SFX[name]) SFX[name](...args);
 }
-function setupMusic() {
-    if (musicStarted) return;
-    musicStarted = true;
 
-    // Reverb for atmosphere
-    const reverb = new Tone.Reverb({ decay: 3, wet: 0.3 }).toDestination();
-    const delay = new Tone.FeedbackDelay("8n", 0.3).connect(reverb);
-
-    // Soft pad synth
-    bgSynth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: "sine" },
-        envelope: { attack: 0.8, decay: 0.4, sustain: 0.6, release: 2 },
-        volume: -18
-    }).connect(delay);
-
-    // Melody notes
-    const melody = [
-        ["C4", "2n"], ["E4", "4n"], ["G4", "4n"],
-        ["A4", "2n"], ["G4", "4n"], ["E4", "4n"],
-        ["F4", "2n"], ["A4", "4n"], ["C5", "4n"],
-        ["G4", "1n"],
-        ["E4", "2n"], ["G4", "4n"], ["B4", "4n"],
-        ["C5", "2n"], ["B4", "4n"], ["A4", "4n"],
-        ["F4", "2n"], ["G4", "4n"], ["E4", "4n"],
-        ["C4", "1n"],
-    ];
-
-    let index = 0;
-    bgLoop = new Tone.Sequence((time, step) => {
-        const [note, dur] = melody[index % melody.length];
-        bgSynth.triggerAttackRelease(note, dur, time);
-        index++;
-    }, melody.map((_, i) => i), "2n");
-
-    bgLoop.start(0);
-    Tone.Transport.bpm.value = 90;
-    Tone.Transport.start();
-}
 
 const MUSIC_TRACKS = [
     'assets/lo-fi_lobotomy.mp3'
@@ -2665,7 +2628,7 @@ function goToMenu() {
 async function getGames() {
   const snapshot = await db.ref('games').once('value');
   const gamesObj = snapshot.val() || {};
-  return Object.entries(gamesObj).map(([code, data]) => [parseInat(code), data]);
+  return Object.entries(gamesObj).map(([code, data]) => [parseInt(code), data]);
 }
 
 async function saveGameToHost(gameArray) {
