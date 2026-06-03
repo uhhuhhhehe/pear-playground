@@ -2793,6 +2793,7 @@ async function deleteHostedGame(code) {
 }
 
 async function hostGame() {
+  try { await Tone.start(); } catch(e) {}
   try {
     currentGames = await getGames();
     let newCode;
@@ -2899,6 +2900,7 @@ function closeJoinGame() {
   document.getElementById("overlay").style.display = "none";
 }
 async function joinCurrentGame() {
+  try { await Tone.start(); } catch(e) {}
   const code = parseInt(joinCode.value.trim());
   const snapshot = await db.ref(`games/${code}/mapData`).once('value');
   const data = snapshot.val();
@@ -3006,86 +3008,108 @@ function openLoad() {
 }
 
 function loadMapFile(ev) {
-  const file = ev.target.files[0];
-  const reader = new FileReader();
+    const file = ev.target.files[0];
+    if (!file) return;
 
-  reader.onload = () => {
-    const data = JSON.parse(reader.result);
-    START_POS.x = 200;
-    START_POS.y = ground.y - 300;
+    // Reset the input so the same file can be re-selected if needed
+    ev.target.value = '';
 
-    // Clear old objects (except player)
-    for (let i = objects.length - 1; i >= 0; i--) {
-        if (objects[i].tag !== "player") objects.splice(i, 1);
-    }
-    
-    // Add loaded objects
-    if (data.objects) {
-        for (let o of data.objects) {
-    // Restore any defaults that were stripped during save
-    const restored = Object.assign({}, SAVE_DEFAULTS, o);
-    // Normalize group to array
-if (typeof restored.group === 'string') {
-    restored.group = restored.group
-        .split(',')
-        .map(g => g.trim())
-        .filter(g => g.length > 0);
-}
+    showCoinToast('Loading map...', '#6366f1');
 
-    // These still need explicit handling
-    if (restored.opacity === undefined) restored.opacity = 1;
-    if (restored.group === undefined) restored.group = '';
-    if (restored.tag === 'trigger') {
-        if (restored.active === undefined) restored.active = true;
-        if (restored.hasFired === undefined) restored.hasFired = false;
-        if (!restored.mods) restored.mods = {};
-    }
+    const reader = new FileReader();
 
-    if (restored.tag !== 'player') objects.push(restored);
-}
-    }
-    // After the objects loop, add:
-const defaultSpawner = objects.find(o => o.tag === 'defaultspawn');
-if (defaultSpawner) {
-    START_POS.x = defaultSpawner.x + defaultSpawner.width/2 - player.width/2;
-    START_POS.y = defaultSpawner.y - player.height;
-    player.x = START_POS.x;
-    player.y = START_POS.y;
-}
-    // --- LOAD CUSTOM BLOCKS ---
-    clearCustomTools(); // Clear old custom buttons from toolbar
-    customBlocks = {};
-    if (data.customBlocks) {
-        customBlocks = data.customBlocks;
-        for (const tag in customBlocks) {
-            const def = customBlocks[tag];
-            
-            // 1. Load the image for the editor
-            let img = new Image();
-            img.src = def.imageUrl || sources.missing;
-            img.onerror = () => { img.src = sources.missing; };
-            images[tag] = img;
-            
-            // 2. Add the tool button back to the UI
-            addNewToolButton(tag, img.src);
+    reader.onerror = () => {
+        showCoinToast('Failed to read file!', '#ef4444');
+    };
+
+    reader.onload = () => {
+        try {
+            const data = JSON.parse(reader.result);
+
+            // Clear old objects except player
+            for (let i = objects.length - 1; i >= 0; i--) {
+                if (objects[i].tag !== 'player') objects.splice(i, 1);
+            }
+
+            // Load objects
+            if (data.objects) {
+                for (let o of data.objects) {
+                    try {
+                        const restored = Object.assign({}, SAVE_DEFAULTS, o);
+
+                        // Normalize group
+                        if (typeof restored.group === 'string') {
+                            restored.group = restored.group
+                                .split(',')
+                                .map(g => g.trim())
+                                .filter(g => g.length > 0);
+                        }
+                        if (!Array.isArray(restored.group)) restored.group = [];
+
+                        if (restored.opacity === undefined) restored.opacity = 1;
+
+                        if (restored.tag === 'trigger') {
+                            if (restored.active === undefined) restored.active = true;
+                            if (restored.hasFired === undefined) restored.hasFired = false;
+                            if (!restored.mods) restored.mods = {};
+                        }
+
+                        if (restored.tag !== 'player') objects.push(restored);
+
+                    } catch (objErr) {
+                        console.warn('Skipped bad object during load:', objErr, o);
+                    }
+                }
+            }
+
+            // Set default spawn
+            const defaultSpawner = objects.find(o => o.tag === 'defaultspawn');
+            if (defaultSpawner) {
+                START_POS.x = defaultSpawner.x + defaultSpawner.width / 2 - player.width / 2;
+                START_POS.y = defaultSpawner.y - player.height;
+                player.x = START_POS.x;
+                player.y = START_POS.y;
+            }
+
+            // Load custom blocks
+            clearCustomTools();
+            customBlocks = {};
+            if (data.customBlocks) {
+                customBlocks = data.customBlocks;
+                for (const tag in customBlocks) {
+                    const def = customBlocks[tag];
+                    let img = new Image();
+                    img.src = def.imageUrl || sources.missing;
+                    img.onerror = () => { img.src = sources.missing; };
+                    images[tag] = img;
+                    addNewToolButton(tag, img.src);
+                }
+            }
+
+            // Reset player
+            player.x = START_POS.x;
+            player.y = START_POS.y;
+            player.vx = 0;
+            player.vy = 0;
+            player.isJumping = true;
+            player.width = 34;
+            player.height = 50;
+            player.opacity = 1;
+            player.scaleX = 1;
+            player.scaleY = 1;
+
+            undoStack.length = 0;
+
+            showCoinToast(`Map loaded — ${objects.length - 1} objects`, '#10b981');
+            startGame();
+
+        } catch (err) {
+            console.error('Map load error:', err);
+            showCoinToast('Map file is corrupted or invalid!', '#ef4444');
         }
-    }
-    // --- END ---
+    };
 
-    // Reset player
-    const editorPlayer = objects.find(o => o.tag === "player") || player;
-    editorPlayer.x = START_POS.x;
-    editorPlayer.y = START_POS.y;
-    editorPlayer.vx = 0;
-    editorPlayer.vy = 0;
-    editorPlayer.isJumping = true;
-
-    undoStack.length = 0; // ADD THIS
-
-    startGame();
-  };
-
-  reader.readAsText(file);
+    reader.readAsText(file);
 }
 
 function stripObjectForSave(obj) {
@@ -3096,10 +3120,12 @@ function stripObjectForSave(obj) {
         if (key in SAVE_DEFAULTS && obj[key] === SAVE_DEFAULTS[key]) continue;
         if (obj[key] === undefined) continue;
 
-        // Convert group array back to comma string for saving
+        // Don't save imageUrl per instance — it's already in customBlocks definition
+        if (key === 'imageUrl' && customBlocks[obj.tag]) continue;
+
         if (key === 'group') {
             const groups = Array.isArray(obj[key]) ? obj[key] : [];
-            if (groups.length === 0) continue; // matches default ''
+            if (groups.length === 0) continue;
             stripped[key] = groups.join(',');
             continue;
         }
