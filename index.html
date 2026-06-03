@@ -1206,6 +1206,31 @@
     <div id="skinsGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:10px;"></div>
   </div>
 </div>
+<div id="mobileControls" style="display:none; position:fixed; bottom:20px; left:0; right:0; z-index:100; pointer-events:none;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; padding:0 20px;">
+        <!-- Left/Right buttons -->
+        <div style="display:flex; gap:10px; pointer-events:all;">
+            <button id="btnLeft"
+                style="width:65px; height:65px; border-radius:50%; background:rgba(255,255,255,0.25);
+                       backdrop-filter:blur(8px); border:2px solid rgba(255,255,255,0.4);
+                       color:white; font-size:24px; cursor:pointer; user-select:none;
+                       -webkit-user-select:none; touch-action:manipulation;">◀</button>
+            <button id="btnRight"
+                style="width:65px; height:65px; border-radius:50%; background:rgba(255,255,255,0.25);
+                       backdrop-filter:blur(8px); border:2px solid rgba(255,255,255,0.4);
+                       color:white; font-size:24px; cursor:pointer; user-select:none;
+                       -webkit-user-select:none; touch-action:manipulation;">▶</button>
+        </div>
+        <!-- Jump button -->
+        <div style="pointer-events:all;">
+            <button id="btnJump"
+                style="width:75px; height:75px; border-radius:50%; background:rgba(99,102,241,0.5);
+                       backdrop-filter:blur(8px); border:2px solid rgba(99,102,241,0.8);
+                       color:white; font-size:28px; cursor:pointer; user-select:none;
+                       -webkit-user-select:none; touch-action:manipulation;">▲</button>
+        </div>
+    </div>
+</div>
 <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -1431,6 +1456,43 @@ let currentUser = null;
 /* ============================================================
    UTILITY FUNCTIONS
 ============================================================ */
+/* ============================================================
+   MOBILE CONTROLS
+============================================================ */
+function isMobile() {
+    return /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) || 
+           ('ontouchstart' in window);
+}
+
+function setupMobileControls() {
+    const controls = document.getElementById('mobileControls');
+    if (!isMobile()) return;
+    controls.style.display = 'block';
+
+    const btnLeft  = document.getElementById('btnLeft');
+    const btnRight = document.getElementById('btnRight');
+    const btnJump  = document.getElementById('btnJump');
+
+    // Left
+    btnLeft.addEventListener('touchstart',  e => { e.preventDefault(); keys.left = true;  }, { passive: false });
+    btnLeft.addEventListener('touchend',    e => { e.preventDefault(); keys.left = false; }, { passive: false });
+    btnLeft.addEventListener('touchcancel', e => { e.preventDefault(); keys.left = false; }, { passive: false });
+
+    // Right
+    btnRight.addEventListener('touchstart',  e => { e.preventDefault(); keys.right = true;  }, { passive: false });
+    btnRight.addEventListener('touchend',    e => { e.preventDefault(); keys.right = false; }, { passive: false });
+    btnRight.addEventListener('touchcancel', e => { e.preventDefault(); keys.right = false; }, { passive: false });
+
+    // Jump
+    btnJump.addEventListener('touchstart',  e => { e.preventDefault(); keys.jump = true; }, { passive: false });
+    btnJump.addEventListener('touchend',    e => { e.preventDefault(); }, { passive: false });
+    btnJump.addEventListener('touchcancel', e => { e.preventDefault(); }, { passive: false });
+}
+
+function showMobileControls(visible) {
+    if (!isMobile()) return;
+    document.getElementById('mobileControls').style.display = visible ? 'block' : 'none';
+}
 function changeGridSize() {
     GRID_SIZE = parseInt(document.getElementById("setGridSize").value);
     saveSettings();
@@ -1735,11 +1797,12 @@ function setPlayMode(enabled) {
         });
         if (catRow) catRow.style.display = 'none';
         if (label) label.style.display = 'none';
-
+        showMobileControls(true);
         selectTool(null);
         closePopup();
         closeBlockCreator();
     } else {
+        showMobileControls(false);
         if (topBar) topBar.querySelectorAll('button').forEach(btn => btn.style.display = '');
         if (catRow) catRow.style.display = 'flex';
         if (label) label.style.display = '';
@@ -2699,6 +2762,7 @@ function goToMenu() {
     selectTool(null);
     stopMultiplayer();
     setPlayMode(false);
+    showMobileControls(false);
     otherPlayers = {};
 
     if (isHost && currentCode) {
@@ -2893,19 +2957,19 @@ async function joinCurrentGame() {
    MAP EDITOR MENU / CONTROLS
 ============================================================ */
 function startGame() {
-  homeScreen.style.display = "none";
-  canvas.style.display = "block";
-  document.getElementById("toolbar").style.display = "block";
-  document.getElementById("toolbarOpenBtn").style.display = "block";
-  openToolbar();
-  resizeCanvas(); 
-  setupSFX(); // ADD
-  if (settings.music) setupMusic(); // ADD
-  // Start/Restart game loop
-  if (gameLoopId) cancelAnimationFrame(gameLoopId);
-  loadImages(sources, () => { 
-    gameLoopId = requestAnimationFrame(gameLoop); // Set the ID
-  });
+    homeScreen.style.display = "none";
+    canvas.style.display = "block";
+    document.getElementById("toolbar").style.display = "block";
+    document.getElementById("toolbarOpenBtn").style.display = "block";
+    openToolbar();
+    resizeCanvas();
+    setupSFX();
+    setupMobileControls(); // ADD THIS
+    if (settings.music) setupMusic();
+    if (gameLoopId) cancelAnimationFrame(gameLoopId);
+    loadImages(sources, () => {
+        gameLoopId = requestAnimationFrame(gameLoop);
+    });
 }
 
 function startCreate() {
@@ -2913,7 +2977,8 @@ function startCreate() {
   for (let i = objects.length - 1; i >= 0; i--) {
     if (objects[i].tag !== "player") objects.splice(i, 1);
   }
-
+  START_POS.x = 200;
+  START_POS.y = ground.y - 300;
   // Reset player to start position
   const editorPlayer = objects.find(o => o.tag === "player") || player;
   editorPlayer.x = START_POS.x;
@@ -2946,6 +3011,8 @@ function loadMapFile(ev) {
 
   reader.onload = () => {
     const data = JSON.parse(reader.result);
+    START_POS.x = 200;
+    START_POS.y = ground.y - 300;
 
     // Clear old objects (except player)
     for (let i = objects.length - 1; i >= 0; i--) {
@@ -3728,14 +3795,21 @@ canvas.addEventListener("mousedown", e => {
 
     // --- DELETE tool ---
     if (currentTool === 'delete' && clickedObject) {
-        const index = objects.indexOf(clickedObject);
-        if (index !== -1) {
-            saveUndoState();
-            objects.splice(index, 1);
-            closePopup();
+    const index = objects.indexOf(clickedObject);
+    if (index !== -1) {
+        saveUndoState();
+        // Reset spawn if deleting the default spawner
+        if (clickedObject.tag === 'defaultspawn') {
+            START_POS.x = 200;
+            START_POS.y = ground.y - 300;
+            player.x = START_POS.x;
+            player.y = START_POS.y;
         }
-        return;
+        objects.splice(index, 1);
+        closePopup();
     }
+    return;
+}
 
     // --- EDIT tool ---
     if (currentTool === 'edit') {
@@ -4761,7 +4835,9 @@ function executeTriggerLogic(trigger) {
             }
         }
     });
-
+    if (trigger.tag === 'trigger' && mods && mods.oneTime) {
+        trigger.hasFired = true;
+    }
     // 4. Unset Lock
     isTriggerFiring = false;
 }
@@ -5923,46 +5999,25 @@ function draw() {
 }
 function drawGhost() {
     if (!currentTool || ['delete', 'edit'].includes(currentTool)) return;
-    
+
     ctx.globalAlpha = 0.5;
-    
-    // --- Handle Custom Block Ghost ---
-    if (customBlocks[currentTool]) {
-        const def = customBlocks[currentTool];
-        const img = images[currentTool];
-        
-        if (img && img.complete) {
-             ctx.drawImage(img, ghostX - camera.x, ghostY - camera.y, def.width, def.height);
-        } else {
-            ctx.fillStyle = "blue";
-            ctx.fillRect(ghostX - camera.x, ghostY - camera.y, def.width, def.height);
-        }
-    
-    // --- Handle Built-in Block Ghost ---
+    ctx.save();
+
+    // Determine ghost size — always use default block size, never GRID_SIZE
+    let w = 50, h = 50;
+    if (currentTool === 'text')     { w = 150; h = 40; }
+    if (currentTool === 'platform') { w = 100; h = 20; }
+    if (customBlocks[currentTool])  { w = customBlocks[currentTool].width; h = customBlocks[currentTool].height; }
+
+    ctx.translate(ghostX - camera.x + w / 2, ghostY - camera.y + h / 2);
+
+    if (customBlocks[currentTool] && images[currentTool]?.complete) {
+        ctx.drawImage(images[currentTool], -w / 2, -h / 2, w, h);
     } else {
-        let width = (currentTool === 'text') ? 150 : 50;
-let height = (currentTool === 'text') ? 40 : 50;
-        if (currentTool === 'trigger') {
-            width = GRID_SIZE;
-            height = GRID_SIZE;
-        }
-        
-        let img = images[currentTool]; // e.g., images['box']
-        
-        if (img && img.complete) {
-            ctx.drawImage(img, ghostX - camera.x, ghostY - camera.y, width, height);
-        } else {
-            ctx.fillStyle = "blue"; 
-            ctx.fillRect(ghostX - camera.x, ghostY - camera.y, width, height);
-        }
-        
-        if (currentTool === 'text') {
-            ctx.fillStyle = "white";
-            ctx.font = "16px sans-serif";
-            ctx.fillText("Text Block", ghostX - camera.x + 10, ghostY - camera.y + height/2 + 5);
-        }
+        drawBlockGraphic(ctx, currentTool, w, h);
     }
-    
+
+    ctx.restore();
     ctx.globalAlpha = 1.0;
 }
 function drawFPS() {
