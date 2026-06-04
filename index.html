@@ -1047,7 +1047,7 @@
         <label for="propCompareOneTime">One-Time Comparer (Only triggers once)</label>
     </div>
 </div>
-   <div id="clockProps" style="display:none; padding-top:10px; border-top:1px solid #e4e4e7; margin-top:10px;">
+    <div id="clockProps" style="display:none; padding-top:10px; border-top:1px solid #e4e4e7; margin-top:10px;">
     <h3>Clock Settings</h3>
     <div class="input-group">
         <label for="propClockInterval">Interval (seconds):</label>
@@ -5313,6 +5313,13 @@ function executeTriggerLogic(trigger) {
     // 2. Iterate through all objects to find targets
     objects.forEach(target => {
     if (mods.targetGroup && hasGroup(target, mods.targetGroup)) {
+      if (mods.active === 'on' || mods.active === 'off') {
+    target.active = mods.active === 'on';
+    // Reset clock timer when re-activated so it waits a full interval
+    if (target.tag === 'clock' && target.active) {
+        target.lastFired = performance.now() / 1000;
+    }
+}
             
             // ===================================
             // A. COUNTER BLOCK LOGIC (The Definitive Fix for Recursion)
@@ -5370,12 +5377,8 @@ function executeTriggerLogic(trigger) {
             
             // Handle activation/deactivation 
             if (mods.active === 'on' || mods.active === 'off') {
-    target.active = mods.active === 'on';
-    // Reset clock timer when re-activated so it waits a full interval
-    if (target.tag === 'clock' && target.active) {
-        target.lastFired = performance.now() / 1000;
-    }
-} else if (mods.active === 'fire') {
+                target.active = mods.active === 'on';
+            } else if (mods.active === 'fire') {
                 if (target.tag === 'trigger') {
                     executeTriggerLogic(target);
                 }
