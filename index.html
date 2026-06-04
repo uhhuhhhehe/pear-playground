@@ -4597,52 +4597,84 @@ function drawScaledBlock(ctx, tag, w, h) {
             break;
         }
         case 'spike': {
-    // Base plate — darker than spikes so they read as separate
+    const baseH = h * 0.3;
+    const baseY = y + h - baseH;
+
+    // Base plate with rivet details
+    ctx.fillStyle = '#374151';
+    ctx.fillRect(x, baseY, w, baseH);
+    // Top rim of base
     ctx.fillStyle = '#4b5563';
-    ctx.fillRect(x, y + h * 0.68, w, h * 0.32);
-
-    // Subtle top rim on base (same trick as ice's inner panel)
+    ctx.fillRect(x, baseY, w, 3);
+    // Vertical rivet lines in base
+    for (let bx = x + 8; bx < x + w - 4; bx += 12) {
+        ctx.fillStyle = '#1f2937';
+        ctx.fillRect(bx, baseY + 5, 2, baseH - 8);
+    }
+    // Bottom edge of base
     ctx.fillStyle = '#6b7280';
-    ctx.fillRect(x, y + h * 0.68, w, h * 0.04);
+    ctx.fillRect(x, baseY + baseH - 4, w, 4);
 
-    const spikeW = 14;
+    const spikeW = 13;
     const count  = Math.max(1, Math.floor(w / spikeW));
     const totalW = count * spikeW;
     const ox     = x + (w - totalW) / 2;
 
     for (let i = 0; i < count; i++) {
-        const sx    = ox + i * spikeW;
-        const mid   = sx + spikeW / 2;
-        const baseY = y + h * 0.70;
-        const tipY  = y + h * 0.04;
+        const sx   = ox + i * spikeW;
+        const mid  = sx + spikeW / 2;
+        const tipY = y + 2;
+        const bY   = baseY + 2;
 
-        // Dark gap between spikes (gives separation without an outline)
-        ctx.fillStyle = '#374151';
-        ctx.fillRect(sx, baseY, spikeW, baseY);
-
-        // Right face — darker
-        ctx.fillStyle = '#4b5563';
+        // Drop shadow offset spike
+        ctx.fillStyle = '#1f2937';
         ctx.beginPath();
-        ctx.moveTo(mid,          tipY);
-        ctx.lineTo(sx + spikeW,  baseY);
-        ctx.lineTo(sx,           baseY);
+        ctx.moveTo(sx + 1, bY);
+        ctx.lineTo(mid + 1, tipY + 2);
+        ctx.lineTo(sx + spikeW + 1, bY);
         ctx.closePath();
         ctx.fill();
 
-        // Left face — lighter, catches the light
+        // Main spike body (mid gray)
+        ctx.fillStyle = '#6b7280';
+        ctx.beginPath();
+        ctx.moveTo(sx, bY);
+        ctx.lineTo(mid, tipY);
+        ctx.lineTo(sx + spikeW, bY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Left face highlight
         ctx.fillStyle = '#9ca3af';
         ctx.beginPath();
-        ctx.moveTo(sx,   baseY);
-        ctx.lineTo(mid,  tipY);
-        ctx.lineTo(mid,  baseY);
+        ctx.moveTo(sx, bY);
+        ctx.lineTo(mid, tipY);
+        ctx.lineTo(mid, bY);
         ctx.closePath();
         ctx.fill();
 
-        // Tip highlight — a 1px bright dot like the ice sheen
-        ctx.fillStyle = '#e2e8f0';
-        ctx.fillRect(mid - 1, tipY, 2, 3);
-    }
+        // Right face shadow
+        ctx.fillStyle = '#4b5563';
+        ctx.beginPath();
+        ctx.moveTo(mid, tipY);
+        ctx.lineTo(sx + spikeW, bY);
+        ctx.lineTo(mid, bY);
+        ctx.closePath();
+        ctx.fill();
 
+        // Tip glint pixel
+        ctx.fillStyle = '#d1d5db';
+        ctx.fillRect(mid - 1, tipY, 1, 4);
+
+        // Left face sheen
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.beginPath();
+        ctx.moveTo(sx + 1, bY);
+        ctx.lineTo(mid, tipY + 3);
+        ctx.lineTo(mid, bY);
+        ctx.closePath();
+        ctx.fill();
+    }
     break;
 }
         case 'wood': {
@@ -5840,52 +5872,84 @@ function drawBlockGraphic(ctx, tag, w, h) {
     break;
 }
 case 'spike': {
-    // Base plate — darker than spikes so they read as separate
+    const baseH = h * 0.3;
+    const baseY = y + h - baseH;
+
+    // Base plate with rivet details
+    ctx.fillStyle = '#374151';
+    ctx.fillRect(x, baseY, w, baseH);
+    // Top rim of base
     ctx.fillStyle = '#4b5563';
-    ctx.fillRect(x, y + h * 0.68, w, h * 0.32);
-
-    // Subtle top rim on base (same trick as ice's inner panel)
+    ctx.fillRect(x, baseY, w, 3);
+    // Vertical rivet lines in base
+    for (let bx = x + 8; bx < x + w - 4; bx += 12) {
+        ctx.fillStyle = '#1f2937';
+        ctx.fillRect(bx, baseY + 5, 2, baseH - 8);
+    }
+    // Bottom edge of base
     ctx.fillStyle = '#6b7280';
-    ctx.fillRect(x, y + h * 0.68, w, h * 0.04);
+    ctx.fillRect(x, baseY + baseH - 4, w, 4);
 
-    const spikeW = 14;
+    const spikeW = 13;
     const count  = Math.max(1, Math.floor(w / spikeW));
     const totalW = count * spikeW;
     const ox     = x + (w - totalW) / 2;
 
     for (let i = 0; i < count; i++) {
-        const sx    = ox + i * spikeW;
-        const mid   = sx + spikeW / 2;
-        const baseY = y + h * 0.70;
-        const tipY  = y + h * 0.04;
+        const sx   = ox + i * spikeW;
+        const mid  = sx + spikeW / 2;
+        const tipY = y + 2;
+        const bY   = baseY + 2;
 
-        // Dark gap between spikes (gives separation without an outline)
-        ctx.fillStyle = '#374151';
-        ctx.fillRect(sx, baseY, spikeW, baseY);
-
-        // Right face — darker
-        ctx.fillStyle = '#4b5563';
+        // Drop shadow offset spike
+        ctx.fillStyle = '#1f2937';
         ctx.beginPath();
-        ctx.moveTo(mid,          tipY);
-        ctx.lineTo(sx + spikeW,  baseY);
-        ctx.lineTo(sx,           baseY);
+        ctx.moveTo(sx + 1, bY);
+        ctx.lineTo(mid + 1, tipY + 2);
+        ctx.lineTo(sx + spikeW + 1, bY);
         ctx.closePath();
         ctx.fill();
 
-        // Left face — lighter, catches the light
+        // Main spike body (mid gray)
+        ctx.fillStyle = '#6b7280';
+        ctx.beginPath();
+        ctx.moveTo(sx, bY);
+        ctx.lineTo(mid, tipY);
+        ctx.lineTo(sx + spikeW, bY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Left face highlight
         ctx.fillStyle = '#9ca3af';
         ctx.beginPath();
-        ctx.moveTo(sx,   baseY);
-        ctx.lineTo(mid,  tipY);
-        ctx.lineTo(mid,  baseY);
+        ctx.moveTo(sx, bY);
+        ctx.lineTo(mid, tipY);
+        ctx.lineTo(mid, bY);
         ctx.closePath();
         ctx.fill();
 
-        // Tip highlight — a 1px bright dot like the ice sheen
-        ctx.fillStyle = '#e2e8f0';
-        ctx.fillRect(mid - 1, tipY, 2, 3);
-    }
+        // Right face shadow
+        ctx.fillStyle = '#4b5563';
+        ctx.beginPath();
+        ctx.moveTo(mid, tipY);
+        ctx.lineTo(sx + spikeW, bY);
+        ctx.lineTo(mid, bY);
+        ctx.closePath();
+        ctx.fill();
 
+        // Tip glint pixel
+        ctx.fillStyle = '#d1d5db';
+        ctx.fillRect(mid - 1, tipY, 1, 4);
+
+        // Left face sheen
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.beginPath();
+        ctx.moveTo(sx + 1, bY);
+        ctx.lineTo(mid, tipY + 3);
+        ctx.lineTo(mid, bY);
+        ctx.closePath();
+        ctx.fill();
+    }
     break;
 }
 case 'metal': {
