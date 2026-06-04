@@ -760,6 +760,7 @@
     <div>
       <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Hazards</div>
       <div style="display:flex; gap:4px;">
+        <button onclick="selectTool('spike')" data-tool="spike">Spike</button>
         <button onclick="selectTool('kill')" data-tool="kill">Kill Block</button>
       </div>
     </div>
@@ -4208,6 +4209,7 @@ if (clickedObject) {
             newObj.tag = "grass";
             break;
         case 'box':
+        
     newObj.tag = "box";
     break;
 case 'wood':
@@ -4255,6 +4257,10 @@ case 'marble':
             break;
         case 'kill':
             newObj.tag = "kill";
+            newObj.kill = true;
+            break;
+        case 'spike':
+            newObj.tag = "spike";
             newObj.kill = true;
             break;
         case 'spawn':
@@ -4495,6 +4501,7 @@ const occupied = objects.some(o =>
     'obsidian':      { tag: 'obsidian' },
     'marble':        { tag: 'marble' },
     'kill':          { tag: 'kill', kill: true },
+    'spike': { tag: 'spike', kill: true, solid: true },
     'bounce':        { tag: 'bounce', solid: true, bounce: true },
     'ice':           { tag: 'ice', solid: true, ice: true },
     'breakable':     { tag: 'breakable', solid: true, reappearTime: 300 },
@@ -4589,6 +4596,27 @@ function drawScaledBlock(ctx, tag, w, h) {
             borderColor = '#475569';
             break;
         }
+        case 'spike': {
+    // Flat version for large scaled blocks
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(x, y + h * 0.65, w, h * 0.35);
+    const sc = Math.max(10, Math.min(20, w / 3));
+    const cnt = Math.floor(w / sc);
+    const gp = (w - cnt * sc) / 2;
+    ctx.fillStyle = '#94a3b8';
+    for (let i = 0; i < cnt; i++) {
+        const sx = x + gp + i * sc;
+        ctx.beginPath();
+        ctx.moveTo(sx, y + h * 0.67);
+        ctx.lineTo(sx + sc / 2, y + h * 0.05);
+        ctx.lineTo(sx + sc, y + h * 0.67);
+        ctx.closePath();
+        ctx.fill();
+    }
+    // ctx.strokeStyle = '#334155'; ctx.lineWidth = borderWidth;
+    // ctx.strokeRect(x, y, w, h);
+    break;
+}
         case 'wood': {
             ctx.fillStyle = '#c17f3a';
             ctx.fillRect(x, y, w, h);
@@ -5783,7 +5811,59 @@ function drawBlockGraphic(ctx, tag, w, h) {
     ctx.strokeRect(x, y, w, h);
     break;
 }
+case 'spike': {
+    // Base — matches the stone/metal color family
+    ctx.fillStyle = '#6b7280';
+    ctx.fillRect(x, y + h * 0.65, w, h * 0.35);
 
+    // Base top edge highlight (same trick as box/stone)
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(x, y + h * 0.65, w, h * 0.06);
+
+    // Spike count scales with block width, same as brick rows in 'box'
+    const spikeW = 14;
+    const count  = Math.max(1, Math.floor(w / spikeW));
+    const totalW = count * spikeW;
+    const offsetX = x + (w - totalW) / 2;
+
+    for (let i = 0; i < count; i++) {
+        const sx  = offsetX + i * spikeW;
+        const tipX = sx + spikeW / 2;
+        const baseY = y + h * 0.67;
+        const tipY  = y + h * 0.05;
+
+        // Fill — same gray as 'stone' interior
+        ctx.fillStyle = '#9ca3af';
+        ctx.beginPath();
+        ctx.moveTo(sx,          baseY);
+        ctx.lineTo(tipX,        tipY);
+        ctx.lineTo(sx + spikeW, baseY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Left edge darker stroke (matches how 'box' draws mortar lines)
+        ctx.strokeStyle = '#4b5563';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx,   baseY);
+        ctx.lineTo(tipX, tipY);
+        ctx.stroke();
+
+        // Right edge slightly lighter
+        ctx.strokeStyle = '#6b7280';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx + spikeW, baseY);
+        ctx.lineTo(tipX,        tipY);
+        ctx.stroke();
+    }
+
+    // Outer border — same weight as all other blocks
+    ctx.strokeStyle = '#374151';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, w, h);
+    break;
+}
 case 'metal': {
     ctx.fillStyle = '#64748b';
     ctx.fillRect(x, y, w, h);
