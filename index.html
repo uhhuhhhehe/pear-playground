@@ -4597,24 +4597,52 @@ function drawScaledBlock(ctx, tag, w, h) {
             break;
         }
         case 'spike': {
-    // Flat version for large scaled blocks
-    ctx.fillStyle = '#475569';
-    ctx.fillRect(x, y + h * 0.65, w, h * 0.35);
-    const sc = Math.max(10, Math.min(20, w / 3));
-    const cnt = Math.floor(w / sc);
-    const gp = (w - cnt * sc) / 2;
-    ctx.fillStyle = '#94a3b8';
-    for (let i = 0; i < cnt; i++) {
-        const sx = x + gp + i * sc;
+    // Base plate — darker than spikes so they read as separate
+    ctx.fillStyle = '#4b5563';
+    ctx.fillRect(x, y + h * 0.68, w, h * 0.32);
+
+    // Subtle top rim on base (same trick as ice's inner panel)
+    ctx.fillStyle = '#6b7280';
+    ctx.fillRect(x, y + h * 0.68, w, h * 0.04);
+
+    const spikeW = 14;
+    const count  = Math.max(1, Math.floor(w / spikeW));
+    const totalW = count * spikeW;
+    const ox     = x + (w - totalW) / 2;
+
+    for (let i = 0; i < count; i++) {
+        const sx    = ox + i * spikeW;
+        const mid   = sx + spikeW / 2;
+        const baseY = y + h * 0.70;
+        const tipY  = y + h * 0.04;
+
+        // Dark gap between spikes (gives separation without an outline)
+        ctx.fillStyle = '#374151';
+        ctx.fillRect(sx, baseY, spikeW, baseY);
+
+        // Right face — darker
+        ctx.fillStyle = '#4b5563';
         ctx.beginPath();
-        ctx.moveTo(sx, y + h * 0.67);
-        ctx.lineTo(sx + sc / 2, y + h * 0.05);
-        ctx.lineTo(sx + sc, y + h * 0.67);
+        ctx.moveTo(mid,          tipY);
+        ctx.lineTo(sx + spikeW,  baseY);
+        ctx.lineTo(sx,           baseY);
         ctx.closePath();
         ctx.fill();
+
+        // Left face — lighter, catches the light
+        ctx.fillStyle = '#9ca3af';
+        ctx.beginPath();
+        ctx.moveTo(sx,   baseY);
+        ctx.lineTo(mid,  tipY);
+        ctx.lineTo(mid,  baseY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Tip highlight — a 1px bright dot like the ice sheen
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(mid - 1, tipY, 2, 3);
     }
-    // ctx.strokeStyle = '#334155'; ctx.lineWidth = borderWidth;
-    // ctx.strokeRect(x, y, w, h);
+
     break;
 }
         case 'wood': {
@@ -5812,56 +5840,52 @@ function drawBlockGraphic(ctx, tag, w, h) {
     break;
 }
 case 'spike': {
-    // Base — matches the stone/metal color family
+    // Base plate — darker than spikes so they read as separate
+    ctx.fillStyle = '#4b5563';
+    ctx.fillRect(x, y + h * 0.68, w, h * 0.32);
+
+    // Subtle top rim on base (same trick as ice's inner panel)
     ctx.fillStyle = '#6b7280';
-    ctx.fillRect(x, y + h * 0.65, w, h * 0.35);
+    ctx.fillRect(x, y + h * 0.68, w, h * 0.04);
 
-    // Base top edge highlight (same trick as box/stone)
-    ctx.fillStyle = 'rgba(255,255,255,0.07)';
-    ctx.fillRect(x, y + h * 0.65, w, h * 0.06);
-
-    // Spike count scales with block width, same as brick rows in 'box'
     const spikeW = 14;
     const count  = Math.max(1, Math.floor(w / spikeW));
     const totalW = count * spikeW;
-    const offsetX = x + (w - totalW) / 2;
+    const ox     = x + (w - totalW) / 2;
 
     for (let i = 0; i < count; i++) {
-        const sx  = offsetX + i * spikeW;
-        const tipX = sx + spikeW / 2;
-        const baseY = y + h * 0.67;
-        const tipY  = y + h * 0.05;
+        const sx    = ox + i * spikeW;
+        const mid   = sx + spikeW / 2;
+        const baseY = y + h * 0.70;
+        const tipY  = y + h * 0.04;
 
-        // Fill — same gray as 'stone' interior
-        ctx.fillStyle = '#9ca3af';
+        // Dark gap between spikes (gives separation without an outline)
+        ctx.fillStyle = '#374151';
+        ctx.fillRect(sx, baseY, spikeW, baseY);
+
+        // Right face — darker
+        ctx.fillStyle = '#4b5563';
         ctx.beginPath();
-        ctx.moveTo(sx,          baseY);
-        ctx.lineTo(tipX,        tipY);
-        ctx.lineTo(sx + spikeW, baseY);
+        ctx.moveTo(mid,          tipY);
+        ctx.lineTo(sx + spikeW,  baseY);
+        ctx.lineTo(sx,           baseY);
         ctx.closePath();
         ctx.fill();
 
-        // Left edge darker stroke (matches how 'box' draws mortar lines)
-        ctx.strokeStyle = '#4b5563';
-        ctx.lineWidth = 1;
+        // Left face — lighter, catches the light
+        ctx.fillStyle = '#9ca3af';
         ctx.beginPath();
         ctx.moveTo(sx,   baseY);
-        ctx.lineTo(tipX, tipY);
-        ctx.stroke();
+        ctx.lineTo(mid,  tipY);
+        ctx.lineTo(mid,  baseY);
+        ctx.closePath();
+        ctx.fill();
 
-        // Right edge slightly lighter
-        ctx.strokeStyle = '#6b7280';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(sx + spikeW, baseY);
-        ctx.lineTo(tipX,        tipY);
-        ctx.stroke();
+        // Tip highlight — a 1px bright dot like the ice sheen
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(mid - 1, tipY, 2, 3);
     }
 
-    // Outer border — same weight as all other blocks
-    ctx.strokeStyle = '#374151';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(x, y, w, h);
     break;
 }
 case 'metal': {
