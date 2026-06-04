@@ -618,6 +618,7 @@
         <h2>Map Builder</h2>
         <p>Start a brand new blueprint project completely from scratch or import your existing layouts.</p>
         <div class="panel-actions">
+          <button onclick="openLevelsScreen()" class="home-btn" style="background:#3b82f6;color:#fff;">▶ Play a Level</button>
           <button onclick="startCreate()" class="home-btn btn-emerald">Create New Map</button>
           <button onclick="openLoad()" class="home-btn btn-secondary">Edit Existing Map</button>
         </div>
@@ -1232,6 +1233,16 @@
         </div>
     </div>
 </div>
+<div id="levelsScreen" style="display:none; position:fixed; inset:0; background:#f4f4f5; z-index:3000; overflow-y:auto; font-family:system-ui;">
+  <div style="max-width:760px; margin:0 auto; padding:24px 16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px;">
+      <h1 style="margin:0; font-size:26px; font-weight:700; color:#18181b;">Play a Level</h1>
+      <button onclick="closeLevelsScreen()" style="background:#ef4444;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-weight:600;cursor:pointer;">✕ Close</button>
+    </div>
+    <div id="levelsGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px;"></div>
+    <div id="levelsError" style="display:none; color:#ef4444; font-size:14px; margin-top:16px;"></div>
+  </div>
+</div>
 <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -1457,6 +1468,141 @@ let currentUser = null;
 /* ============================================================
    UTILITY FUNCTIONS
 ============================================================ */
+/* ============================================================
+   BUILT-IN LEVELS
+============================================================ */
+async function openLevelsScreen() {
+    document.getElementById('levelsScreen').style.display = 'block';
+    const grid = document.getElementById('levelsGrid');
+    const errorEl = document.getElementById('levelsError');
+    grid.innerHTML = '<div style="color:#71717a;font-size:14px;">Loading levels...</div>';
+    errorEl.style.display = 'none';
+
+    try {
+        const res = await fetch('levels/manifest.json');
+        if (!res.ok) throw new Error('Could not load manifest');
+        const levels = await res.json();
+
+        grid.innerHTML = '';
+        levels.forEach(level => {
+            const card = document.createElement('div');
+            card.style.cssText = `
+                background:#fff; border:1px solid #e4e4e7; border-radius:12px;
+                padding:20px; display:flex; flex-direction:column; gap:10px;
+            `;
+            card.innerHTML = `
+                <div style="font-size:17px;font-weight:600;color:#18181b;">${level.name}</div>
+                <div style="font-size:13px;color:#71717a;flex:1;">${level.description || ''}</div>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="loadBuiltInLevel('${level.file}', false)"
+                        style="flex:1;padding:9px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;">
+                        ▶ Play
+                    </button>
+                    <button onclick="loadBuiltInLevel('${level.file}', true)"
+                        style="flex:1;padding:9px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;">
+                        Host
+                    </button>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+
+        if (levels.length === 0) {
+            grid.innerHTML = '<div style="color:#71717a;font-size:14px;">No levels found.</div>';
+        }
+    } catch (err) {
+        grid.innerHTML = '';
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'Could not load levels. Make sure levels/manifest.json exists.';
+        console.error(err);
+    }
+}
+
+function closeLevelsScreen() {
+    document.getElementById('levelsScreen').style.display = 'none';
+}
+
+async function loadBuiltInLevel(file, host) {
+    showCoinToast('Loading...', '#6366f1');
+    try {
+        const res = await fetch(file);
+        if (!res.ok) throw new Error('Level file not found');
+        const data = await res.json();
+
+        applyLevelData(data);
+        closeLevelsScreen();
+
+        if (host) {
+            startGame();
+            await hostGame();
+        } else {
+            setPlayMode(true);
+            startGame();
+        }
+
+    } catch (err) {
+        showCoinToast('Failed to load level!', '#ef4444');
+        console.error(err);
+    }
+}
+
+function applyLevelData(data) {
+    // Clear existing objects
+    for (let i = objects.length - 1; i >= 0; i--) {
+        if (objects[i].tag !== 'player') objects.splice(i, 1);
+    }
+
+    // Load objects
+    if (data.objects) {
+        for (let o of data.objects) {
+            try {
+                const restored = Object.assign({}, SAVE_DEFAULTS, o);
+                if (typeof restored.group === 'string') {
+                    restored.group = restored.group.split(',').map(g => g.trim()).filter(g => g.length > 0);
+                }
+                if (!Array.isArray(restored.group)) restored.group = [];
+                if (restored.tag === 'trigger') {
+                    restored.active = restored.active ?? true;
+                    restored.hasFired = restored.hasFired ?? false;
+                    restored.mods = restored.mods || {};
+                }
+                if (restored.tag !== 'player') objects.push(restored);
+            } catch (e) {
+                console.warn('Skipped bad object:', e);
+            }
+        }
+    }
+
+    // Default spawn
+    const defaultSpawner = objects.find(o => o.tag === 'defaultspawn');
+    if (defaultSpawner) {
+        START_POS.x = defaultSpawner.x + defaultSpawner.width / 2 - player.width / 2;
+        START_POS.y = defaultSpawner.y - player.height;
+    }
+    player.x = START_POS.x;
+    player.y = START_POS.y;
+    player.vx = 0; player.vy = 0;
+    player.isJumping = true;
+    player.width = 34; player.height = 50;
+    player.scaleX = 1; player.scaleY = 1;
+
+    // Custom blocks
+    clearCustomTools();
+    customBlocks = {};
+    if (data.customBlocks) {
+        customBlocks = data.customBlocks;
+        for (const tag in customBlocks) {
+            const def = customBlocks[tag];
+            const img = new Image();
+            img.src = def.imageUrl || sources.missing;
+            img.onerror = () => { img.src = sources.missing; };
+            images[tag] = img;
+            addNewToolButton(tag, img.src);
+        }
+    }
+
+    undoStack.length = 0;
+}
 const TERRAIN_TOOLS = [
     { tool: 'box',          name: 'Brick'     },
     { tool: 'wood',         name: 'Wood'      },
@@ -6926,6 +7072,8 @@ function drawDebug() {
 ============================================================ */
 
 window.addEventListener('keydown', (e) => {
+      const tag = document.activeElement?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
         e.preventDefault();
         undo();
