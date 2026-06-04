@@ -1047,7 +1047,7 @@
         <label for="propCompareOneTime">One-Time Comparer (Only triggers once)</label>
     </div>
 </div>
-    <div id="clockProps" style="display:none; padding-top:10px; border-top:1px solid #e4e4e7; margin-top:10px;">
+   <div id="clockProps" style="display:none; padding-top:10px; border-top:1px solid #e4e4e7; margin-top:10px;">
     <h3>Clock Settings</h3>
     <div class="input-group">
         <label for="propClockInterval">Interval (seconds):</label>
@@ -1056,6 +1056,10 @@
     <div class="input-group">
         <label for="propClockTarget">Target Group:</label>
         <input type="text" id="propClockTarget" placeholder="e.g., 'moving_platform'">
+    </div>
+    <div class="checkbox-group">
+        <input type="checkbox" id="propClockActive" checked>
+        <label for="propClockActive">Active by default</label>
     </div>
 </div>
     <div id="platformProps" style="display:none; padding-top:10px; border-top:1px solid #e4e4e7; margin-top:10px;">
@@ -3850,6 +3854,7 @@ function openPopup(obj) {
   if (isClock) {
     document.getElementById("propClockInterval").value = obj.interval ?? 3;
     document.getElementById("propClockTarget").value   = obj.targetGroup || "";
+    document.getElementById("propClockActive").checked = obj.active !== false;
   }
 
   // Platform fields
@@ -3960,6 +3965,7 @@ selectedObject.group = rawGroup
   } else if (selectedObject.tag === 'clock') {
     selectedObject.interval = parseFloat(document.getElementById("propClockInterval").value) || 3;
     selectedObject.targetGroup = document.getElementById("propClockTarget").value;
+    selectedObject.active      = document.getElementById("propClockActive").checked;
 
   } else if (selectedObject.tag === 'platform') {
     selectedObject.platformProps = {
@@ -4296,6 +4302,7 @@ case 'marble':
             newObj.opacity = 0.7;
             newObj.interval = 3;
             newObj.targetGroup = "";
+            newObj.active = true; // add this
             newObj.lastFired = 0;
             newObj.id = Date.now() + Math.random();
             break;
@@ -5363,8 +5370,12 @@ function executeTriggerLogic(trigger) {
             
             // Handle activation/deactivation 
             if (mods.active === 'on' || mods.active === 'off') {
-                target.active = mods.active === 'on';
-            } else if (mods.active === 'fire') {
+    target.active = mods.active === 'on';
+    // Reset clock timer when re-activated so it waits a full interval
+    if (target.tag === 'clock' && target.active) {
+        target.lastFired = performance.now() / 1000;
+    }
+} else if (mods.active === 'fire') {
                 if (target.tag === 'trigger') {
                     executeTriggerLogic(target);
                 }
@@ -5429,12 +5440,12 @@ function checkTriggers() {
     // you would compare the old activeTriggers set with currentTriggers here.
 }
 function checkClocks() {
-    const now = performance.now() / 1000; // convert to seconds
+    const now = performance.now() / 1000;
     objects.forEach(obj => {
         if (obj.tag !== 'clock') return;
         if (!obj.targetGroup || !obj.interval) return;
+        if (obj.active === false) return; // respect active state
 
-        // Initialize lastFired on first run
         if (!obj.lastFired) obj.lastFired = now;
 
         if (now - obj.lastFired >= obj.interval) {
