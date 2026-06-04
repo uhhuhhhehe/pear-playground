@@ -760,7 +760,7 @@
     <div>
       <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Hazards</div>
       <div style="display:flex; gap:4px;">
-        <button onclick="selectTool('spike')" data-tool="spike">Spike</button>
+        
         <button onclick="selectTool('kill')" data-tool="kill">Kill Block</button>
       </div>
     </div>
@@ -4259,10 +4259,6 @@ case 'marble':
             newObj.tag = "kill";
             newObj.kill = true;
             break;
-        case 'spike':
-            newObj.tag = "spike";
-            newObj.kill = true;
-            break;
         case 'spawn':
             newObj.tag = "spawn";
             newObj.solid = false;
@@ -4501,7 +4497,6 @@ const occupied = objects.some(o =>
     'obsidian':      { tag: 'obsidian' },
     'marble':        { tag: 'marble' },
     'kill':          { tag: 'kill', kill: true },
-    'spike': { tag: 'spike', kill: true, solid: true },
     'bounce':        { tag: 'bounce', solid: true, bounce: true },
     'ice':           { tag: 'ice', solid: true, ice: true },
     'breakable':     { tag: 'breakable', solid: true, reappearTime: 300 },
@@ -4596,87 +4591,7 @@ function drawScaledBlock(ctx, tag, w, h) {
             borderColor = '#475569';
             break;
         }
-        case 'spike': {
-    const baseH = h * 0.3;
-    const baseY = y + h - baseH;
-
-    // Base plate with rivet details
-    ctx.fillStyle = '#374151';
-    ctx.fillRect(x, baseY, w, baseH);
-    // Top rim of base
-    ctx.fillStyle = '#4b5563';
-    ctx.fillRect(x, baseY, w, 3);
-    // Vertical rivet lines in base
-    for (let bx = x + 8; bx < x + w - 4; bx += 12) {
-        ctx.fillStyle = '#1f2937';
-        ctx.fillRect(bx, baseY + 5, 2, baseH - 8);
-    }
-    // Bottom edge of base
-    ctx.fillStyle = '#6b7280';
-    ctx.fillRect(x, baseY + baseH - 4, w, 4);
-
-    const spikeW = 13;
-    const count  = Math.max(1, Math.floor(w / spikeW));
-    const totalW = count * spikeW;
-    const ox     = x + (w - totalW) / 2;
-
-    for (let i = 0; i < count; i++) {
-        const sx   = ox + i * spikeW;
-        const mid  = sx + spikeW / 2;
-        const tipY = y + 2;
-        const bY   = baseY + 2;
-
-        // Drop shadow offset spike
-        ctx.fillStyle = '#1f2937';
-        ctx.beginPath();
-        ctx.moveTo(sx + 1, bY);
-        ctx.lineTo(mid + 1, tipY + 2);
-        ctx.lineTo(sx + spikeW + 1, bY);
-        ctx.closePath();
-        ctx.fill();
-
-        // Main spike body (mid gray)
-        ctx.fillStyle = '#6b7280';
-        ctx.beginPath();
-        ctx.moveTo(sx, bY);
-        ctx.lineTo(mid, tipY);
-        ctx.lineTo(sx + spikeW, bY);
-        ctx.closePath();
-        ctx.fill();
-
-        // Left face highlight
-        ctx.fillStyle = '#9ca3af';
-        ctx.beginPath();
-        ctx.moveTo(sx, bY);
-        ctx.lineTo(mid, tipY);
-        ctx.lineTo(mid, bY);
-        ctx.closePath();
-        ctx.fill();
-
-        // Right face shadow
-        ctx.fillStyle = '#4b5563';
-        ctx.beginPath();
-        ctx.moveTo(mid, tipY);
-        ctx.lineTo(sx + spikeW, bY);
-        ctx.lineTo(mid, bY);
-        ctx.closePath();
-        ctx.fill();
-
-        // Tip glint pixel
-        ctx.fillStyle = '#d1d5db';
-        ctx.fillRect(mid - 1, tipY, 1, 4);
-
-        // Left face sheen
-        ctx.fillStyle = 'rgba(255,255,255,0.15)';
-        ctx.beginPath();
-        ctx.moveTo(sx + 1, bY);
-        ctx.lineTo(mid, tipY + 3);
-        ctx.lineTo(mid, bY);
-        ctx.closePath();
-        ctx.fill();
-    }
-    break;
-}
+        
         case 'wood': {
             ctx.fillStyle = '#c17f3a';
             ctx.fillRect(x, y, w, h);
@@ -5871,87 +5786,7 @@ function drawBlockGraphic(ctx, tag, w, h) {
     ctx.strokeRect(x, y, w, h);
     break;
 }
-case 'spike': {
-    const baseH = h * 0.3;
-    const baseY = y + h - baseH;
 
-    // Base plate with rivet details
-    ctx.fillStyle = '#374151';
-    ctx.fillRect(x, baseY, w, baseH);
-    // Top rim of base
-    ctx.fillStyle = '#4b5563';
-    ctx.fillRect(x, baseY, w, 3);
-    // Vertical rivet lines in base
-    for (let bx = x + 8; bx < x + w - 4; bx += 12) {
-        ctx.fillStyle = '#1f2937';
-        ctx.fillRect(bx, baseY + 5, 2, baseH - 8);
-    }
-    // Bottom edge of base
-    ctx.fillStyle = '#6b7280';
-    ctx.fillRect(x, baseY + baseH - 4, w, 4);
-
-    const spikeW = 13;
-    const count  = Math.max(1, Math.floor(w / spikeW));
-    const totalW = count * spikeW;
-    const ox     = x + (w - totalW) / 2;
-
-    for (let i = 0; i < count; i++) {
-        const sx   = ox + i * spikeW;
-        const mid  = sx + spikeW / 2;
-        const tipY = y + 2;
-        const bY   = baseY + 2;
-
-        // Drop shadow offset spike
-        ctx.fillStyle = '#1f2937';
-        ctx.beginPath();
-        ctx.moveTo(sx + 1, bY);
-        ctx.lineTo(mid + 1, tipY + 2);
-        ctx.lineTo(sx + spikeW + 1, bY);
-        ctx.closePath();
-        ctx.fill();
-
-        // Main spike body (mid gray)
-        ctx.fillStyle = '#6b7280';
-        ctx.beginPath();
-        ctx.moveTo(sx, bY);
-        ctx.lineTo(mid, tipY);
-        ctx.lineTo(sx + spikeW, bY);
-        ctx.closePath();
-        ctx.fill();
-
-        // Left face highlight
-        ctx.fillStyle = '#9ca3af';
-        ctx.beginPath();
-        ctx.moveTo(sx, bY);
-        ctx.lineTo(mid, tipY);
-        ctx.lineTo(mid, bY);
-        ctx.closePath();
-        ctx.fill();
-
-        // Right face shadow
-        ctx.fillStyle = '#4b5563';
-        ctx.beginPath();
-        ctx.moveTo(mid, tipY);
-        ctx.lineTo(sx + spikeW, bY);
-        ctx.lineTo(mid, bY);
-        ctx.closePath();
-        ctx.fill();
-
-        // Tip glint pixel
-        ctx.fillStyle = '#d1d5db';
-        ctx.fillRect(mid - 1, tipY, 1, 4);
-
-        // Left face sheen
-        ctx.fillStyle = 'rgba(255,255,255,0.15)';
-        ctx.beginPath();
-        ctx.moveTo(sx + 1, bY);
-        ctx.lineTo(mid, tipY + 3);
-        ctx.lineTo(mid, bY);
-        ctx.closePath();
-        ctx.fill();
-    }
-    break;
-}
 case 'metal': {
     ctx.fillStyle = '#64748b';
     ctx.fillRect(x, y, w, h);
