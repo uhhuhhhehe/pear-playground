@@ -870,7 +870,12 @@
     
     <div id="triggerProps" style="display:none;">
         <h4>Trigger Settings</h4>
-        
+        <button onclick="openScriptEditor()" type="button" style="
+  width:100%; margin-bottom:14px; padding:9px;
+  background:#f0f0ff; color:#6366f1;
+  border:1px solid #c7d2fe; border-radius:7px;
+  font-size:13px; font-weight:600; cursor:pointer;
+">⚡ Open Script Editor</button>
         <div class="input-group">
             <label for="propTargetGroup">Target Group:</label>
             <input type="text" id="propTargetGroup" placeholder="e.g., 'door_level1'">
@@ -1247,6 +1252,90 @@
     <div id="levelsError" style="display:none; color:#ef4444; font-size:14px; margin-top:16px;"></div>
   </div>
 </div>
+<div id="scriptEditorPopup" style="
+  display:none; position:fixed; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  width:520px; max-height:85vh; overflow-y:auto;
+  background:#ffffff; border:1px solid #e4e4e7; border-radius:12px;
+  box-shadow:0 8px 40px rgba(0,0,0,0.12);
+  z-index:2000; font-family:system-ui; padding:20px;
+  box-sizing:border-box;
+">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #e4e4e7;">
+    <div>
+      <div style="font-size:15px; font-weight:600; color:#18181b;">Trigger Script Editor</div>
+      <div style="font-size:12px; color:#71717a; margin-top:2px;">Build logic visually — conditions and actions run in order</div>
+    </div>
+    <button onclick="closeScriptEditor()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#71717a;padding:4px 8px;">✕</button>
+  </div>
+
+  <!-- EVENT selector -->
+  <div style="margin-bottom:16px;">
+    <div style="font-size:11px; font-weight:600; color:#52525b; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;">Fire when</div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap;" id="scriptEventBtns">
+      <button onclick="setScriptEvent('touched')"    class="script-event-btn" data-event="touched">    Player touches</button>
+      <button onclick="setScriptEvent('activated')"  class="script-event-btn" data-event="activated">  Activated by trigger</button>
+      <button onclick="setScriptEvent('deactivated')"class="script-event-btn" data-event="deactivated">Deactivated</button>
+      <button onclick="setScriptEvent('always')"     class="script-event-btn" data-event="always">     Every tick</button>
+    </div>
+  </div>
+
+  <!-- CONDITIONS -->
+  <div style="margin-bottom:16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <div style="font-size:11px; font-weight:600; color:#52525b; text-transform:uppercase; letter-spacing:.04em;">Conditions <span style="font-weight:400; text-transform:none; font-size:11px; color:#a1a1aa;">(all must be true)</span></div>
+      <button onclick="addScriptCondition()" style="font-size:11px; padding:3px 10px; background:#f4f4f5; border:1px solid #e4e4e7; border-radius:6px; cursor:pointer; color:#27272a;">+ Add</button>
+    </div>
+    <div id="scriptConditions" style="display:flex; flex-direction:column; gap:6px;"></div>
+    <div id="scriptNoConditions" style="font-size:12px; color:#a1a1aa; padding:8px 0;">No conditions — always fires</div>
+  </div>
+
+  <!-- ACTIONS -->
+  <div style="margin-bottom:20px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <div style="font-size:11px; font-weight:600; color:#52525b; text-transform:uppercase; letter-spacing:.04em;">Actions</div>
+      <button onclick="addScriptAction()" style="font-size:11px; padding:3px 10px; background:#f4f4f5; border:1px solid #e4e4e7; border-radius:6px; cursor:pointer; color:#27272a;">+ Add</button>
+    </div>
+    <div id="scriptActions" style="display:flex; flex-direction:column; gap:6px;"></div>
+    <div id="scriptNoActions" style="font-size:12px; color:#a1a1aa; padding:8px 0;">No actions added yet</div>
+  </div>
+
+  <div style="display:flex; gap:8px;">
+    <button onclick="applyScript()" style="flex:1; padding:10px; background:#6366f1; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:13px; cursor:pointer;">Apply Script</button>
+    <button onclick="closeScriptEditor()" style="flex:1; padding:10px; background:#f4f4f5; color:#52525b; border:1px solid #e4e4e7; border-radius:8px; font-weight:600; font-size:13px; cursor:pointer;">Cancel</button>
+  </div>
+</div>
+
+<style>
+.script-event-btn {
+  padding:5px 12px; font-size:12px; font-weight:500;
+  background:#f4f4f5; color:#27272a;
+  border:1px solid #e4e4e7; border-radius:6px; cursor:pointer;
+  transition:all 0.1s;
+}
+.script-event-btn.active {
+  background:#6366f1; color:#fff; border-color:#6366f1;
+}
+.script-row {
+  display:flex; align-items:center; gap:6px;
+  background:#f4f4f5; border:1px solid #e4e4e7;
+  border-radius:8px; padding:8px 10px;
+}
+.script-row select, .script-row input {
+  font-size:12px; padding:4px 7px;
+  background:#fff; border:1px solid #e4e4e7;
+  border-radius:5px; color:#27272a; flex-shrink:0;
+}
+.script-row select:focus, .script-row input:focus {
+  outline:none; border-color:#6366f1;
+  box-shadow:0 0 0 2px rgba(99,102,241,0.15);
+}
+.script-row .del-btn {
+  margin-left:auto; background:none; border:none;
+  color:#a1a1aa; cursor:pointer; font-size:15px; padding:0 2px; flex-shrink:0;
+}
+.script-row .del-btn:hover { color:#ef4444; }
+</style>
 <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -5287,97 +5376,467 @@ function fireTriggerGroup(groupName) {
         }
     });
 }
+/* ============================================================
+   TRIGGER SCRIPT EDITOR
+============================================================ */
+let scriptEditorTarget = null; // the trigger object being edited
+let scriptEvent = 'touched';
+let scriptConditions = [];
+let scriptActions = [];
+
+const CONDITION_TYPES = [
+  { value:'counter_gte',  label:'Counter ≥' },
+  { value:'counter_lte',  label:'Counter ≤' },
+  { value:'counter_eq',   label:'Counter =' },
+  { value:'counter_gt',   label:'Counter >' },
+  { value:'counter_lt',   label:'Counter <' },
+  { value:'player_above', label:'Player above Y' },
+  { value:'player_below', label:'Player below Y' },
+  { value:'player_left',  label:'Player left of X' },
+  { value:'player_right', label:'Player right of X' },
+  { value:'object_visible', label:'Object is visible' },
+  { value:'object_hidden',  label:'Object is hidden' },
+  { value:'object_solid',   label:'Object is solid' },
+  { value:'clock_active',   label:'Clock is active' },
+  { value:'trigger_fired',  label:'Trigger has fired' },
+];
+
+const ACTION_TYPES = [
+  { value:'fire_group',       label:'Fire trigger group' },
+  { value:'activate_group',   label:'Activate group' },
+  { value:'deactivate_group', label:'Deactivate group' },
+  { value:'move_group',       label:'Set position of group' },
+  { value:'set_velocity',     label:'Set velocity of group' },
+  { value:'set_opacity',      label:'Set opacity of group' },
+  { value:'set_solid',        label:'Set solid state of group' },
+  { value:'set_kill',         label:'Set kill state of group' },
+  { value:'set_text',         label:'Set text of group' },
+  { value:'reset_counter',    label:'Reset counter group' },
+  { value:'increment_counter',label:'Increment counter group' },
+  { value:'toggle_clock',     label:'Toggle clock group' },
+  { value:'activate_clock',   label:'Activate clock group' },
+  { value:'deactivate_clock', label:'Deactivate clock group' },
+  { value:'respawn_player',   label:'Respawn player' },
+  { value:'shake_screen',     label:'Shake screen' },
+  { value:'spawn_particles',  label:'Spawn particles at group' },
+];
+
+function openScriptEditor() {
+  if (!selectedObject || selectedObject.tag !== 'trigger') return;
+  scriptEditorTarget = selectedObject;
+
+  // Load existing script if any
+  const sc = scriptEditorTarget.script || {};
+  scriptEvent      = sc.event      || 'touched';
+  scriptConditions = sc.conditions ? JSON.parse(JSON.stringify(sc.conditions)) : [];
+  scriptActions    = sc.actions    ? JSON.parse(JSON.stringify(sc.actions))    : [];
+
+  document.getElementById('scriptEditorPopup').style.display = 'block';
+  document.getElementById('overlay').style.display = 'block';
+  renderScriptEditor();
+}
+
+function closeScriptEditor() {
+  document.getElementById('scriptEditorPopup').style.display = 'none';
+  document.getElementById('overlay').style.display = 'none';
+}
+
+function setScriptEvent(ev) {
+  scriptEvent = ev;
+  document.querySelectorAll('.script-event-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.event === ev);
+  });
+}
+
+function renderScriptEditor() {
+  setScriptEvent(scriptEvent);
+  renderConditions();
+  renderActions();
+}
+
+/* ---------- CONDITIONS ---------- */
+function addScriptCondition() {
+  scriptConditions.push({ type: 'counter_gte', group: '', value: '0' });
+  renderConditions();
+}
+
+function removeCondition(i) {
+  scriptConditions.splice(i, 1);
+  renderConditions();
+}
+
+function renderConditions() {
+  const el = document.getElementById('scriptConditions');
+  const none = document.getElementById('scriptNoConditions');
+  el.innerHTML = '';
+  none.style.display = scriptConditions.length ? 'none' : 'block';
+
+  scriptConditions.forEach((cond, i) => {
+    const row = document.createElement('div');
+    row.className = 'script-row';
+
+    const typeSelect = document.createElement('select');
+    CONDITION_TYPES.forEach(ct => {
+      const o = document.createElement('option');
+      o.value = ct.value; o.textContent = ct.label;
+      if (ct.value === cond.type) o.selected = true;
+      typeSelect.appendChild(o);
+    });
+    typeSelect.onchange = () => {
+      scriptConditions[i].type = typeSelect.value;
+      renderConditions();
+    };
+
+    row.appendChild(typeSelect);
+    appendConditionInputs(row, cond, i);
+
+    const del = document.createElement('button');
+    del.className = 'del-btn'; del.textContent = '✕';
+    del.onclick = () => removeCondition(i);
+    row.appendChild(del);
+    el.appendChild(row);
+  });
+}
+
+function appendConditionInputs(row, cond, i) {
+  const t = cond.type;
+
+  if (t.startsWith('counter_')) {
+    const g = makeInput('group', cond.group, 'Counter group', 120);
+    const v = makeInput('value', cond.value, 'Value', 60);
+    g.oninput = () => { scriptConditions[i].group = g.value; };
+    v.oninput = () => { scriptConditions[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v);
+  } else if (t === 'player_above' || t === 'player_below') {
+    const v = makeInput('value', cond.value, 'Y position', 80);
+    v.oninput = () => { scriptConditions[i].value = v.value; };
+    row.appendChild(v);
+  } else if (t === 'player_left' || t === 'player_right') {
+    const v = makeInput('value', cond.value, 'X position', 80);
+    v.oninput = () => { scriptConditions[i].value = v.value; };
+    row.appendChild(v);
+  } else if (t === 'object_visible' || t === 'object_hidden' || t === 'object_solid' || t === 'clock_active' || t === 'trigger_fired') {
+    const g = makeInput('group', cond.group, 'Group name', 150);
+    g.oninput = () => { scriptConditions[i].group = g.value; };
+    row.appendChild(g);
+  }
+}
+
+/* ---------- ACTIONS ---------- */
+function addScriptAction() {
+  scriptActions.push({ type: 'fire_group', group: '', value: '' });
+  renderActions();
+}
+
+function removeAction(i) {
+  scriptActions.splice(i, 1);
+  renderActions();
+}
+
+function renderActions() {
+  const el = document.getElementById('scriptActions');
+  const none = document.getElementById('scriptNoActions');
+  el.innerHTML = '';
+  none.style.display = scriptActions.length ? 'none' : 'block';
+
+  scriptActions.forEach((action, i) => {
+    const row = document.createElement('div');
+    row.className = 'script-row';
+
+    const typeSelect = document.createElement('select');
+    ACTION_TYPES.forEach(at => {
+      const o = document.createElement('option');
+      o.value = at.value; o.textContent = at.label;
+      if (at.value === action.type) o.selected = true;
+      typeSelect.appendChild(o);
+    });
+    typeSelect.onchange = () => {
+      scriptActions[i].type = typeSelect.value;
+      scriptActions[i].value = '';
+      scriptActions[i].value2 = '';
+      renderActions();
+    };
+
+    row.appendChild(typeSelect);
+    appendActionInputs(row, action, i);
+
+    const del = document.createElement('button');
+    del.className = 'del-btn'; del.textContent = '✕';
+    del.onclick = () => removeAction(i);
+    row.appendChild(del);
+    el.appendChild(row);
+  });
+}
+
+function appendActionInputs(row, action, i) {
+  const t = action.type;
+
+  const needsGroup = ['fire_group','activate_group','deactivate_group','reset_counter',
+    'increment_counter','toggle_clock','activate_clock','deactivate_clock',
+    'spawn_particles','set_solid','set_kill'];
+
+  if (needsGroup.includes(t)) {
+    const g = makeInput('group', action.group, 'Target group', 160);
+    g.oninput = () => { scriptActions[i].group = g.value; };
+    row.appendChild(g);
+  }
+
+  if (t === 'move_group') {
+    const g = makeInput('group', action.group, 'Group', 100);
+    const x = makeInput('value', action.value,  'X', 55);
+    const y = makeInput('value2',action.value2, 'Y', 55);
+    g.oninput = () => { scriptActions[i].group  = g.value; };
+    x.oninput = () => { scriptActions[i].value  = x.value; };
+    y.oninput = () => { scriptActions[i].value2 = y.value; };
+    row.appendChild(g); row.appendChild(x); row.appendChild(y);
+  }
+
+  if (t === 'set_velocity') {
+    const g  = makeInput('group', action.group,  'Group', 100);
+    const vx = makeInput('value', action.value,  'VX', 50);
+    const vy = makeInput('value2',action.value2, 'VY', 50);
+    g.oninput  = () => { scriptActions[i].group  = g.value;  };
+    vx.oninput = () => { scriptActions[i].value  = vx.value; };
+    vy.oninput = () => { scriptActions[i].value2 = vy.value; };
+    row.appendChild(g); row.appendChild(vx); row.appendChild(vy);
+  }
+
+  if (t === 'set_opacity') {
+    const g = makeInput('group', action.group, 'Group', 110);
+    const v = makeInput('value', action.value, '0–1',   50);
+    g.oninput = () => { scriptActions[i].group = g.value; };
+    v.oninput = () => { scriptActions[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v);
+  }
+
+  if (t === 'set_text') {
+    const g = makeInput('group', action.group, 'Group',    100);
+    const v = makeInput('value', action.value, 'New text', 120);
+    g.oninput = () => { scriptActions[i].group = g.value; };
+    v.oninput = () => { scriptActions[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v);
+  }
+
+  if (t === 'set_solid' || t === 'set_kill') {
+    const sel = document.createElement('select');
+    ['true','false'].forEach(val => {
+      const o = document.createElement('option');
+      o.value = val; o.textContent = val === 'true' ? 'Yes' : 'No';
+      if (action.value === val) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.onchange = () => { scriptActions[i].value = sel.value; };
+    row.appendChild(sel);
+  }
+
+  if (t === 'shake_screen') {
+    const v = makeInput('value', action.value || '10', 'Intensity', 70);
+    v.oninput = () => { scriptActions[i].value = v.value; };
+    row.appendChild(v);
+  }
+}
+
+function makeInput(name, val, placeholder, width) {
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.name = name;
+  inp.value = val || '';
+  inp.placeholder = placeholder;
+  inp.style.width = width + 'px';
+  return inp;
+}
+
+/* ---------- APPLY ---------- */
+function applyScript() {
+  if (!scriptEditorTarget) return;
+  scriptEditorTarget.script = {
+    event:      scriptEvent,
+    conditions: JSON.parse(JSON.stringify(scriptConditions)),
+    actions:    JSON.parse(JSON.stringify(scriptActions))
+  };
+  closeScriptEditor();
+  showCoinToast('Script saved', '#6366f1');
+}
+
+/* ---------- RUNTIME ---------- */
+function evaluateScriptConditions(conditions) {
+  return conditions.every(cond => {
+    const t = cond.type;
+    const val = parseFloat(cond.value) || 0;
+
+    if (t.startsWith('counter_')) {
+      const counter = objects.find(o => o.tag === 'counter' && o.countGroup === cond.group);
+      if (!counter) return false;
+      const cv = counter.count || 0;
+      if (t === 'counter_gte') return cv >= val;
+      if (t === 'counter_lte') return cv <= val;
+      if (t === 'counter_eq')  return cv === val;
+      if (t === 'counter_gt')  return cv >  val;
+      if (t === 'counter_lt')  return cv <  val;
+    }
+    if (t === 'player_above')  return player.y < val;
+    if (t === 'player_below')  return player.y > val;
+    if (t === 'player_left')   return player.x < val;
+    if (t === 'player_right')  return player.x > val;
+
+    if (t === 'object_visible') {
+      return objects.some(o => hasGroup(o, cond.group) && (o.opacity ?? 1) > 0);
+    }
+    if (t === 'object_hidden') {
+      return objects.some(o => hasGroup(o, cond.group) && (o.opacity ?? 1) <= 0);
+    }
+    if (t === 'object_solid') {
+      return objects.some(o => hasGroup(o, cond.group) && o.solid);
+    }
+    if (t === 'clock_active') {
+      return objects.some(o => o.tag === 'clock' && hasGroup(o, cond.group) && o.active !== false);
+    }
+    if (t === 'trigger_fired') {
+      return objects.some(o => o.tag === 'trigger' && hasGroup(o, cond.group) && o.hasFired);
+    }
+    return true;
+  });
+}
+
+function executeScriptActions(actions) {
+  actions.forEach(action => {
+    const t = action.type;
+    const group = action.group || '';
+    const val   = action.value  || '';
+    const val2  = action.value2 || '';
+
+    if (t === 'fire_group')       { fireTriggerGroup(group); return; }
+    if (t === 'respawn_player')   { resetPlayer(player); return; }
+    if (t === 'shake_screen')     { addShake(parseFloat(val) || 10); return; }
+
+    if (t === 'activate_group' || t === 'deactivate_group') {
+      const on = t === 'activate_group';
+      objects.forEach(o => {
+        if (hasGroup(o, group)) {
+          o.active = on;
+          if (o.tag === 'clock' && on) o.lastFired = performance.now() / 1000;
+        }
+      });
+      return;
+    }
+
+    if (t === 'toggle_clock') {
+      objects.forEach(o => {
+        if (o.tag === 'clock' && hasGroup(o, group)) {
+          o.active = !o.active;
+          if (o.active) o.lastFired = performance.now() / 1000;
+        }
+      });
+      return;
+    }
+
+    if (t === 'activate_clock') {
+      objects.forEach(o => {
+        if (o.tag === 'clock' && hasGroup(o, group)) {
+          o.active = true;
+          o.lastFired = performance.now() / 1000;
+        }
+      });
+      return;
+    }
+
+    if (t === 'deactivate_clock') {
+      objects.forEach(o => {
+        if (o.tag === 'clock' && hasGroup(o, group)) o.active = false;
+      });
+      return;
+    }
+
+    if (t === 'reset_counter') {
+      objects.forEach(o => { if (o.tag === 'counter' && o.countGroup === group) o.count = 0; });
+      return;
+    }
+
+    if (t === 'increment_counter') {
+      objects.forEach(o => { if (o.tag === 'counter' && o.countGroup === group) o.count = (o.count || 0) + 1; });
+      return;
+    }
+
+    if (t === 'spawn_particles') {
+      objects.forEach(o => {
+        if (hasGroup(o, group)) spawnParticles(o.x + o.width/2, o.y + o.height/2, 12, '#6366f1', 6);
+      });
+      return;
+    }
+
+    // Per-object property actions
+    objects.forEach(o => {
+      if (!hasGroup(o, group)) return;
+      if (t === 'move_group')    { o.x = parseFloat(val) || o.x; o.y = parseFloat(val2) || o.y; }
+      if (t === 'set_velocity')  { o.vx = parseFloat(val) || 0;  o.vy = parseFloat(val2) || 0;  }
+      if (t === 'set_opacity')   { o.opacity = parseFloat(val) ?? 1; }
+      if (t === 'set_text')      { o.text = val; }
+      if (t === 'set_solid')     { o.solid = val === 'true'; }
+      if (t === 'set_kill')      { o.kill  = val === 'true'; }
+    });
+  });
+}
+
+function runTriggerScript(trigger) {
+  const sc = trigger.script;
+  if (!sc || !sc.actions || sc.actions.length === 0) return;
+  if (!evaluateScriptConditions(sc.conditions || [])) return;
+  executeScriptActions(sc.actions);
+}
 // Trigger checking function
 // 1. New helper function to execute trigger logic
 function executeTriggerLogic(trigger) {
     const mods = trigger.mods;
 
-    // ===============================================
-    // FIX 1: ONE-TIME TRIGGER GUARD
-    // ===============================================
     if (trigger.tag === 'trigger' && mods && mods.oneTime && trigger.hasFired) {
         return;
     }
-    
-    // ===============================================
-    // FIX 2: GLOBAL SAFETY LOCK (Check 1)
-    // ===============================================
-    //if (isTriggerFiring) {
-        //console.warn("Trigger recursion detected and stopped.");
-        //return; 
-    //}
-    
-    // Set Lock
+
     isTriggerFiring = true;
 
-    // 2. Iterate through all objects to find targets
     objects.forEach(target => {
-    if (mods.targetGroup && hasGroup(target, mods.targetGroup)) {
-      if (mods.active === 'on' || mods.active === 'off') {
-    target.active = mods.active === 'on';
-    // Reset clock timer when re-activated so it waits a full interval
-    if (target.tag === 'clock' && target.active) {
-        target.lastFired = performance.now() / 1000;
-    }
-}
-            
-            // ===================================
-            // A. COUNTER BLOCK LOGIC (The Definitive Fix for Recursion)
-            // ===================================
-            if (target.tag === 'counter') {
-                
-                // CRITICAL FIX: 3. If the counter is currently processing its output, ignore the hit.
-                if (target.isFiringOutput) {
-                    return; // Ignore the recursive hit
-                }
-                
-                target.count = (target.count || 0) + 1; // Increment
+        if (mods.targetGroup && hasGroup(target, mods.targetGroup)) {
 
+            // Counter logic
+            if (target.tag === 'counter') {
+                if (target.isFiringOutput) return;
+
+                target.count = (target.count || 0) + 1;
                 const limit = parseFloat(target.limit);
 
-                // Check Limit against the parsed number
                 if (target.count >= limit) {
-                    
-                    target.count = 0; 
-                    
-                    // Set the guard flag.
+                    target.count = 0;
                     target.isFiringOutput = true;
-                    
-                    // Fire the Counter's output trigger
                     if (target.targetGroup && target.targetGroup.trim() !== "") {
                         fireTriggerGroup(target.targetGroup);
                     }
-                    
-                    // Unset the guard flag.
                     target.isFiringOutput = false;
                 }
-                return; // Stop standard modifications for a counter
+                return;
             }
 
-            // ... (The rest of your STANDARD TARGET LOGIC (Section B) here) ...
-            
-            // Handle property modifications
-            if (mods.x !== undefined) target.x = parseFloat(mods.x);
-            if (mods.y !== undefined) target.y = parseFloat(mods.y);
-            if (mods.vx !== undefined) target.vx = parseFloat(mods.vx);
-            if (mods.vy !== undefined) target.vy = parseFloat(mods.vy);
+            // Standard property modifications
+            if (mods.x !== undefined)       target.x       = parseFloat(mods.x);
+            if (mods.y !== undefined)       target.y       = parseFloat(mods.y);
+            if (mods.vx !== undefined)      target.vx      = parseFloat(mods.vx);
+            if (mods.vy !== undefined)      target.vy      = parseFloat(mods.vy);
             if (mods.opacity !== undefined) target.opacity = parseFloat(mods.opacity);
-            if (mods.width !== undefined) {
-                target.width = parseFloat(mods.width);
-            }
-            if (mods.height !== undefined) {
-                target.height = parseFloat(mods.height);
-            }
+            if (mods.width !== undefined)   target.width   = parseFloat(mods.width);
+            if (mods.height !== undefined)  target.height  = parseFloat(mods.height);
 
-            // Handle Boolean and String properties
             if (mods.solid !== undefined) target.solid = (mods.solid === 'true' || mods.solid === true);
-            if (mods.kill !== undefined) target.kill = (mods.kill === 'true' || mods.kill === true);
+            if (mods.kill  !== undefined) target.kill  = (mods.kill  === 'true' || mods.kill  === true);
             if (mods.slime !== undefined) target.slime = (mods.slime === 'true' || mods.slime === true);
-            if (mods.text !== undefined) target.text = mods.text;
-            
-            // Handle activation/deactivation 
+            if (mods.text  !== undefined) target.text  = mods.text;
+
+            // Active state — handles triggers, clocks, and anything else
             if (mods.active === 'on' || mods.active === 'off') {
                 target.active = mods.active === 'on';
+                // When a clock is re-activated, reset its timer so it
+                // waits a full interval before its first tick
+                if (target.tag === 'clock' && target.active) {
+                    target.lastFired = performance.now() / 1000;
+                }
             } else if (mods.active === 'fire') {
                 if (target.tag === 'trigger') {
                     executeTriggerLogic(target);
@@ -5385,13 +5844,19 @@ function executeTriggerLogic(trigger) {
             }
         }
     });
+
     if (trigger.tag === 'trigger' && mods && mods.oneTime) {
         trigger.hasFired = true;
     }
-    // 4. Unset Lock
+    // Run visual script if one exists on this trigger
+    if (trigger.script) runTriggerScript(trigger);
+
+    if (trigger.tag === 'trigger' && mods && mods.oneTime) {
+        trigger.hasFired = true;
+    }
+
     isTriggerFiring = false;
 }
-
 // 2. Updated Main Loop Checker
 function checkTriggers() {
     const player = objects.find(o => o.tag === 'player');
