@@ -1255,7 +1255,7 @@
 <div id="scriptEditorPopup" style="
   display:none; position:fixed; top:50%; left:50%;
   transform:translate(-50%,-50%);
-  width:520px; max-height:85vh; overflow-y:auto;
+  width:560px; max-height:88vh; overflow-y:auto;
   background:#ffffff; border:1px solid #e4e4e7; border-radius:12px;
   box-shadow:0 8px 40px rgba(0,0,0,0.12);
   z-index:2000; font-family:system-ui; padding:20px;
@@ -1264,41 +1264,45 @@
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #e4e4e7;">
     <div>
       <div style="font-size:15px; font-weight:600; color:#18181b;">Trigger Script Editor</div>
-      <div style="font-size:12px; color:#71717a; margin-top:2px;">Build logic visually — conditions and actions run in order</div>
+      <div style="font-size:12px; color:#71717a; margin-top:2px;">Variables → Conditions → Actions, run top to bottom</div>
     </div>
     <button onclick="closeScriptEditor()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#71717a;padding:4px 8px;">✕</button>
   </div>
 
-  <!-- EVENT selector -->
+  <!-- EVENT -->
   <div style="margin-bottom:16px;">
     <div style="font-size:11px; font-weight:600; color:#52525b; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;">Fire when</div>
     <div style="display:flex; gap:6px; flex-wrap:wrap;" id="scriptEventBtns">
-      <button onclick="setScriptEvent('touched')"    class="script-event-btn" data-event="touched">    Player touches</button>
-      <button onclick="setScriptEvent('activated')"  class="script-event-btn" data-event="activated">  Activated by trigger</button>
-      <button onclick="setScriptEvent('deactivated')"class="script-event-btn" data-event="deactivated">Deactivated</button>
-      <button onclick="setScriptEvent('always')"     class="script-event-btn" data-event="always">     Every tick</button>
+      <button onclick="setScriptEvent('touched')"     class="script-event-btn" data-event="touched">Player touches</button>
+      <button onclick="setScriptEvent('activated')"   class="script-event-btn" data-event="activated">Activated</button>
+      <button onclick="setScriptEvent('deactivated')" class="script-event-btn" data-event="deactivated">Deactivated</button>
+      <button onclick="setScriptEvent('always')"      class="script-event-btn" data-event="always">Every tick</button>
     </div>
   </div>
 
-  <!-- CONDITIONS -->
-  <div style="margin-bottom:16px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-      <div style="font-size:11px; font-weight:600; color:#52525b; text-transform:uppercase; letter-spacing:.04em;">Conditions <span style="font-weight:400; text-transform:none; font-size:11px; color:#a1a1aa;">(all must be true)</span></div>
-      <button onclick="addScriptCondition()" style="font-size:11px; padding:3px 10px; background:#f4f4f5; border:1px solid #e4e4e7; border-radius:6px; cursor:pointer; color:#27272a;">+ Add</button>
-    </div>
-    <div id="scriptConditions" style="display:flex; flex-direction:column; gap:6px;"></div>
-    <div id="scriptNoConditions" style="font-size:12px; color:#a1a1aa; padding:8px 0;">No conditions — always fires</div>
-  </div>
+  <!-- Steps list -->
+<div style="margin-bottom:16px;">
+  <div style="font-size:11px;font-weight:600;color:#52525b;text-transform:uppercase;
+              letter-spacing:.04em;margin-bottom:8px;">Steps (run top to bottom)</div>
+  <div id="scriptStepsList" style="display:flex;flex-direction:column;gap:6px;
+       margin-bottom:10px;"></div>
 
-  <!-- ACTIONS -->
-  <div style="margin-bottom:20px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-      <div style="font-size:11px; font-weight:600; color:#52525b; text-transform:uppercase; letter-spacing:.04em;">Actions</div>
-      <button onclick="addScriptAction()" style="font-size:11px; padding:3px 10px; background:#f4f4f5; border:1px solid #e4e4e7; border-radius:6px; cursor:pointer; color:#27272a;">+ Add</button>
-    </div>
-    <div id="scriptActions" style="display:flex; flex-direction:column; gap:6px;"></div>
-    <div id="scriptNoActions" style="font-size:12px; color:#a1a1aa; padding:8px 0;">No actions added yet</div>
+  <!-- Add step buttons -->
+  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+    <button onclick="addScriptStep('var')"
+      style="font-size:11px;padding:4px 10px;background:#d1fae5;color:#065f46;
+             border:1px solid #6ee7b7;border-radius:6px;cursor:pointer;">+ Var</button>
+    <button onclick="addScriptStep('compute')"
+      style="font-size:11px;padding:4px 10px;background:#fef3c7;color:#92400e;
+             border:1px solid #fcd34d;border-radius:6px;cursor:pointer;">+ Compute</button>
+    <button onclick="addScriptStep('condition')"
+      style="font-size:11px;padding:4px 10px;background:#dbeafe;color:#1e3a8a;
+             border:1px solid #93c5fd;border-radius:6px;cursor:pointer;">+ If</button>
+    <button onclick="addScriptStep('action')"
+      style="font-size:11px;padding:4px 10px;background:#ede9fe;color:#3730a3;
+             border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;">+ Do</button>
   </div>
+</div>
 
   <div style="display:flex; gap:8px;">
     <button onclick="applyScript()" style="flex:1; padding:10px; background:#6366f1; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:13px; cursor:pointer;">Apply Script</button>
@@ -1313,23 +1317,33 @@
   border:1px solid #e4e4e7; border-radius:6px; cursor:pointer;
   transition:all 0.1s;
 }
-.script-event-btn.active {
-  background:#6366f1; color:#fff; border-color:#6366f1;
-}
+.script-event-btn.active { background:#6366f1; color:#fff; border-color:#6366f1; }
 .script-row {
-  display:flex; align-items:center; gap:6px;
+  display:flex; align-items:center; gap:5px; flex-wrap:wrap;
   background:#f4f4f5; border:1px solid #e4e4e7;
-  border-radius:8px; padding:8px 10px;
+  border-radius:8px; padding:7px 10px;
 }
+.script-row.var-row  { border-left:3px solid #10b981; }
+.script-row.calc-row { border-left:3px solid #f59e0b; }
+.script-row.cond-row { border-left:3px solid #3b82f6; }
+.script-row.act-row  { border-left:3px solid #6366f1; }
 .script-row select, .script-row input {
   font-size:12px; padding:4px 7px;
   background:#fff; border:1px solid #e4e4e7;
-  border-radius:5px; color:#27272a; flex-shrink:0;
+  border-radius:5px; color:#27272a; flex-shrink:0; min-width:0;
 }
 .script-row select:focus, .script-row input:focus {
   outline:none; border-color:#6366f1;
   box-shadow:0 0 0 2px rgba(99,102,241,0.15);
 }
+.script-pill {
+  font-size:10px; font-weight:600; padding:2px 7px;
+  border-radius:999px; flex-shrink:0;
+}
+.pill-var  { background:#d1fae5; color:#065f46; }
+.pill-calc { background:#fef3c7; color:#92400e; }
+.pill-cond { background:#dbeafe; color:#1e3a8a; }
+.pill-act  { background:#ede9fe; color:#3730a3; }
 .script-row .del-btn {
   margin-left:auto; background:none; border:none;
   color:#a1a1aa; cursor:pointer; font-size:15px; padding:0 2px; flex-shrink:0;
@@ -2275,7 +2289,14 @@ function drawBackground() {
 
     ctx.drawImage(bgCache, 0, 0);
 }
-
+function checkScriptTriggers() {
+    objects.forEach(trigger => {
+        if (trigger.tag !== 'trigger') return;
+        const sc = trigger.script;
+        if (!sc || sc.event !== 'always') return;
+        runTriggerScript(trigger, 'always');
+    });
+}
 function cachedMountainLayer(bc, W, H, offsetX, baseY, color, height, seed) {
     const period = W * 1.6;
     const shift = ((offsetX % period) + period) % period;
@@ -5377,14 +5398,58 @@ function fireTriggerGroup(groupName) {
     });
 }
 /* ============================================================
-   TRIGGER SCRIPT EDITOR
+   TRIGGER SCRIPT EDITOR — full data processing edition
 ============================================================ */
-let scriptEditorTarget = null; // the trigger object being edited
-let scriptEvent = 'touched';
-let scriptConditions = [];
-let scriptActions = [];
+let scriptEditorTarget = null;
+let scriptEvent      = 'touched';
+let scriptSteps = [];
+/* ---- source types for variable values ---- */
+const VAR_SOURCES = [
+  { value:'literal_num',  label:'Number' },
+  { value:'literal_str',  label:'Text' },
+  { value:'counter',      label:'Counter value' },
+  { value:'player_x',     label:'Player X' },
+  { value:'player_y',     label:'Player Y' },
+  { value:'player_vx',    label:'Player VX' },
+  { value:'player_vy',    label:'Player VY' },
+  { value:'object_x',     label:'Object X (group)' },
+  { value:'object_y',     label:'Object Y (group)' },
+  { value:'object_opacity',label:'Object opacity (group)' },
+  { value:'object_width', label:'Object width (group)' },
+  { value:'object_height',label:'Object height (group)' },
+  { value:'random_int',   label:'Random int (min–max)' },
+  { value:'random_float', label:'Random float (0–1)' },
+  { value:'game_time',    label:'Game time (seconds)' },
+];
+
+const COMPUTE_OPS = [
+  { value:'add',      label:'$a + $b  →' },
+  { value:'sub',      label:'$a − $b  →' },
+  { value:'mul',      label:'$a × $b  →' },
+  { value:'div',      label:'$a ÷ $b  →' },
+  { value:'mod',      label:'$a mod $b →' },
+  { value:'pow',      label:'$a ^ $b  →' },
+  { value:'min',      label:'min($a,$b) →' },
+  { value:'max',      label:'max($a,$b) →' },
+  { value:'abs',      label:'abs($a)  →' },
+  { value:'floor',    label:'floor($a) →' },
+  { value:'ceil',     label:'ceil($a) →' },
+  { value:'round',    label:'round($a) →' },
+  { value:'concat',   label:'$a + $b (text) →' },
+  { value:'tostring', label:'number→text($a) →' },
+  { value:'tonumber', label:'text→number($a) →' },
+  { value:'clamp',    label:'clamp($a, min, max) →' },
+  { value:'lerp',     label:'lerp($a→$b, t%) →' },
+];
 
 const CONDITION_TYPES = [
+  { value:'var_eq',       label:'$var  =  value' },
+  { value:'var_neq',      label:'$var  ≠  value' },
+  { value:'var_gt',       label:'$var  >  value' },
+  { value:'var_gte',      label:'$var  ≥  value' },
+  { value:'var_lt',       label:'$var  <  value' },
+  { value:'var_lte',      label:'$var  ≤  value' },
+  { value:'var_contains', label:'$var contains text' },
   { value:'counter_gte',  label:'Counter ≥' },
   { value:'counter_lte',  label:'Counter ≤' },
   { value:'counter_eq',   label:'Counter =' },
@@ -5394,42 +5459,53 @@ const CONDITION_TYPES = [
   { value:'player_below', label:'Player below Y' },
   { value:'player_left',  label:'Player left of X' },
   { value:'player_right', label:'Player right of X' },
-  { value:'object_visible', label:'Object is visible' },
-  { value:'object_hidden',  label:'Object is hidden' },
-  { value:'object_solid',   label:'Object is solid' },
-  { value:'clock_active',   label:'Clock is active' },
-  { value:'trigger_fired',  label:'Trigger has fired' },
+  { value:'object_visible',  label:'Object visible' },
+  { value:'object_hidden',   label:'Object hidden' },
+  { value:'object_solid',    label:'Object is solid' },
+  { value:'clock_active',    label:'Clock active' },
+  { value:'trigger_fired',   label:'Trigger fired' },
 ];
 
 const ACTION_TYPES = [
-  { value:'fire_group',       label:'Fire trigger group' },
-  { value:'activate_group',   label:'Activate group' },
-  { value:'deactivate_group', label:'Deactivate group' },
-  { value:'move_group',       label:'Set position of group' },
-  { value:'set_velocity',     label:'Set velocity of group' },
-  { value:'set_opacity',      label:'Set opacity of group' },
-  { value:'set_solid',        label:'Set solid state of group' },
-  { value:'set_kill',         label:'Set kill state of group' },
-  { value:'set_text',         label:'Set text of group' },
-  { value:'reset_counter',    label:'Reset counter group' },
-  { value:'increment_counter',label:'Increment counter group' },
-  { value:'toggle_clock',     label:'Toggle clock group' },
-  { value:'activate_clock',   label:'Activate clock group' },
-  { value:'deactivate_clock', label:'Deactivate clock group' },
-  { value:'respawn_player',   label:'Respawn player' },
-  { value:'shake_screen',     label:'Shake screen' },
-  { value:'spawn_particles',  label:'Spawn particles at group' },
+  { value:'fire_group',        label:'Fire trigger group' },
+  { value:'activate_group',    label:'Activate group' },
+  { value:'deactivate_group',  label:'Deactivate group' },
+  { value:'move_group',        label:'Set position of group' },
+  { value:'set_velocity',      label:'Set velocity of group' },
+  { value:'set_opacity',       label:'Set opacity of group' },
+  { value:'set_solid',         label:'Set solid of group' },
+  { value:'set_kill',          label:'Set kill of group' },
+  { value:'set_text',          label:'Set text of group' },
+  { value:'reset_counter',     label:'Reset counter' },
+  { value:'increment_counter', label:'Increment counter' },
+  { value:'set_counter',       label:'Set counter to value' },
+  { value:'toggle_clock',      label:'Toggle clock' },
+  { value:'activate_clock',    label:'Activate clock' },
+  { value:'deactivate_clock',  label:'Deactivate clock' },
+  { value:'set_var',           label:'Set $var to value' },
+  { value:'respawn_player',    label:'Respawn player' },
+  { value:'shake_screen',      label:'Shake screen' },
+  { value:'spawn_particles',   label:'Particles at group' },
+  { value:'log',               label:'Log to console' },
 ];
 
+/* ===== open / close ===== */
 function openScriptEditor() {
   if (!selectedObject || selectedObject.tag !== 'trigger') return;
   scriptEditorTarget = selectedObject;
-
-  // Load existing script if any
   const sc = scriptEditorTarget.script || {};
-  scriptEvent      = sc.event      || 'touched';
-  scriptConditions = sc.conditions ? JSON.parse(JSON.stringify(sc.conditions)) : [];
-  scriptActions    = sc.actions    ? JSON.parse(JSON.stringify(sc.actions))    : [];
+  scriptEvent = sc.event || 'touched';
+
+  // Migration: if saved in old format, convert
+  if (sc.steps) {
+    scriptSteps = JSON.parse(JSON.stringify(sc.steps));
+  } else {
+    scriptSteps = [];
+    (sc.variables  || []).forEach(v => scriptSteps.push({ kind: 'var',       ...v }));
+    (sc.computes   || []).forEach(v => scriptSteps.push({ kind: 'compute',   ...v }));
+    (sc.conditions || []).forEach(v => scriptSteps.push({ kind: 'condition', ...v }));
+    (sc.actions    || []).forEach(v => scriptSteps.push({ kind: 'action',    ...v }));
+  }
 
   document.getElementById('scriptEditorPopup').style.display = 'block';
   document.getElementById('overlay').style.display = 'block';
@@ -5438,276 +5514,529 @@ function openScriptEditor() {
 
 function closeScriptEditor() {
   document.getElementById('scriptEditorPopup').style.display = 'none';
-  document.getElementById('overlay').style.display = 'none';
+  // Only hide the overlay if the edit popup is also closed
+  if (document.getElementById('popup').style.display !== 'block') {
+    document.getElementById('overlay').style.display = 'none';
+  }
 }
 
 function setScriptEvent(ev) {
   scriptEvent = ev;
-  document.querySelectorAll('.script-event-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.event === ev);
-  });
+  document.querySelectorAll('.script-event-btn').forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.event === ev));
 }
 
 function renderScriptEditor() {
   setScriptEvent(scriptEvent);
-  renderConditions();
-  renderActions();
-}
 
-/* ---------- CONDITIONS ---------- */
-function addScriptCondition() {
-  scriptConditions.push({ type: 'counter_gte', group: '', value: '0' });
-  renderConditions();
-}
+  const container = document.getElementById('scriptStepsList');
+  container.innerHTML = '';
 
-function removeCondition(i) {
-  scriptConditions.splice(i, 1);
-  renderConditions();
-}
+  if (scriptSteps.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'font-size:12px;color:#a1a1aa;padding:6px 0;';
+    empty.textContent = 'No steps yet — add one below';
+    container.appendChild(empty);
+  }
 
-function renderConditions() {
-  const el = document.getElementById('scriptConditions');
-  const none = document.getElementById('scriptNoConditions');
-  el.innerHTML = '';
-  none.style.display = scriptConditions.length ? 'none' : 'block';
-
-  scriptConditions.forEach((cond, i) => {
+  scriptSteps.forEach((step, i) => {
     const row = document.createElement('div');
-    row.className = 'script-row';
-
-    const typeSelect = document.createElement('select');
-    CONDITION_TYPES.forEach(ct => {
-      const o = document.createElement('option');
-      o.value = ct.value; o.textContent = ct.label;
-      if (ct.value === cond.type) o.selected = true;
-      typeSelect.appendChild(o);
-    });
-    typeSelect.onchange = () => {
-      scriptConditions[i].type = typeSelect.value;
-      renderConditions();
+    const kindMeta = {
+      var:       { cls: 'var-row',  pill: 'VAR',  pillCls: 'pill-var'  },
+      compute:   { cls: 'calc-row', pill: 'CALC', pillCls: 'pill-calc' },
+      condition: { cls: 'cond-row', pill: 'IF',   pillCls: 'pill-cond' },
+      action:    { cls: 'act-row',  pill: 'DO',   pillCls: 'pill-act'  },
     };
+    const meta = kindMeta[step.kind];
+    row.className = `script-row ${meta.cls}`;
 
-    row.appendChild(typeSelect);
-    appendConditionInputs(row, cond, i);
+    // Up/down arrows
+    const upBtn = document.createElement('button');
+    upBtn.textContent = '▲'; upBtn.className = 'del-btn';
+    upBtn.style.fontSize = '11px';
+    upBtn.onclick = () => moveStep(i, -1);
 
-    const del = document.createElement('button');
-    del.className = 'del-btn'; del.textContent = '✕';
-    del.onclick = () => removeCondition(i);
-    row.appendChild(del);
-    el.appendChild(row);
+    const downBtn = document.createElement('button');
+    downBtn.textContent = '▼'; downBtn.className = 'del-btn';
+    downBtn.style.fontSize = '11px';
+    downBtn.onclick = () => moveStep(i, 1);
+
+    const arrows = document.createElement('div');
+    arrows.style.cssText = 'display:flex;flex-direction:column;gap:0;flex-shrink:0;';
+    arrows.appendChild(upBtn);
+    arrows.appendChild(downBtn);
+    row.appendChild(arrows);
+
+    row.appendChild(makePill(meta.pill, meta.pillCls));
+
+    // Build inputs based on kind
+    if (step.kind === 'var')       appendVariableInputs(row, step, i);
+    if (step.kind === 'compute')   appendComputeInputs(row, step, i);
+    if (step.kind === 'condition') appendConditionInputs(row, step, i);
+    if (step.kind === 'action')    appendActionInputsForStep(row, step, i);
+
+    row.appendChild(makeDelBtn(() => removeStep(i)));
+    container.appendChild(row);
   });
 }
 
-function appendConditionInputs(row, cond, i) {
-  const t = cond.type;
-
-  if (t.startsWith('counter_')) {
-    const g = makeInput('group', cond.group, 'Counter group', 120);
-    const v = makeInput('value', cond.value, 'Value', 60);
-    g.oninput = () => { scriptConditions[i].group = g.value; };
-    v.oninput = () => { scriptConditions[i].value = v.value; };
-    row.appendChild(g); row.appendChild(v);
-  } else if (t === 'player_above' || t === 'player_below') {
-    const v = makeInput('value', cond.value, 'Y position', 80);
-    v.oninput = () => { scriptConditions[i].value = v.value; };
-    row.appendChild(v);
-  } else if (t === 'player_left' || t === 'player_right') {
-    const v = makeInput('value', cond.value, 'X position', 80);
-    v.oninput = () => { scriptConditions[i].value = v.value; };
-    row.appendChild(v);
-  } else if (t === 'object_visible' || t === 'object_hidden' || t === 'object_solid' || t === 'clock_active' || t === 'trigger_fired') {
-    const g = makeInput('group', cond.group, 'Group name', 150);
-    g.oninput = () => { scriptConditions[i].group = g.value; };
-    row.appendChild(g);
-  }
-}
-
-/* ---------- ACTIONS ---------- */
-function addScriptAction() {
-  scriptActions.push({ type: 'fire_group', group: '', value: '' });
-  renderActions();
-}
-
-function removeAction(i) {
-  scriptActions.splice(i, 1);
-  renderActions();
-}
-
-function renderActions() {
-  const el = document.getElementById('scriptActions');
-  const none = document.getElementById('scriptNoActions');
-  el.innerHTML = '';
-  none.style.display = scriptActions.length ? 'none' : 'block';
-
-  scriptActions.forEach((action, i) => {
-    const row = document.createElement('div');
-    row.className = 'script-row';
-
-    const typeSelect = document.createElement('select');
-    ACTION_TYPES.forEach(at => {
-      const o = document.createElement('option');
-      o.value = at.value; o.textContent = at.label;
-      if (at.value === action.type) o.selected = true;
-      typeSelect.appendChild(o);
-    });
-    typeSelect.onchange = () => {
-      scriptActions[i].type = typeSelect.value;
-      scriptActions[i].value = '';
-      scriptActions[i].value2 = '';
-      renderActions();
-    };
-
-    row.appendChild(typeSelect);
-    appendActionInputs(row, action, i);
-
-    const del = document.createElement('button');
-    del.className = 'del-btn'; del.textContent = '✕';
-    del.onclick = () => removeAction(i);
-    row.appendChild(del);
-    el.appendChild(row);
-  });
-}
-
-function appendActionInputs(row, action, i) {
-  const t = action.type;
-
-  const needsGroup = ['fire_group','activate_group','deactivate_group','reset_counter',
-    'increment_counter','toggle_clock','activate_clock','deactivate_clock',
-    'spawn_particles','set_solid','set_kill'];
-
-  if (needsGroup.includes(t)) {
-    const g = makeInput('group', action.group, 'Target group', 160);
-    g.oninput = () => { scriptActions[i].group = g.value; };
-    row.appendChild(g);
-  }
-
-  if (t === 'move_group') {
-    const g = makeInput('group', action.group, 'Group', 100);
-    const x = makeInput('value', action.value,  'X', 55);
-    const y = makeInput('value2',action.value2, 'Y', 55);
-    g.oninput = () => { scriptActions[i].group  = g.value; };
-    x.oninput = () => { scriptActions[i].value  = x.value; };
-    y.oninput = () => { scriptActions[i].value2 = y.value; };
-    row.appendChild(g); row.appendChild(x); row.appendChild(y);
-  }
-
-  if (t === 'set_velocity') {
-    const g  = makeInput('group', action.group,  'Group', 100);
-    const vx = makeInput('value', action.value,  'VX', 50);
-    const vy = makeInput('value2',action.value2, 'VY', 50);
-    g.oninput  = () => { scriptActions[i].group  = g.value;  };
-    vx.oninput = () => { scriptActions[i].value  = vx.value; };
-    vy.oninput = () => { scriptActions[i].value2 = vy.value; };
-    row.appendChild(g); row.appendChild(vx); row.appendChild(vy);
-  }
-
-  if (t === 'set_opacity') {
-    const g = makeInput('group', action.group, 'Group', 110);
-    const v = makeInput('value', action.value, '0–1',   50);
-    g.oninput = () => { scriptActions[i].group = g.value; };
-    v.oninput = () => { scriptActions[i].value = v.value; };
-    row.appendChild(g); row.appendChild(v);
-  }
-
-  if (t === 'set_text') {
-    const g = makeInput('group', action.group, 'Group',    100);
-    const v = makeInput('value', action.value, 'New text', 120);
-    g.oninput = () => { scriptActions[i].group = g.value; };
-    v.oninput = () => { scriptActions[i].value = v.value; };
-    row.appendChild(g); row.appendChild(v);
-  }
-
-  if (t === 'set_solid' || t === 'set_kill') {
-    const sel = document.createElement('select');
-    ['true','false'].forEach(val => {
-      const o = document.createElement('option');
-      o.value = val; o.textContent = val === 'true' ? 'Yes' : 'No';
-      if (action.value === val) o.selected = true;
-      sel.appendChild(o);
-    });
-    sel.onchange = () => { scriptActions[i].value = sel.value; };
-    row.appendChild(sel);
-  }
-
-  if (t === 'shake_screen') {
-    const v = makeInput('value', action.value || '10', 'Intensity', 70);
-    v.oninput = () => { scriptActions[i].value = v.value; };
-    row.appendChild(v);
-  }
-}
-
-function makeInput(name, val, placeholder, width) {
+/* ===== helper ===== */
+function makeInput(val, placeholder, width, type='text') {
   const inp = document.createElement('input');
-  inp.type = 'text';
-  inp.name = name;
-  inp.value = val || '';
-  inp.placeholder = placeholder;
+  inp.type = type; inp.value = val || ''; inp.placeholder = placeholder;
   inp.style.width = width + 'px';
   return inp;
 }
+function makeSelect(options, current) {
+  const sel = document.createElement('select');
+  options.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.value; opt.textContent = o.label;
+    if (o.value === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  return sel;
+}
+function makePill(text, cls) {
+  const span = document.createElement('span');
+  span.className = `script-pill ${cls}`;
+  span.textContent = text;
+  return span;
+}
+function makeDelBtn(fn) {
+  const btn = document.createElement('button');
+  btn.className = 'del-btn'; btn.textContent = '✕';
+  btn.onclick = fn; return btn;
+}
 
-/* ---------- APPLY ---------- */
+/* ===== VARIABLES ===== */
+function removeVariable(i) { scriptVariables.splice(i,1); renderVariables(); }
+
+function appendVariableInputs(row, step, i) {
+  const nameInp = makeInput(step.name, 'name', 80);
+  nameInp.style.fontFamily = 'monospace';
+  nameInp.oninput = () => { scriptSteps[i].name = nameInp.value; };
+
+  const eq = document.createElement('span');
+  eq.textContent = '=';
+  eq.style.cssText = 'font-size:12px;color:#71717a;flex-shrink:0;';
+
+  const srcSel = makeSelect(VAR_SOURCES, step.source);
+  srcSel.onchange = () => { scriptSteps[i].source = srcSel.value; renderScriptEditor(); };
+
+  row.appendChild(nameInp);
+  row.appendChild(eq);
+  row.appendChild(srcSel);
+
+  const src = step.source;
+  if (src === 'literal_num') {
+    const inp = makeInput(step.value, '0', 70, 'number');
+    inp.oninput = () => { scriptSteps[i].value = inp.value; };
+    row.appendChild(inp);
+  } else if (src === 'literal_str') {
+    const inp = makeInput(step.value, 'text...', 120);
+    inp.oninput = () => { scriptSteps[i].value = inp.value; };
+    row.appendChild(inp);
+  } else if (src === 'counter' || src.startsWith('object_')) {
+    const inp = makeInput(step.group, 'group name', 120);
+    inp.oninput = () => { scriptSteps[i].group = inp.value; };
+    row.appendChild(inp);
+  } else if (src === 'random_int') {
+    const min = makeInput(step.value,  'min', 55, 'number');
+    const max = makeInput(step.value2, 'max', 55, 'number');
+    min.oninput = () => { scriptSteps[i].value  = min.value; };
+    max.oninput = () => { scriptSteps[i].value2 = max.value; };
+    row.appendChild(min); row.appendChild(max);
+  }
+}
+
+function appendComputeInputs(row, step, i) {
+  const opSel = makeSelect(COMPUTE_OPS, step.op);
+  opSel.onchange = () => { scriptSteps[i].op = opSel.value; renderScriptEditor(); };
+  row.appendChild(opSel);
+
+  const needsB     = !['abs','floor','ceil','round','tostring','tonumber'].includes(step.op);
+  const needsClamp = step.op === 'clamp';
+  const needsLerp  = step.op === 'lerp';
+
+  const aInp = makeInput(step.a, '$a or number', 100);
+  aInp.oninput = () => { scriptSteps[i].a = aInp.value; };
+  row.appendChild(aInp);
+
+  if (needsB && !needsClamp && !needsLerp) {
+    const bInp = makeInput(step.b, '$b or number', 100);
+    bInp.oninput = () => { scriptSteps[i].b = bInp.value; };
+    row.appendChild(bInp);
+  }
+  if (needsClamp) {
+    const mn = makeInput(step.b,     'min', 50, 'number');
+    const mx = makeInput(step.extra, 'max', 50, 'number');
+    mn.oninput = () => { scriptSteps[i].b     = mn.value; };
+    mx.oninput = () => { scriptSteps[i].extra = mx.value; };
+    row.appendChild(mn); row.appendChild(mx);
+  }
+  if (needsLerp) {
+    const bInp = makeInput(step.b,     '$b', 70);
+    const tInp = makeInput(step.extra, 't%', 45, 'number');
+    bInp.oninput = () => { scriptSteps[i].b     = bInp.value; };
+    tInp.oninput = () => { scriptSteps[i].extra = tInp.value; };
+    row.appendChild(bInp); row.appendChild(tInp);
+  }
+
+  const arrow = document.createElement('span');
+  arrow.textContent = '→';
+  arrow.style.cssText = 'font-size:12px;color:#71717a;flex-shrink:0;';
+  row.appendChild(arrow);
+
+  const outInp = makeInput(step.out, 'output $var', 90);
+  outInp.style.fontFamily = 'monospace';
+  outInp.oninput = () => { scriptSteps[i].out = outInp.value; };
+  row.appendChild(outInp);
+}
+
+function appendConditionInputs(row, step, i) {
+  const typeSel = makeSelect(CONDITION_TYPES, step.type);
+  typeSel.onchange = () => { scriptSteps[i].type = typeSel.value; renderScriptEditor(); };
+  row.appendChild(typeSel);
+
+  const t = step.type;
+  if (t.startsWith('var_')) {
+    const a = makeInput(step.a, '$var or value', 100);
+    const b = makeInput(step.b, '$var or value', 100);
+    a.oninput = () => { scriptSteps[i].a = a.value; };
+    b.oninput = () => { scriptSteps[i].b = b.value; };
+    row.appendChild(a); row.appendChild(b);
+  } else if (t.startsWith('counter_')) {
+    const g = makeInput(step.group, 'counter group', 110);
+    const v = makeInput(step.value, 'value or $var', 90);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v);
+  } else if (['player_above','player_below','player_left','player_right'].includes(t)) {
+    const v = makeInput(step.value, 'coord or $var', 100);
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(v);
+  } else {
+    const g = makeInput(step.group, 'group name', 150);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    row.appendChild(g);
+  }
+}
+
+function appendActionInputsForStep(row, step, i) {
+  const typeSel = makeSelect(ACTION_TYPES, step.type);
+  typeSel.onchange = () => {
+    scriptSteps[i].type   = typeSel.value;
+    scriptSteps[i].value  = '';
+    scriptSteps[i].value2 = '';
+    renderScriptEditor();
+  };
+  row.appendChild(typeSel);
+  appendActionInputsFlat(row, step, i); // <-- this now exists
+}
+function addScriptStep(kind) {
+  const defaults = {
+    var:       { kind: 'var',       name: 'myVar', source: 'literal_num', value: '0', value2: '0', group: '' },
+    compute:   { kind: 'compute',   op: 'add', a: '', b: '', out: 'result', extra: '', extra2: '' },
+    condition: { kind: 'condition', type: 'var_gt', a: '', b: '' },
+    action:    { kind: 'action',    type: 'fire_group', group: '', value: '', value2: '' },
+  };
+  scriptSteps.push({ ...defaults[kind] });
+  renderScriptEditor();
+}
+
+function removeStep(i) {
+  scriptSteps.splice(i, 1);
+  renderScriptEditor();
+}
+
+function moveStep(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= scriptSteps.length) return;
+  [scriptSteps[i], scriptSteps[j]] = [scriptSteps[j], scriptSteps[i]];
+  renderScriptEditor();
+}
+function removeCompute(i) { scriptComputes.splice(i,1); renderComputes(); }
+
+
+
+function removeCondition(i) { scriptConditions.splice(i,1); renderConditions(); }
+
+
+
+function removeAction(i) { scriptActions.splice(i,1); renderActions(); }
+
+
+function appendActionInputs(row, action, i) {
+  const t = action.type;
+  const simpleGroup = ['fire_group','activate_group','deactivate_group',
+    'reset_counter','toggle_clock','activate_clock','deactivate_clock','spawn_particles'];
+
+  if (simpleGroup.includes(t)) {
+    const g = makeInput(action.group, 'target group', 160);
+    g.oninput = () => { scriptActions[i].group = g.value; };
+    row.appendChild(g);
+    return;
+  }
+  if (t === 'increment_counter' || t === 'reset_counter') {
+    const g = makeInput(action.group, 'counter group', 140);
+    g.oninput = () => { scriptActions[i].group = g.value; };
+    row.appendChild(g); return;
+  }
+  if (t === 'set_counter') {
+    const g = makeInput(action.group, 'counter group', 120);
+    const v = makeInput(action.value, '$var or number', 100);
+    g.oninput = () => { scriptActions[i].group = g.value; };
+    v.oninput = () => { scriptActions[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v); return;
+  }
+  if (t === 'move_group') {
+    const g = makeInput(action.group,  'group',        90);
+    const x = makeInput(action.value,  'X or $var',    80);
+    const y = makeInput(action.value2, 'Y or $var',    80);
+    g.oninput = () => { scriptActions[i].group  = g.value; };
+    x.oninput = () => { scriptActions[i].value  = x.value; };
+    y.oninput = () => { scriptActions[i].value2 = y.value; };
+    row.appendChild(g); row.appendChild(x); row.appendChild(y); return;
+  }
+  if (t === 'set_velocity') {
+    const g  = makeInput(action.group,  'group',     90);
+    const vx = makeInput(action.value,  'VX or $var',75);
+    const vy = makeInput(action.value2, 'VY or $var',75);
+    g.oninput  = () => { scriptActions[i].group  = g.value;  };
+    vx.oninput = () => { scriptActions[i].value  = vx.value; };
+    vy.oninput = () => { scriptActions[i].value2 = vy.value; };
+    row.appendChild(g); row.appendChild(vx); row.appendChild(vy); return;
+  }
+  if (t === 'set_opacity') {
+    const g = makeInput(action.group, 'group',       110);
+    const v = makeInput(action.value, '0–1 or $var', 90);
+    g.oninput = () => { scriptActions[i].group = g.value; };
+    v.oninput = () => { scriptActions[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v); return;
+  }
+  if (t === 'set_text') {
+    const g = makeInput(action.group, 'group',              100);
+    const v = makeInput(action.value, 'text or $var',       130);
+    g.oninput = () => { scriptActions[i].group = g.value; };
+    v.oninput = () => { scriptActions[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v); return;
+  }
+  if (t === 'set_solid' || t === 'set_kill') {
+    const g   = makeInput(action.group, 'group', 120);
+    const sel = makeSelect([{value:'true',label:'Yes'},{value:'false',label:'No'}], action.value);
+    g.oninput   = () => { scriptActions[i].group = g.value;   };
+    sel.onchange= () => { scriptActions[i].value = sel.value; };
+    row.appendChild(g); row.appendChild(sel); return;
+  }
+  if (t === 'set_var') {
+    const n = makeInput(action.group, '$varName',      90);
+    const v = makeInput(action.value, 'value or $var', 120);
+    n.style.fontFamily = 'monospace';
+    n.oninput = () => { scriptActions[i].group = n.value; };
+    v.oninput = () => { scriptActions[i].value = v.value; };
+    row.appendChild(n); row.appendChild(v); return;
+  }
+  if (t === 'shake_screen') {
+    const v = makeInput(action.value || '10', 'intensity', 80);
+    v.oninput = () => { scriptActions[i].value = v.value; };
+    row.appendChild(v); return;
+  }
+  if (t === 'log') {
+    const v = makeInput(action.value, 'message or $var', 200);
+    v.oninput = () => { scriptActions[i].value = v.value; };
+    row.appendChild(v); return;
+  }
+}
+
+/* ===== APPLY ===== */
 function applyScript() {
   if (!scriptEditorTarget) return;
   scriptEditorTarget.script = {
-    event:      scriptEvent,
-    conditions: JSON.parse(JSON.stringify(scriptConditions)),
-    actions:    JSON.parse(JSON.stringify(scriptActions))
+    event: scriptEvent,
+    steps: JSON.parse(JSON.stringify(scriptSteps))
   };
   closeScriptEditor();
   showCoinToast('Script saved', '#6366f1');
 }
 
-/* ---------- RUNTIME ---------- */
-function evaluateScriptConditions(conditions) {
+/* ============================================================
+   RUNTIME — variable resolution, compute, conditions, actions
+============================================================ */
+
+// Resolve a value that may be a $varName or a literal
+function resolveVal(str, vars) {
+  if (str === undefined || str === null) return 0;
+  const s = String(str).trim();
+  if (s.startsWith('$')) {
+    const name = s.slice(1);
+    const v = vars[name];
+    return v !== undefined ? v : 0;
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? s : n; // return as string if not a number
+}
+
+function buildScriptVars(varDefs) {
+  const vars = {};
+  varDefs.forEach(v => {
+    const name = v.name;
+    switch (v.source) {
+      case 'literal_num':     vars[name] = parseFloat(v.value) || 0; break;
+      case 'literal_str':     vars[name] = v.value || ''; break;
+      case 'counter': {
+        const c = objects.find(o => o.tag === 'counter' && o.countGroup === v.group);
+        vars[name] = c ? (c.count || 0) : 0;
+        break;
+      }
+      case 'player_x':        vars[name] = player.x; break;
+      case 'player_y':        vars[name] = player.y; break;
+      case 'player_vx':       vars[name] = player.vx; break;
+      case 'player_vy':       vars[name] = player.vy; break;
+      case 'object_x': {
+        const o = objects.find(obj => hasGroup(obj, v.group));
+        vars[name] = o ? o.x : 0; break;
+      }
+      case 'object_y': {
+        const o = objects.find(obj => hasGroup(obj, v.group));
+        vars[name] = o ? o.y : 0; break;
+      }
+      case 'object_opacity': {
+        const o = objects.find(obj => hasGroup(obj, v.group));
+        vars[name] = o ? (o.opacity ?? 1) : 1; break;
+      }
+      case 'object_width': {
+        const o = objects.find(obj => hasGroup(obj, v.group));
+        vars[name] = o ? o.width : 0; break;
+      }
+      case 'object_height': {
+        const o = objects.find(obj => hasGroup(obj, v.group));
+        vars[name] = o ? o.height : 0; break;
+      }
+      case 'random_int': {
+        const mn = parseInt(v.value) || 0;
+        const mx = parseInt(v.value2) || 1;
+        vars[name] = Math.floor(Math.random() * (mx - mn + 1)) + mn;
+        break;
+      }
+      case 'random_float': vars[name] = Math.random(); break;
+      case 'game_time':    vars[name] = performance.now() / 1000; break;
+      default: vars[name] = 0;
+    }
+  });
+  return vars;
+}
+
+function applyScriptComputes(computeDefs, vars) {
+  computeDefs.forEach(c => {
+    const a = resolveVal(c.a, vars);
+    const b = resolveVal(c.b, vars);
+    const na = parseFloat(a) || 0;
+    const nb = parseFloat(b) || 0;
+    let result;
+    switch (c.op) {
+      case 'add':      result = na + nb; break;
+      case 'sub':      result = na - nb; break;
+      case 'mul':      result = na * nb; break;
+      case 'div':      result = nb !== 0 ? na / nb : 0; break;
+      case 'mod':      result = nb !== 0 ? na % nb : 0; break;
+      case 'pow':      result = Math.pow(na, nb); break;
+      case 'min':      result = Math.min(na, nb); break;
+      case 'max':      result = Math.max(na, nb); break;
+      case 'abs':      result = Math.abs(na); break;
+      case 'floor':    result = Math.floor(na); break;
+      case 'ceil':     result = Math.ceil(na); break;
+      case 'round':    result = Math.round(na); break;
+      case 'concat':   result = String(a) + String(b); break;
+      case 'tostring': result = String(na); break;
+      case 'tonumber': result = parseFloat(a) || 0; break;
+      case 'clamp': {
+        const mn = parseFloat(c.b) || 0;
+        const mx = parseFloat(c.extra) || 1;
+        result = Math.max(mn, Math.min(mx, na));
+        break;
+      }
+      case 'lerp': {
+        const t = (parseFloat(c.extra) || 0) / 100;
+        result = na + (nb - na) * t;
+        break;
+      }
+      default: result = 0;
+    }
+    vars[c.out] = result;
+  });
+}
+
+function evaluateScriptConditions(conditions, vars) {
   return conditions.every(cond => {
     const t = cond.type;
-    const val = parseFloat(cond.value) || 0;
+
+    if (t.startsWith('var_')) {
+      const a = resolveVal(cond.a, vars);
+      const b = resolveVal(cond.b, vars);
+      const na = parseFloat(a), nb = parseFloat(b);
+      const numOp = !isNaN(na) && !isNaN(nb);
+      switch (t) {
+        case 'var_eq':       return numOp ? na === nb : String(a) === String(b);
+        case 'var_neq':      return numOp ? na !== nb : String(a) !== String(b);
+        case 'var_gt':       return na > nb;
+        case 'var_gte':      return na >= nb;
+        case 'var_lt':       return na < nb;
+        case 'var_lte':      return na <= nb;
+        case 'var_contains': return String(a).includes(String(b));
+      }
+    }
+
+    const val = resolveVal(cond.value, vars);
+    const nval = parseFloat(val) || 0;
 
     if (t.startsWith('counter_')) {
       const counter = objects.find(o => o.tag === 'counter' && o.countGroup === cond.group);
       if (!counter) return false;
       const cv = counter.count || 0;
-      if (t === 'counter_gte') return cv >= val;
-      if (t === 'counter_lte') return cv <= val;
-      if (t === 'counter_eq')  return cv === val;
-      if (t === 'counter_gt')  return cv >  val;
-      if (t === 'counter_lt')  return cv <  val;
+      switch (t) {
+        case 'counter_gte': return cv >= nval;
+        case 'counter_lte': return cv <= nval;
+        case 'counter_eq':  return cv === nval;
+        case 'counter_gt':  return cv >  nval;
+        case 'counter_lt':  return cv <  nval;
+      }
     }
-    if (t === 'player_above')  return player.y < val;
-    if (t === 'player_below')  return player.y > val;
-    if (t === 'player_left')   return player.x < val;
-    if (t === 'player_right')  return player.x > val;
 
-    if (t === 'object_visible') {
-      return objects.some(o => hasGroup(o, cond.group) && (o.opacity ?? 1) > 0);
-    }
-    if (t === 'object_hidden') {
-      return objects.some(o => hasGroup(o, cond.group) && (o.opacity ?? 1) <= 0);
-    }
-    if (t === 'object_solid') {
-      return objects.some(o => hasGroup(o, cond.group) && o.solid);
-    }
-    if (t === 'clock_active') {
-      return objects.some(o => o.tag === 'clock' && hasGroup(o, cond.group) && o.active !== false);
-    }
-    if (t === 'trigger_fired') {
-      return objects.some(o => o.tag === 'trigger' && hasGroup(o, cond.group) && o.hasFired);
-    }
+    if (t === 'player_above')  return player.y < nval;
+    if (t === 'player_below')  return player.y > nval;
+    if (t === 'player_left')   return player.x < nval;
+    if (t === 'player_right')  return player.x > nval;
+    if (t === 'object_visible') return objects.some(o => hasGroup(o, cond.group) && (o.opacity ?? 1) > 0);
+    if (t === 'object_hidden')  return objects.some(o => hasGroup(o, cond.group) && (o.opacity ?? 1) <= 0);
+    if (t === 'object_solid')   return objects.some(o => hasGroup(o, cond.group) && o.solid);
+    if (t === 'clock_active')   return objects.some(o => o.tag === 'clock' && hasGroup(o, cond.group) && o.active !== false);
+    if (t === 'trigger_fired')  return objects.some(o => o.tag === 'trigger' && hasGroup(o, cond.group) && o.hasFired);
+
     return true;
   });
 }
 
-function executeScriptActions(actions) {
+function executeScriptActions(actions, vars) {
   actions.forEach(action => {
-    const t = action.type;
-    const group = action.group || '';
-    const val   = action.value  || '';
-    const val2  = action.value2 || '';
+    const t      = action.type;
+    const group  = action.group || '';
+    const val    = resolveVal(action.value,  vars);
+    const val2   = resolveVal(action.value2, vars);
 
     if (t === 'fire_group')       { fireTriggerGroup(group); return; }
     if (t === 'respawn_player')   { resetPlayer(player); return; }
     if (t === 'shake_screen')     { addShake(parseFloat(val) || 10); return; }
+    if (t === 'log')              { console.log('[Script]', String(val)); return; }
+
+    if (t === 'set_var') {
+      vars[group] = val;
+      // Write back to trigger's runtime vars if it has them
+      if (scriptEditorTarget && scriptEditorTarget._runtimeVars) {
+        scriptEditorTarget._runtimeVars[group] = val;
+      }
+      return;
+    }
 
     if (t === 'activate_group' || t === 'deactivate_group') {
       const on = t === 'activate_group';
@@ -5719,7 +6048,6 @@ function executeScriptActions(actions) {
       });
       return;
     }
-
     if (t === 'toggle_clock') {
       objects.forEach(o => {
         if (o.tag === 'clock' && hasGroup(o, group)) {
@@ -5729,33 +6057,52 @@ function executeScriptActions(actions) {
       });
       return;
     }
-
     if (t === 'activate_clock') {
       objects.forEach(o => {
-        if (o.tag === 'clock' && hasGroup(o, group)) {
-          o.active = true;
-          o.lastFired = performance.now() / 1000;
-        }
+        if (o.tag === 'clock' && hasGroup(o, group)) { o.active = true; o.lastFired = performance.now() / 1000; }
       });
       return;
     }
-
     if (t === 'deactivate_clock') {
-      objects.forEach(o => {
-        if (o.tag === 'clock' && hasGroup(o, group)) o.active = false;
-      });
+      objects.forEach(o => { if (o.tag === 'clock' && hasGroup(o, group)) o.active = false; });
       return;
     }
-
     if (t === 'reset_counter') {
-      objects.forEach(o => { if (o.tag === 'counter' && o.countGroup === group) o.count = 0; });
-      return;
-    }
-
-    if (t === 'increment_counter') {
-      objects.forEach(o => { if (o.tag === 'counter' && o.countGroup === group) o.count = (o.count || 0) + 1; });
-      return;
-    }
+    objects.forEach(o => {
+        if (o.tag === 'counter' && hasGroup(o, group)) o.count = 0;  // changed
+    });
+    return;
+}
+if (t === 'increment_counter') {
+    objects.forEach(o => {
+        if (o.tag === 'counter' && hasGroup(o, group)) {  // changed
+            o.count = (o.count || 0) + 1;
+            const limit = parseFloat(o.limit);
+            if (!isNaN(limit) && o.count >= limit) {
+                o.count = 0;
+                if (o.targetGroup && o.targetGroup.trim() !== '') {
+                    fireTriggerGroup(o.targetGroup);
+                }
+            }
+        }
+    });
+    return;
+}
+if (t === 'set_counter') {
+    objects.forEach(o => {
+        if (o.tag === 'counter' && hasGroup(o, group)) {  // changed
+            o.count = parseFloat(val) || 0;
+            const limit = parseFloat(o.limit);
+            if (!isNaN(limit) && o.count >= limit) {
+                o.count = 0;
+                if (o.targetGroup && o.targetGroup.trim() !== '') {
+                    fireTriggerGroup(o.targetGroup);
+                }
+            }          
+        }
+    });
+    return;
+}
 
     if (t === 'spawn_particles') {
       objects.forEach(o => {
@@ -5764,24 +6111,124 @@ function executeScriptActions(actions) {
       return;
     }
 
-    // Per-object property actions
+    // Per-object property setters
     objects.forEach(o => {
       if (!hasGroup(o, group)) return;
-      if (t === 'move_group')    { o.x = parseFloat(val) || o.x; o.y = parseFloat(val2) || o.y; }
-      if (t === 'set_velocity')  { o.vx = parseFloat(val) || 0;  o.vy = parseFloat(val2) || 0;  }
-      if (t === 'set_opacity')   { o.opacity = parseFloat(val) ?? 1; }
-      if (t === 'set_text')      { o.text = val; }
-      if (t === 'set_solid')     { o.solid = val === 'true'; }
-      if (t === 'set_kill')      { o.kill  = val === 'true'; }
+      if (t === 'move_group')   { o.x = parseFloat(val) || o.x; o.y = parseFloat(val2) || o.y; }
+      if (t === 'set_velocity') { o.vx = parseFloat(val) || 0;  o.vy = parseFloat(val2) || 0;  }
+      if (t === 'set_opacity')  { o.opacity = parseFloat(val) ?? 1; }
+      if (t === 'set_text')     { o.text = String(val); }
+      if (t === 'set_solid')    { o.solid = val === 'true' || val === true; }
+      if (t === 'set_kill')     { o.kill  = val === 'true' || val === true; }
     });
   });
 }
+function appendActionInputsFlat(row, action, i) {
+  const t = action.type;
+  const simpleGroup = ['fire_group','activate_group','deactivate_group',
+    'reset_counter','toggle_clock','activate_clock','deactivate_clock','spawn_particles'];
 
-function runTriggerScript(trigger) {
+  if (simpleGroup.includes(t)) {
+    const g = makeInput(action.group, 'target group', 160);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    row.appendChild(g);
+    return;
+  }
+  if (t === 'increment_counter') {
+    const g = makeInput(action.group, 'counter group', 140);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    row.appendChild(g); return;
+  }
+  if (t === 'set_counter') {
+    const g = makeInput(action.group, 'counter group', 120);
+    const v = makeInput(action.value, '$var or number', 100);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v); return;
+  }
+  if (t === 'move_group') {
+    const g = makeInput(action.group,  'group',     90);
+    const x = makeInput(action.value,  'X or $var', 80);
+    const y = makeInput(action.value2, 'Y or $var', 80);
+    g.oninput = () => { scriptSteps[i].group  = g.value; };
+    x.oninput = () => { scriptSteps[i].value  = x.value; };
+    y.oninput = () => { scriptSteps[i].value2 = y.value; };
+    row.appendChild(g); row.appendChild(x); row.appendChild(y); return;
+  }
+  if (t === 'set_velocity') {
+    const g  = makeInput(action.group,  'group',      90);
+    const vx = makeInput(action.value,  'VX or $var', 75);
+    const vy = makeInput(action.value2, 'VY or $var', 75);
+    g.oninput  = () => { scriptSteps[i].group  = g.value;  };
+    vx.oninput = () => { scriptSteps[i].value  = vx.value; };
+    vy.oninput = () => { scriptSteps[i].value2 = vy.value; };
+    row.appendChild(g); row.appendChild(vx); row.appendChild(vy); return;
+  }
+  if (t === 'set_opacity') {
+    const g = makeInput(action.group, 'group',       110);
+    const v = makeInput(action.value, '0-1 or $var',  90);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v); return;
+  }
+  if (t === 'set_text') {
+    const g = makeInput(action.group, 'group',         100);
+    const v = makeInput(action.value, 'text or $var',  130);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v); return;
+  }
+  if (t === 'set_solid' || t === 'set_kill') {
+    const g   = makeInput(action.group, 'group', 120);
+    const sel = makeSelect([{value:'true',label:'Yes'},{value:'false',label:'No'}], action.value);
+    g.oninput    = () => { scriptSteps[i].group = g.value;   };
+    sel.onchange = () => { scriptSteps[i].value = sel.value; };
+    row.appendChild(g); row.appendChild(sel); return;
+  }
+  if (t === 'set_var') {
+    const n = makeInput(action.group, '$varName',      90);
+    const v = makeInput(action.value, 'value or $var', 120);
+    n.style.fontFamily = 'monospace';
+    n.oninput = () => { scriptSteps[i].group = n.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(n); row.appendChild(v); return;
+  }
+  if (t === 'shake_screen') {
+    const v = makeInput(action.value || '10', 'intensity', 80);
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(v); return;
+  }
+  if (t === 'log') {
+    const v = makeInput(action.value, 'message or $var', 200);
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(v); return;
+  }
+}
+function runTriggerScript(trigger, event = 'touched') {
   const sc = trigger.script;
-  if (!sc || !sc.actions || sc.actions.length === 0) return;
-  if (!evaluateScriptConditions(sc.conditions || [])) return;
-  executeScriptActions(sc.actions);
+  if (!sc || !sc.steps || sc.steps.length === 0) return;
+  if (sc.event !== event) return;
+
+  const vars = {};
+  if (trigger._runtimeVars) Object.assign(vars, trigger._runtimeVars);
+
+  for (const step of sc.steps) {
+    if (step.kind === 'var') {
+      // Build one variable
+      const single = buildScriptVars([step]);
+      Object.assign(vars, single);
+
+    } else if (step.kind === 'compute') {
+      applyScriptComputes([step], vars);
+
+    } else if (step.kind === 'condition') {
+      // If condition fails, stop executing remaining steps
+      if (!evaluateScriptConditions([step], vars)) return;
+
+    } else if (step.kind === 'action') {
+      executeScriptActions([step], vars);
+    }
+  }
 }
 // Trigger checking function
 // 1. New helper function to execute trigger logic
@@ -5831,13 +6278,16 @@ function executeTriggerLogic(trigger) {
 
             // Active state — handles triggers, clocks, and anything else
             if (mods.active === 'on' || mods.active === 'off') {
-                target.active = mods.active === 'on';
-                // When a clock is re-activated, reset its timer so it
-                // waits a full interval before its first tick
-                if (target.tag === 'clock' && target.active) {
-                    target.lastFired = performance.now() / 1000;
-                }
-            } else if (mods.active === 'fire') {
+    const turningOn = mods.active === 'on';
+    target.active = turningOn;
+    if (target.tag === 'clock' && target.active) {
+        target.lastFired = performance.now() / 1000;
+    }
+    // Fire activated/deactivated scripts on the target trigger
+    if (target.tag === 'trigger' && target.script) {
+        runTriggerScript(target, turningOn ? 'activated' : 'deactivated');
+    }
+} else if (mods.active === 'fire') {
                 if (target.tag === 'trigger') {
                     executeTriggerLogic(target);
                 }
@@ -7630,7 +8080,7 @@ function gameLoop(timestamp) {
 
     // Cap delta so a tab losing focus doesn't cause a huge jump
     const delta = Math.min(rawDelta, 50) / (1000 / 60); // 1.0 = exactly 60fps
-
+    checkScriptTriggers();
     updateSpatialGrid();
     updatePhysics(delta);
     checkClocks();
