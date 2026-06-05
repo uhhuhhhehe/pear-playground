@@ -207,7 +207,7 @@
   margin-right: 6px;
   border-radius: 2px;
 }
-
+/* ====================== */
 #popup, #blockCreatorPopup {
     position: fixed;
     top: 50%; left: 50%;
@@ -458,77 +458,6 @@
   }
 
   /* Centered Full-Screen Layout Container */
-#homeScreen {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  background-color: #f4f4f5; /* Light soft-gray canvas background */
-  padding: 20px;
-  box-sizing: border-box;
-}
-
-/* Central Dashboard Wrapper */
-.home-dashboard {
-  width: 100%;
-  max-width: 760px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-/* Clean Typography Header */
-.home-header {
-  text-align: center;
-}
-.home-header h1 {
-  font-size: 32px;
-  font-weight: 800;
-  color: #18181b;
-  margin: 0 0 6px 0;
-  letter-spacing: -0.5px;
-}
-.home-header p {
-  font-size: 15px;
-  color: #71717a;
-  margin: 0;
-}
-
-/* Two-Column Layout Grid for Features */
-.home-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-@media (max-width: 600px) {
-  .home-grid {
-    grid-template-columns: 1fr; /* Stack vertically on mobile screens */
-  }
-}
-
-/* Modern Segmented Layout Cards */
-.home-panel {
-  background: #ffffff;
-  border: 1px solid #e4e4e7;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  display: flex;
-  flex-direction: column;
-}
-.home-panel h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: #27272a;
-  margin: 0 0 8px 0;
-}
-.home-panel p {
-  font-size: 13px;
-  color: #71717a;
-  margin: 0 0 20px 0;
-  line-height: 1.5;
-}
 
 /* Button Container & Actions */
 .panel-actions {
@@ -538,22 +467,7 @@
   margin-top: auto; /* Pushes button rows to bottom of cards so heights match */
 }
 
-.home-btn {
-  width: 100%;
-  padding: 12px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: 8px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s ease-in-out;
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-}
-.home-btn:active {
-  transform: scale(0.97); /* Tactile press effect */
-}
+
 
 /* Button Theme Variants */
 .btn-emerald {
@@ -578,69 +492,132 @@
   border-color: #d4d4d8;
 }
 
-/* Subtle Footer Note */
-.home-footer {
-  text-align: center;
-  font-size: 13px;
-  color: #71717a;
-  border-top: 1px dashed #e4e4e7;
-  padding-top: 16px;
-  margin-top: 8px;
-}
+
   </style>
 </head>
 <body>
 
-<div id="loginScreen" class="screen">
-  <!-- MODIFIED: Wrapped in card -->
-  <div class="screen-card">
-    <h1>Pear Playground</h1>
-    <input id="username" placeholder="Username"><br>
-    <input id="password" type="password" placeholder="Password"><br>
-    <button type="button" onclick="signup(event)">Sign Up</button>
-    <button type="button" onclick="login(event)" class="secondary">Login</button>
-    <p id="loginMsg" style="color:red;"></p>
-  </div>
-</div>
-
-<div id="homeScreen" class="screen" style="display:none;">
-  <div class="home-dashboard">
+<div id="loginScreen" style="position:absolute;top:0;left:0;width:100vw;height:100vh;display:flex;justify-content:center;align-items:center;background:#f4f4f5;font-family:system-ui,-apple-system,sans-serif;">
+  <div style="background:#fff;padding:40px;border-radius:16px;border:1px solid #e4e4e7;width:90%;max-width:400px;box-sizing:border-box;">
     
-    <header class="home-header">
-      <h1>Pear Playground</h1>
-      <p>Design, build, and share your levels</p>
-    </header>
-
-    <div class="home-grid">
-      
-      <div class="home-panel">
-        <h2>Map Builder</h2>
-        <p>Start a brand new blueprint project completely from scratch or import your existing layouts.</p>
-        <div class="panel-actions">
-          <button onclick="openLevelsScreen()" class="home-btn" style="background:#3b82f6;color:#fff;">▶ Play a Level</button>
-          <button onclick="startCreate()" class="home-btn btn-emerald">Create New Map</button>
-          <button onclick="openLoad()" class="home-btn btn-secondary">Edit Existing Map</button>
-        </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px;">
+      <div style="width:36px;height:36px;background:#18181b;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+        <span style="color:#a3e635;font-size:19px;font-weight:700;line-height:1;">P</span>
       </div>
-
-      <div class="home-panel">
-        <h2>Multiplayer & Options</h2>
-        <p>Connect to live rooms hosted by other builders or adjust your local editor parameters.</p>
-        <div class="panel-actions">
-  <button onclick="openJoinGame()" class="home-btn btn-indigo">Join Game</button>
-  <button onclick="openCasesScreen()" class="home-btn" style="background:#f59e0b;color:#fff;">🪙 Cases & Skins</button>
-  <button onclick="openSettings()" class="home-btn btn-secondary">Settings</button>
-</div>
-      </div>
-
+      <span style="font-size:18px;font-weight:700;color:#18181b;letter-spacing:-0.3px;">Pear Playground</span>
     </div>
 
-    <footer class="home-footer">
-      Use the specialized toolbar layout at the top of your screen to construct your map elements!
-    </footer>
-    
-  </div>
+    <div style="font-size:24px;font-weight:800;color:#18181b;margin-bottom:4px;">Welcome back</div>
+    <div style="font-size:13px;color:#71717a;margin-bottom:24px;">Sign in or create an account to continue</div>
 
+    <div style="font-size:11px;font-weight:600;color:#71717a;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Username</div>
+    <input id="username" placeholder="Enter username"
+      style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #e4e4e7;border-radius:9px;font-size:14px;font-family:inherit;margin-bottom:12px;outline:none;transition:border-color 0.15s;background:#f4f4f5;color:#18181b;"
+      onfocus="this.style.borderColor='#18181b';this.style.background='#fff'"
+      onblur="this.style.borderColor='#e4e4e7';this.style.background='#f4f4f5'">
+
+    <div style="font-size:11px;font-weight:600;color:#71717a;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Password</div>
+    <input id="password" type="password" placeholder="Enter password"
+      style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #e4e4e7;border-radius:9px;font-size:14px;font-family:inherit;margin-bottom:20px;outline:none;transition:border-color 0.15s;background:#f4f4f5;color:#18181b;"
+      onfocus="this.style.borderColor='#18181b';this.style.background='#fff'"
+      onblur="this.style.borderColor='#e4e4e7';this.style.background='#f4f4f5'">
+
+    <button onclick="login(event)"
+      style="width:100%;padding:11px;background:#18181b;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px;transition:opacity 0.15s;"
+      onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+      Sign in
+    </button>
+    <button onclick="signup(event)"
+      style="width:100%;padding:11px;background:#f4f4f5;color:#18181b;border:1px solid #e4e4e7;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:background 0.15s;"
+      onmouseover="this.style.background='#e4e4e7'" onmouseout="this.style.background='#f4f4f5'">
+      Create account
+    </button>
+
+    <p id="loginMsg" style="color:#dc2626;font-size:13px;margin-top:12px;text-align:center;min-height:18px;"></p>
+  </div>
+</div>
+
+<div id="homeScreen" style="display:none; width:100%; height:100vh; background:#f4f4f5; align-items:center; justify-content:center; padding:24px; font-family:system-ui,-apple-system,sans-serif; box-sizing:border-box;">
+  <div style="width:100%; height:100%; max-width:900px; display:flex; flex-direction:column; gap:12px;">
+
+    <!-- top bar -->
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div style="width:36px;height:36px;background:#18181b;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+          <span style="color:#a3e635;font-size:19px;font-weight:700;line-height:1;">P</span>
+        </div>
+        <span style="font-size:18px;font-weight:700;color:#18181b;letter-spacing:-0.3px;">Pear Playground</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e4e4e7;border-radius:999px;padding:7px 16px 7px 10px;">
+        <div style="width:26px;height:26px;background:#e4e4e7;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#52525b;" id="homeAvatarLetter">?</div>
+        <span id="homeUsername" style="font-size:14px;font-weight:500;color:#18181b;">...</span>
+      </div>
+    </div>
+
+    <!-- hero — grows to fill space -->
+    <div style="background:#18181b;border-radius:16px;padding:32px 36px;display:flex;align-items:center;justify-content:space-between;flex:1;min-height:0;">
+      <div>
+        <h1 style="font-size:clamp(22px,3vw,38px);font-weight:800;color:#fff;letter-spacing:-0.5px;margin:0 0 6px;">Build something fun</h1>
+        <p style="font-size:clamp(13px,1.4vw,16px);color:#a1a1aa;margin:0 0 24px;">Design levels, add logic, play with friends</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button onclick="startCreate()" style="padding:11px 22px;background:#a3e635;color:#18181b;border:none;border-radius:9px;font-size:clamp(13px,1.2vw,15px);font-weight:700;cursor:pointer;font-family:inherit;">Create new map</button>
+          <button onclick="openLevelsScreen()" style="padding:11px 22px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:9px;font-size:clamp(13px,1.2vw,15px);font-weight:500;cursor:pointer;font-family:inherit;">Play a level</button>
+        </div>
+      </div>
+      <svg width="120" height="150" viewBox="0 0 40 50" fill="none" style="opacity:0.15;flex-shrink:0;margin-left:24px;" xmlns="http://www.w3.org/2000/svg">
+        <path d="M20 4 C26 4 24 12 34 20 C40 28 32 39 20 39 C8 39 0 28 6 20 C16 12 14 4 20 4Z" fill="white"/>
+        <path d="M20 4 C19.2 1.6 20.8 -1 23.2 -2.4" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+        <ellipse cx="29" cy="2" rx="5" ry="3.5" transform="rotate(-20 29 2)" fill="white" opacity="0.6"/>
+      </svg>
+    </div>
+
+    <!-- 3 cards row -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;flex-shrink:0;">
+      <div onclick="openLoad()" style="background:#fff;border:1px solid #e4e4e7;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;cursor:pointer;" onmouseover="this.style.borderColor='#a1a1aa'" onmouseout="this.style.borderColor='#e4e4e7'">
+        <div style="width:40px;height:40px;background:#f0fdf4;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:20px;">✏️</div>
+        <div>
+          <div style="font-size:15px;font-weight:600;color:#18181b;margin-bottom:3px;">Map editor</div>
+          <div style="font-size:13px;color:#71717a;line-height:1.4;">Open and edit an existing map</div>
+        </div>
+        <div style="font-size:13px;font-weight:600;color:#16a34a;margin-top:auto;">Edit map →</div>
+      </div>
+      <div onclick="openJoinGame()" style="background:#fff;border:1px solid #e4e4e7;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;cursor:pointer;" onmouseover="this.style.borderColor='#a1a1aa'" onmouseout="this.style.borderColor='#e4e4e7'">
+        <div style="width:40px;height:40px;background:#eff6ff;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:20px;">🌐</div>
+        <div>
+          <div style="font-size:15px;font-weight:600;color:#18181b;margin-bottom:3px;">Join game</div>
+          <div style="font-size:13px;color:#71717a;line-height:1.4;">Enter a room code to join a friend</div>
+        </div>
+        <div style="font-size:13px;font-weight:600;color:#2563eb;margin-top:auto;">Join →</div>
+      </div>
+      <div onclick="openCasesScreen()" style="background:#fff;border:1px solid #e4e4e7;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;cursor:pointer;" onmouseover="this.style.borderColor='#a1a1aa'" onmouseout="this.style.borderColor='#e4e4e7'">
+        <div style="width:40px;height:40px;background:#fefce8;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:20px;">🪙</div>
+        <div>
+          <div style="font-size:15px;font-weight:600;color:#18181b;margin-bottom:3px;">Cases & skins</div>
+          <div style="font-size:13px;color:#71717a;line-height:1.4;">Spend coins, unlock new looks</div>
+        </div>
+        <div style="font-size:13px;font-weight:600;color:#ca8a04;margin-top:auto;">Shop →</div>
+      </div>
+    </div>
+
+    <!-- bottom row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;flex-shrink:0;">
+      <div onclick="openSettings()" style="background:#fff;border:1px solid #e4e4e7;border-radius:12px;padding:18px;display:flex;align-items:center;gap:16px;cursor:pointer;" onmouseover="this.style.borderColor='#a1a1aa'" onmouseout="this.style.borderColor='#e4e4e7'">
+        <div style="width:44px;height:44px;background:#f4f4f5;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">⚙️</div>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:#18181b;">Settings</div>
+          <div style="font-size:13px;color:#71717a;">Grid, sound, display options</div>
+        </div>
+      </div>
+      <div onclick="startCreate();hostGame()" style="background:#18181b;border-radius:12px;padding:18px;display:flex;align-items:center;gap:16px;cursor:pointer;">
+        <div style="width:44px;height:44px;background:rgba(255,255,255,0.08);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">📡</div>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:#fff;">Host a game</div>
+          <div style="font-size:13px;color:#71717a;">Share your map, get a room code</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
   <input id="loadFile" type="file" style="display:none;" onchange="loadMapFile(event)">
 </div>
 <div id="settingsPopup" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:300px; padding:20px; background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.2); z-index:2000; text-align:center;">
@@ -3116,6 +3093,8 @@ async function login(e) {
 function showHome() {
   loginScreen.style.display = "none";
   homeScreen.style.display = "flex";
+  document.getElementById("homeUsername").textContent = currentUser;
+  document.getElementById("homeAvatarLetter").textContent = currentUser[0].toUpperCase();
 }
 
 function goToMenu() {
@@ -4114,9 +4093,14 @@ selectedObject.group = rawGroup
 
 
 document.getElementById("overlay").addEventListener("click", () => {
+    // Close script editor first if it's open, keep edit popup underneath
+    if (document.getElementById('scriptEditorPopup').style.display === 'block') {
+        closeScriptEditor();
+        return;
+    }
     closePopup();
     closeBlockCreator();
-    closeCopyNamePopup(); // NEW: Close the copy name popup
+    closeCopyNamePopup();
 });
 
 document.getElementById("propModTextCheck").addEventListener("change", (e) => {
@@ -5514,7 +5498,7 @@ function openScriptEditor() {
 
 function closeScriptEditor() {
   document.getElementById('scriptEditorPopup').style.display = 'none';
-  // Only hide the overlay if the edit popup is also closed
+  // Keep overlay visible if edit popup is still open behind it
   if (document.getElementById('popup').style.display !== 'block') {
     document.getElementById('overlay').style.display = 'none';
   }
