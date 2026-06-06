@@ -1382,6 +1382,14 @@ const MIN_BLOCK_SIZE = 10;
 let isMoving = false;
 let moveStartMouse = { x: 0, y: 0 };
 let moveStartPos = { x: 0, y: 0 };
+// At the top of your globals add these:
+let coyoteTimer = 0;
+let jumpBuffer = 0;
+const COYOTE_TIME = 8; // frames
+const JUMP_BUFFER = 8; // frames
+let playerTrail = [];
+let deathFlash = 0;
+let floatingTexts = [];
 const settings = {
     shake: true,
     particles: true,
@@ -1507,7 +1515,7 @@ const loginMsg = document.getElementById("loginMsg");
 const loadFile = document.getElementById("loadFile");
 const joinCode = document.getElementById("joinGameCode");
 const CAM_SMOOTH = 0.1;    // How fast camera follows (0.1 = smooth, 1.0 = instant)
-
+let paused = false;
 
 
 const world = { width: 100000, height: 60000 };
@@ -1555,6 +1563,75 @@ let currentUser = null;
 /* ============================================================
    BUILT-IN LEVELS
 ============================================================ */
+function updatePlayerTrail() {
+    playerTrail.push({
+        x: player.x + player.width / 2,
+        y: player.y + player.height / 2,
+        life: 1.0,
+        vx: player.vx
+    });
+    if (playerTrail.length > 8) playerTrail.shift();
+    playerTrail.forEach(p => p.life -= 0.15);
+    playerTrail = playerTrail.filter(p => p.life > 0);
+}
+
+function drawPlayerTrail() {
+    if (Math.abs(player.vx) < 3) return; // only show at speed
+    playerTrail.forEach((p, i) => {
+        ctx.save();
+        ctx.globalAlpha = p.life * 0.18;
+        ctx.translate(p.x - camera.x, p.y - camera.y);
+        const s = p.life * 0.7;
+        ctx.scale(s, s);
+        const prev = equippedSkin;
+        drawBlockGraphic(ctx, 'player', player.width, player.height);
+        equippedSkin = prev;
+        ctx.restore();
+    });
+}
+function togglePause() {
+    if (!playMode) return;
+    paused = !paused;
+
+    if (paused) {
+        // Draw pause overlay directly on canvas
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+
+        ctx.fillStyle = '#18181b';
+        roundRect(ctx, cx - 120, cy - 100, 240, 200, 16);
+        ctx.fill();
+        ctx.strokeStyle = '#2a2a2a';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.font = 'bold 20px system-ui';
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Paused', cx, cy - 55);
+
+        // Draw buttons as HTML for interactivity
+        const el = document.createElement('div');
+        el.id = 'pauseMenu';
+        el.style.cssText = `
+            position:fixed; top:50%; left:50%; transform:translate(-50%,-40%);
+            display:flex; flex-direction:column; gap:10px; z-index:500; width:200px;
+        `;
+        el.innerHTML = `
+            <button onclick="togglePause()" style="padding:12px;background:#a3e635;color:#18181b;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:system-ui;">Resume</button>
+            <button onclick="openSettings()" style="padding:12px;background:#2a2a2a;color:#fff;border:1px solid #3a3a3a;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:system-ui;">Settings</button>
+            <button onclick="goToMenu()" style="padding:12px;background:#2a2a2a;color:#fca5a5;border:1px solid #3a3a3a;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:system-ui;">Quit to menu</button>
+        `;
+        document.body.appendChild(el);
+    } else {
+        const el = document.getElementById('pauseMenu');
+        if (el) el.remove();
+    }
+}
 async function openLevelsScreen() {
     document.getElementById('levelsScreen').style.display = 'block';
     const grid = document.getElementById('levelsGrid');
@@ -1764,7 +1841,32 @@ function refreshTerrainSelection() {
         }
     });
 }
+function spawnFloatingText(x, y, text, color = '#a3e635') {
+    floatingTexts.push({ x, y, text, color, life: 1.0, vy: -1.5 });
+}
 
+function updateFloatingTexts() {
+    floatingTexts.forEach(t => {
+        t.y += t.vy;
+        t.life -= 0.025;
+    });
+    floatingTexts = floatingTexts.filter(t => t.life > 0);
+}
+
+function drawFloatingTexts() {
+    floatingTexts.forEach(t => {
+        ctx.save();
+        ctx.globalAlpha = t.life;
+        ctx.font = 'bold 16px system-ui';
+        ctx.fillStyle = t.color;
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(t.text, t.x - camera.x, t.y - camera.y);
+        ctx.fillText(t.text,   t.x - camera.x, t.y - camera.y);
+        ctx.restore();
+    });
+}
 let terrainDropdownOpen = false;
 
 function toggleTerrainDropdown() {
@@ -5250,6 +5352,7 @@ function resolveCollision(obj, collision) {
 
 function resetPlayer(obj) {
   playSFX('die'); // ADD
+  deathFlash = 1.0;
   // Always use START_POS, which we will update whenever a checkpoint is touched
   obj.x = START_POS.x;
   obj.y = START_POS.y;
@@ -5273,36 +5376,46 @@ function updatePhysics(delta) {
     if (obj.tag === "text" || obj.tag === "trigger") return;
 
     // --- 1. Player Controls ---
-    if (obj.tag === "player") {
-      const accel = 0.5 * delta;
-
-      const onIce = objects.some(o => o.ice && o.solid &&
+if (obj.tag === "player") {
+    const accel = 0.5 * delta;
+    const onIce = objects.some(o => o.ice && o.solid &&
         obj.x < o.x + o.width && obj.x + obj.width > o.x &&
         Math.abs((obj.y + obj.height) - o.y) < 4
-      );
-      const maxSpeed = onIce ? 10 : 6;
-      const friction = Math.pow(onIce ? 0.99 : 0.85, delta);
+    );
+    const maxSpeed = onIce ? 10 : 6;
+    const friction = Math.pow(onIce ? 0.99 : 0.85, delta);
+    const wasGrounded = !obj.isJumping;
 
-      const wasGrounded = !obj.isJumping;
+    if (keys.left)       obj.vx -= accel;
+    else if (keys.right) obj.vx += accel;
+    else                 obj.vx *= friction;
+    obj.vx = Math.max(Math.min(obj.vx, maxSpeed), -maxSpeed);
 
-      if (keys.left) obj.vx -= accel;
-      else if (keys.right) obj.vx += accel;
-      else obj.vx *= friction;
-
-      obj.vx = Math.max(Math.min(obj.vx, maxSpeed), -maxSpeed);
-
-      if (keys.jump && obj.jumpsLeft > 0) {
-        obj.vy = obj.jumpStrength;
-        obj.jumpsLeft--;
-        obj.isJumping = true;
-        obj.scaleX = 0.5;
-        obj.scaleY = 1.5;
-        spawnParticles(obj.x + obj.width / 2, obj.y + obj.height, 5, "#fff", 2);
-        playSFX('jump'); // ADD
-      }
-      keys.jump = false;
-      obj.wasGrounded = wasGrounded;
+    // Coyote time — keep jump available briefly after walking off edge
+    if (!obj.isJumping) {
+        coyoteTimer = COYOTE_TIME;
+    } else {
+        coyoteTimer = Math.max(0, coyoteTimer - 1);
     }
+
+    // Jump buffer — queue jump if pressed just before landing
+    if (keys.jump) jumpBuffer = JUMP_BUFFER;
+    else jumpBuffer = Math.max(0, jumpBuffer - 1);
+
+    const canJump = obj.jumpsLeft > 0 || coyoteTimer > 0;
+    if (jumpBuffer > 0 && canJump) {
+        obj.vy = obj.jumpStrength;
+        obj.jumpsLeft = Math.max(0, obj.jumpsLeft - 1);
+        obj.isJumping = true;
+        coyoteTimer = 0;
+        jumpBuffer = 0;
+        obj.scaleX = 0.5; obj.scaleY = 1.5;
+        spawnParticles(obj.x + obj.width/2, obj.y + obj.height, 5, "#fff", 2);
+        playSFX('jump');
+    }
+    keys.jump = false;
+    obj.wasGrounded = wasGrounded;
+}
 
     // --- 2. Apply Gravity & Velocity ---
     obj.vy += obj.gravity * delta;
@@ -7534,28 +7647,82 @@ function draw() {
 
   // 4. Draw Parallax (Background Layer)
   drawBackground();
-
+  
   // 5. Standard Drawing
   // Note: Grid and Objects need to be drawn relative to camera manually 
   // because your original code calculates (x - camera.x). 
   // We keep that logic.
   if (settings.grid) drawGrid(); 
   drawObjects(); 
+  drawPlayerTrail();
   
   // 6. Draw Particles
   particles.forEach(p => p.draw(ctx));
   
   drawGround();
   drawGhost();
+  drawHUD();
 
   // 7. Draw Lighting Overlay (Atmosphere)
   const player = objects.find(o => o.tag === "player");
+  if (deathFlash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${deathFlash})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    deathFlash -= 0.08;
+}
   //drawLighting(player);
-  
+  drawFloatingTexts()
   ctx.restore(); // Undo shake
 
   if (settings.debug) drawDebug();
   if (settings.fps) drawFPS();
+}
+function drawHUD() {
+    if (!playMode && !testMode) return;
+
+    const pad = 16;
+
+    // Coin counter — top left
+    const coinText = `${playerCoins}`;
+    ctx.save();
+    ctx.fillStyle = 'rgba(24,24,27,0.7)';
+    roundRect(ctx, pad, pad, 90, 36, 8);
+    ctx.fill();
+    ctx.font = 'bold 14px system-ui';
+    ctx.fillStyle = '#a3e635';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🪙 ' + coinText, pad + 10, pad + 18);
+    ctx.restore();
+
+    // Test mode badge
+    if (testMode) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(234,179,8,0.9)';
+        roundRect(ctx, canvas.width/2 - 50, pad, 100, 30, 8);
+        ctx.fill();
+        ctx.font = 'bold 12px system-ui';
+        ctx.fillStyle = '#18181b';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('TEST MODE', canvas.width/2, pad + 15);
+        ctx.restore();
+    }
+
+    // Multiplayer player count — top right
+    const others = Object.keys(otherPlayers).length;
+    if (others > 0) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(24,24,27,0.7)';
+        roundRect(ctx, canvas.width - pad - 90, pad, 90, 36, 8);
+        ctx.fill();
+        ctx.font = 'bold 13px system-ui';
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`👥 ${others + 1} online`, canvas.width - pad - 45, pad + 18);
+        ctx.restore();
+    }
 }
 function drawGhost() {
     if (!currentTool || ['delete', 'edit'].includes(currentTool)) return;
@@ -7645,7 +7812,22 @@ function drawSingleObject(obj) {
 
     ctx.translate(centerX, centerY);
     ctx.scale(obj.scaleX, obj.scaleY);
+    if (obj.tag === 'player') {
+    // Lean forward when running
+    const leanAmount = obj.vx * 0.03;
+    ctx.rotate(leanAmount);
 
+    // Squish horizontally when running fast
+    const speedRatio = Math.abs(obj.vx) / 6;
+    const runSquish = 1 + speedRatio * 0.08;
+    ctx.scale(runSquish, 1 / runSquish);
+
+    // Bob up and down when on ground
+    if (!obj.isJumping && Math.abs(obj.vx) > 0.5) {
+        const bob = Math.sin(performance.now() * 0.015) * 1.5;
+        ctx.translate(0, bob);
+    }
+}
     // Text blocks
     if (obj.tag === "text") {
         ctx.fillStyle = "rgba(100,100,100,0.5)";
@@ -8019,12 +8201,14 @@ case 'KeyQ':
             keys.down = true;
             break;
         case 'Escape':
-          if (testMode) {
-              exitTestMode();
-          } else {
-              goToMenu();
-          }
-          break;
+    if (testMode) {
+        exitTestMode();
+    } else if (playMode) {
+        togglePause();
+    } else {
+        goToMenu();
+    }
+    break;
         }
         
 });
@@ -8054,46 +8238,47 @@ window.addEventListener('keyup', (e) => {
 let lastTime = 0;
 
 function gameLoop(timestamp) {
-    if (!world) {
-        // Map isn't loaded yet, request the next frame and wait
-        requestAnimationFrame(gameLoop);
-        return;
-    }
+    if (!world) { requestAnimationFrame(gameLoop); return; }
     const rawDelta = timestamp - lastTime;
     lastTime = timestamp;
+    const delta = Math.min(rawDelta, 50) / (1000 / 60);
 
-    // Cap delta so a tab losing focus doesn't cause a huge jump
-    const delta = Math.min(rawDelta, 50) / (1000 / 60); // 1.0 = exactly 60fps
-    checkScriptTriggers();
-    updateSpatialGrid();
-    updatePhysics(delta);
-    checkClocks();
-    checkTriggers();
-    checkMonitors();
-    checkComparers();
-    updatePlatforms(delta);
-    checkResetBreakables();
-    checkGoal();
+    if (!paused) {
+        updateSpatialGrid();
+        updatePhysics(delta);
+        checkClocks();
+        checkTriggers();
+        checkMonitors();
+        checkComparers();
+        updatePlatforms(delta);
+        checkResetBreakables();
+        checkGoal();
+        updatePlayerTrail();
+        updateFloatingTexts();
+        checkScriptTriggers();
 
-    for (let i = particles.length - 1; i >= 0; i--) {
-        particles[i].update();
-        if (particles[i].life <= 0) particles.splice(i, 1);
+        for (let i = particles.length - 1; i >= 0; i--) {
+            particles[i].update();
+            if (particles[i].life <= 0) particles.splice(i, 1);
+        }
+
+        const targetX = player.x - canvas.width / 2;
+        const targetY = player.y - canvas.height / 2;
+        camera.x += (targetX - camera.x) * CAM_SMOOTH;
+        camera.y += (targetY - camera.y) * CAM_SMOOTH;
+        camera.x = Math.max(0, Math.min(camera.x, world.width - canvas.width));
+        camera.y = Math.max(0, Math.min(camera.y, world.height - canvas.height));
+
+        for (const u in smoothedPlayers) {
+            if (!otherPlayers[u]) continue;
+            smoothedPlayers[u].x += (otherPlayers[u].x - smoothedPlayers[u].x) * 0.25;
+            smoothedPlayers[u].y += (otherPlayers[u].y - smoothedPlayers[u].y) * 0.25;
+            smoothedPlayers[u].skin = otherPlayers[u].skin;
+        }
     }
 
-    const targetX = player.x - canvas.width / 2;
-    const targetY = player.y - canvas.height / 2;
-    camera.x += (targetX - camera.x) * CAM_SMOOTH;
-    camera.y += (targetY - camera.y) * CAM_SMOOTH;
-    camera.x = Math.max(0, Math.min(camera.x, world.width - canvas.width));
-    camera.y = Math.max(0, Math.min(camera.y, world.height - canvas.height));
-    // Smooth other players toward their real positions
-for (const u in smoothedPlayers) {
-    if (!otherPlayers[u]) continue;
-    smoothedPlayers[u].x += (otherPlayers[u].x - smoothedPlayers[u].x) * 0.25;
-    smoothedPlayers[u].y += (otherPlayers[u].y - smoothedPlayers[u].y) * 0.25;
-    smoothedPlayers[u].skin = otherPlayers[u].skin;
-}
     draw();
+    drawHUD();
     gameLoopId = requestAnimationFrame(gameLoop);
 }
 </script>
