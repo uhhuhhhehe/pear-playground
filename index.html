@@ -769,7 +769,6 @@
 
         <button onclick="selectTool('oneway')"data-tool="oneway">One-Way</button>
         <button onclick="selectTool('conveyor')" data-tool="conveyor">Conveyor</button>
-        <button onclick="selectTool('wind')"  data-tool="wind">Wind</button>
         <button onclick="selectTool('coin')"  data-tool="coin">Coin</button>
         <button onclick="selectTool('light')" data-tool="light">Light</button>
       </div>
@@ -4471,7 +4470,43 @@ document.getElementById("overlay").addEventListener("click", () => {
     closeBlockCreator();
     closeCopyNamePopup();
 });
+// 1. Create a generic helper function to handle the delay
+function debounce(func, delay) {
+    let timeoutId;
+    return function(...args) {
+        // Clear the previous timer if the user is still resizing
+        clearTimeout(timeoutId);
+        
+        // Start a new timer
+        timeoutId = setTimeout(() => {
+            func.apply(this, args);
+        }, delay);
+    };
+}
 
+// 2. Define your actual canvas adjustment logic
+function handleResize() {
+    console.log("Canvas resized safely without lag!");
+    
+    // Set your canvas internal width/height to match the window
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // OPTIONAL: If your game keeps track of canvas variables elsewhere,
+    // update them here too:
+    // camera.width = canvas.width;
+    // camera.height = canvas.height;
+    
+    // NOTE: If your game loop is paused, you may want to trigger 
+    // a single draw() call here so the screen doesn't go blank.
+    if (paused) {
+        draw(); 
+    }
+}
+
+// 3. Attach the debounced wrapper to the window resize event
+// 200ms is the sweet spot: invisible to the user, but saves hundreds of frames of lag
+window.addEventListener('resize', debounce(handleResize, 200));
 document.getElementById("propModTextCheck").addEventListener("change", (e) => {
     document.getElementById("propModText").style.display = e.target.checked ? 'block' : 'none';
 });
@@ -4854,12 +4889,6 @@ case 'conveyor':
     newObj.solid = true;
     newObj.conveyorDir = 1;
     break;
-case 'wind':
-    newObj.tag = "wind";
-    newObj.solid = false;
-    newObj.windX = 2;
-    newObj.windY = 0;
-    break;
 case 'coin':
     newObj.tag = "coin";
     newObj.solid = false;
@@ -4962,7 +4991,7 @@ canvas.addEventListener("mousemove", e => {
     // Only drag-place for block tools, not editor tools or special blocks
     const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
     'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform',
-    'coin', 'tree', 'bush', 'wind',"light"];
+    'coin', 'tree', 'bush',"light"];
     if (dragBlacklist.includes(currentTool)) return;
 
     // Don't place in the same grid cell twice
@@ -5020,7 +5049,6 @@ const occupied = objects.some(o =>
     'box-stickable': { tag: 'sticky', slime: true },
     'oneway': { tag: 'oneway', solid: true },
     'conveyor': { tag: 'conveyor', solid: true, conveyorDir: 1 },
-    'wind': { tag: 'wind', solid: false, windX: 2, windY: 0 },
     'tree':  { tag: 'tree',  solid: false, width: 60, height: 100 },
     'bush':  { tag: 'bush',  solid: false, width: 50, height: 35  },
 };
@@ -5782,13 +5810,7 @@ const onConveyor = objects.find(o =>
 if (onConveyor) {
     obj.vx += (onConveyor.conveyorDir || 1) * 0.4 * delta;
 }
-const inWind = objects.find(o =>
-    o.tag === 'wind' && rectsCollide(obj, o)
-);
-if (inWind) {
-    obj.vx += (inWind.windX || 2) * 0.08 * delta;
-    obj.vy += (inWind.windY || 0) * 0.08 * delta;
-}
+
     if (keys.left)       obj.vx -= accel;
     else if (keys.right) obj.vx += accel;
     else                 obj.vx *= friction;
@@ -7254,30 +7276,6 @@ function drawBlockGraphic(ctx, tag, w, h, obj = null, noSurface = false) {
 
     break;
 }
-        case 'wind': {
-    const t = performance.now() / 1000;
-    ctx.fillStyle = 'rgba(186,230,253,0.15)';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = 'rgba(186,230,253,0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 4]);
-    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-    ctx.setLineDash([]);
-    // Animated wind lines
-    const lineCount = Math.floor(h / 12);
-    for (let i = 0; i < lineCount; i++) {
-        const ly = y + (i / lineCount) * h + ((t * 40) % (h / lineCount));
-        const len = w * (0.3 + ((i * 37) % 100) / 100 * 0.5);
-        const lx = x + (w - len) / 2;
-        ctx.strokeStyle = `rgba(186,230,253,${0.3 + Math.sin(t * 2 + i) * 0.2})`;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(lx, ly);
-        ctx.lineTo(lx + len, ly);
-        ctx.stroke();
-    }
-    break;
-}
         case 'conveyor': {
     const t = performance.now() / 1000;
     const dir = 1; // direction — will be obj.conveyorDir at runtime
@@ -8249,7 +8247,7 @@ function drawSurfaceShading() {
     visible.forEach(obj => {
         if (!obj.solid) return;
         if (obj.tag === 'player'  || obj.tag === 'trigger' || obj.tag === 'coin' ||
-            obj.tag === 'wind'    || obj.tag === 'tree'    || obj.tag === 'bush' ||
+            obj.tag === 'tree'    || obj.tag === 'bush' ||
             obj.tag === 'oneway'  || obj.tag === 'goal'    || obj.tag === 'spawn' ||
             obj.tag === 'defaultspawn') return;
 
