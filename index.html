@@ -764,6 +764,14 @@
         <button onclick="selectTool('text')" data-tool="text">Text</button>
         <button onclick="selectTool('platform')" data-tool="platform">Platform</button>
         <button onclick="selectTool('goal')" data-tool="goal">Goal</button>
+        <button onclick="selectTool('tree')"  data-tool="tree">Tree</button>
+        <button onclick="selectTool('bush')"  data-tool="bush">Bush</button>
+
+        <button onclick="selectTool('oneway')"data-tool="oneway">One-Way</button>
+        <button onclick="selectTool('conveyor')" data-tool="conveyor">Conveyor</button>
+        <button onclick="selectTool('wind')"  data-tool="wind">Wind</button>
+        <button onclick="selectTool('coin')"  data-tool="coin">Coin</button>
+        <button onclick="selectTool('light')" data-tool="light">Light</button>
       </div>
     </div>
 
@@ -1397,7 +1405,8 @@ const settings = {
     debug: false,      // NEW
     fps: false,       // NEW
     music: true,   // ADD
-    sfx: true      // ADD
+    sfx: true,
+    lightQuality: 'high' // 'high' = 80 rays, 'medium' = 48, 'low' = 24    // ADD
 };
 // Firebase config
 const firebaseConfig = {
@@ -1433,7 +1442,12 @@ const SAVE_DEFAULTS = {
     scaleX: 1,   // NEW
     scaleY: 1,   // NEW
     vx: 0,       // NEW
-    vy: 0        // NEW
+    vy: 0,        // NEW
+    lightR: 255,
+lightG: 220,
+lightB: 100,
+lightRadius: 200,
+lightIntensity: 0.92
 };
 /* ============================================================
    SKIN & CASE SYSTEM
@@ -1499,7 +1513,45 @@ const CASES = {
     weights: { common: 25, rare: 55, legendary: 20 }
   }
 };
+const LIGHTING_THEMES = {
+    normal: {
+        ambient: 'rgba(0,0,0,0)',
+        fog: 0
+    },
+    night: {
+        ambient: 'rgba(0,10,40,0.72)',
+        fog: 0.4
+    },
+    cave: {
+        ambient: 'rgba(0,0,0,0.85)',
+        fog: 0.6
+    },
+    sunset: {
+        ambient: 'rgba(80,20,0,0.45)',
+        fog: 0.2
+    },
+    dungeon: {
+        ambient: 'rgba(10,0,30,0.78)',
+        fog: 0.5
+    },
+    underwater: {
+        ambient: 'rgba(0,30,80,0.65)',
+        fog: 0.35
+    },
+    horror: {
+        ambient: 'rgba(20,0,0,0.88)',
+        fog: 0.7
+    }
+};
 
+let currentTheme     = 'normal';
+let targetTheme      = 'normal';
+let themeTransition  = 1.0; // 0 = fully in old, 1 = fully in new
+let oldThemeAmbient  = 'rgba(0,0,0,0)';
+
+// Parsed versions for interpolation
+let currentAmbientRGBA = [0,0,0,0];
+let targetAmbientRGBA  = [0,0,0,0];
 // Player economy state (loaded from Firebase on login)
 let playerCoins = 0;
 let playerInventory = ['default']; // skin IDs owned
@@ -1844,7 +1896,38 @@ function refreshTerrainSelection() {
 function spawnFloatingText(x, y, text, color = '#a3e635') {
     floatingTexts.push({ x, y, text, color, life: 1.0, vy: -1.5 });
 }
+function parseRGBA(str) {
+    const m = str.match(/rgba?\((\d+),(\d+),(\d+),?([\d.]+)?\)/);
+    if (!m) return [0,0,0,0];
+    return [parseInt(m[1]), parseInt(m[2]), parseInt(m[3]), parseFloat(m[4] ?? 1)];
+}
 
+function lerpRGBA(a, b, t) {
+    return [
+        Math.round(a[0] + (b[0] - a[0]) * t),
+        Math.round(a[1] + (b[1] - a[1]) * t),
+        Math.round(a[2] + (b[2] - a[2]) * t),
+        +(a[3] + (b[3] - a[3]) * t).toFixed(3)
+    ];
+}
+
+function rgbaToString([r,g,b,a]) {
+    return `rgba(${r},${g},${b},${a})`;
+}
+
+function setLightingTheme(name, instant = false) {
+    if (!LIGHTING_THEMES[name]) return;
+    if (name === targetTheme) return;
+    oldThemeAmbient    = rgbaToString(currentAmbientRGBA);
+    currentAmbientRGBA = lerpRGBA(currentAmbientRGBA, targetAmbientRGBA, themeTransition);
+    targetTheme        = name;
+    targetAmbientRGBA  = parseRGBA(LIGHTING_THEMES[name].ambient);
+    themeTransition    = instant ? 1 : 0;
+    if (instant) {
+        currentAmbientRGBA = [...targetAmbientRGBA];
+        currentTheme       = name;
+    }
+}
 function updateFloatingTexts() {
     floatingTexts.forEach(t => {
         t.y += t.vy;
@@ -2429,22 +2512,122 @@ function cachedCloud(bc, W, x, y, scale) {
 }
 
 // 3. Lighting Overlay
-function drawLighting(player) {
-    if(!player) return;
-    
-    // Create a dark overlay with a hole cut out for the player
-    // We use a radial gradient that goes from Transparent -> Black
-    const px = player.x - camera.x + player.width/2;
-    const py = player.y - camera.y + player.height/2;
-    
-    const gradient = ctx.createRadialGradient(px, py, 100, px, py, 600);
-    gradient.addColorStop(0, "rgba(0,0,0,0)");       // Clear center
-    gradient.addColorStop(0.2, "rgba(0,10,30,0.1)"); // Slight tint
-    gradient.addColorStop(1, "rgba(0,10,30,0.4)");   // Dark corners
+// function drawLighting() {
+//     // Advance transition
+//     if (themeTransition < 1) {
+//         themeTransition = Math.min(1, themeTransition + 0.02);
+//         currentAmbientRGBA = lerpRGBA(
+//             parseRGBA(oldThemeAmbient),
+//             targetAmbientRGBA,
+//             themeTransition
+//         );
+//         if (themeTransition >= 1) currentTheme = targetTheme;
+//     }
 
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-}
+//     const ambientAlpha = currentAmbientRGBA[3];
+//     if (ambientAlpha < 0.01) return;
+
+//     // Build list of light sources
+//     const lights = [];
+
+//     lights.push({
+//     x:         player.x - camera.x + player.width  / 2,
+//     y:         player.y - camera.y + player.height / 2,
+//     radius:    220 + Math.sin(performance.now() / 500) * 6,
+//     r: 255, g: 220, b: 160,
+//     intensity: 1.0,
+//     numRays:   120
+// });
+
+//     objects.forEach(obj => {
+//         if (obj.tag === 'light') {
+//             const t = performance.now() / 1000;
+//             const pulse = Math.sin(t * 2.5) * 0.06 + 0.94;
+//             lights.push({
+//                 x:         obj.x - camera.x + obj.width  / 2,
+//                 y:         obj.y - camera.y + obj.height / 2,
+//                 radius:    (obj.lightRadius ?? 200) * pulse,
+//                 intensity: obj.lightIntensity ?? 0.95,
+//                 r:         obj.lightR ?? 255,
+//                 g:         obj.lightG ?? 220,
+//                 b:         obj.lightB ?? 100
+//             });
+//         }
+//         if (obj.tag === 'lava') {
+//             const t = performance.now() / 1000;
+//             lights.push({
+//                 x:         obj.x - camera.x + obj.width  / 2,
+//                 y:         obj.y - camera.y + obj.height / 2,
+//                 radius:    90 + Math.sin(t * 1.8 + obj.x * 0.01) * 8,
+//                 intensity: 0.55,
+//                 r: 249, g: 115, b: 22
+//             });
+//         }
+//     });
+
+//     // Create offscreen canvas for the lighting mask
+//     const W = canvas.width;
+//     const H = canvas.height;
+
+//     if (!window._lightCanvas || window._lightCanvas.width !== W || window._lightCanvas.height !== H) {
+//         window._lightCanvas = document.createElement('canvas');
+//         window._lightCanvas.width  = W;
+//         window._lightCanvas.height = H;
+//     }
+
+//     const lc = window._lightCanvas;
+//     const lctx = lc.getContext('2d');
+
+//     // Fill with ambient darkness
+//     const [r, g, b, a] = currentAmbientRGBA;
+//     lctx.clearRect(0, 0, W, H);
+//     lctx.fillStyle = `rgba(${r},${g},${b},${a})`;
+//     lctx.fillRect(0, 0, W, H);
+
+//     // Cut holes for each light using destination-out on the OFFSCREEN canvas
+//     lctx.globalCompositeOperation = 'destination-out';
+
+//     lights.forEach(light => {
+//         const grad = lctx.createRadialGradient(
+//             light.x, light.y, 0,
+//             light.x, light.y, light.radius
+//         );
+//         grad.addColorStop(0,   `rgba(0,0,0,${light.intensity})`);
+//         grad.addColorStop(0.45,`rgba(0,0,0,${light.intensity * 0.55})`);
+//         grad.addColorStop(0.8, `rgba(0,0,0,${light.intensity * 0.1})`);
+//         grad.addColorStop(1,   'rgba(0,0,0,0)');
+//         lctx.fillStyle = grad;
+//         lctx.beginPath();
+//         lctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
+//         lctx.fill();
+//     });
+
+//     lctx.globalCompositeOperation = 'source-over';
+
+//     // Draw the finished mask onto the main canvas — no transforms needed
+//     ctx.save();
+//     ctx.setTransform(1, 0, 0, 1, 0, 0); // absolute screen space
+//     ctx.drawImage(lc, 0, 0);
+
+//     // Colored tint pass for non-player lights
+//     lights.forEach(light => {
+//         if (!light.r || (light.r === 255 && light.g === 220 && light.b === 160)) return;
+//         const grad = ctx.createRadialGradient(
+//             light.x, light.y, 0,
+//             light.x, light.y, light.radius * 0.5
+//         );
+//         grad.addColorStop(0, `rgba(${light.r},${light.g},${light.b},${0.1 * ambientAlpha})`);
+//         grad.addColorStop(1, `rgba(${light.r},${light.g},${light.b},0)`);
+//         ctx.fillStyle = grad;
+//         ctx.globalCompositeOperation = 'screen';
+//         ctx.beginPath();
+//         ctx.arc(light.x, light.y, light.radius * 0.5, 0, Math.PI * 2);
+//         ctx.fill();
+//     });
+
+//     ctx.globalCompositeOperation = 'source-over';
+//     ctx.restore();
+// }
 
 // 4. Screen Shake Logic
 function addShake(amount) {
@@ -3761,6 +3944,9 @@ function resetAllTriggers() {
             o.opacity = 1; 
         }
     });
+    objects.forEach(o => {
+    if (o.tag === 'coin') { o._collected = false; o.opacity = 1; }
+});
 }
 function generateMapThumbnail() {
     const thumbCanvas = document.createElement('canvas');
@@ -4563,6 +4749,54 @@ case 'marble':
             newObj.coinValue = 10;
             newObj.id = Date.now() + Math.random();
             break;
+            case 'light':
+    newObj.tag = 'light';
+    newObj.solid = false;
+    newObj.width = 30;
+    newObj.height = 30;
+    newObj.lightR = 255;
+    newObj.lightG = 220;
+    newObj.lightB = 100;
+    newObj.lightRadius = 200;
+    newObj.lightIntensity = 0.92;
+    break;
+        
+
+case 'oneway':
+    newObj.tag = "oneway";
+    newObj.solid = true;
+    newObj.height = 16;
+    break;
+case 'conveyor':
+    newObj.tag = "conveyor";
+    newObj.solid = true;
+    newObj.conveyorDir = 1;
+    break;
+case 'wind':
+    newObj.tag = "wind";
+    newObj.solid = false;
+    newObj.windX = 2;
+    newObj.windY = 0;
+    break;
+case 'coin':
+    newObj.tag = "coin";
+    newObj.solid = false;
+    newObj.width = 30;
+    newObj.height = 30;
+    newObj.coinValue = 10;
+    break;
+case 'tree':
+    newObj.tag = "tree";
+    newObj.solid = false;
+    newObj.width = 60;
+    newObj.height = 100;
+    break;
+case 'bush':
+    newObj.tag = "bush";
+    newObj.solid = false;
+    newObj.width = 50;
+    newObj.height = 35;
+    break;
         default:
             builtInToolFound = false;
     }
@@ -4645,7 +4879,8 @@ canvas.addEventListener("mousemove", e => {
 }
     // Only drag-place for block tools, not editor tools or special blocks
     const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
-        'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform'];
+    'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform',
+    'coin', 'tree', 'bush', 'wind',"light"];
     if (dragBlacklist.includes(currentTool)) return;
 
     // Don't place in the same grid cell twice
@@ -4701,6 +4936,11 @@ const occupied = objects.some(o =>
     'breakable':     { tag: 'breakable', solid: true, reappearTime: 300 },
     'box-pushable':  { tag: 'pushablebox', gravity: 0.6, pushable: true },
     'box-stickable': { tag: 'sticky', slime: true },
+    'oneway': { tag: 'oneway', solid: true },
+    'conveyor': { tag: 'conveyor', solid: true, conveyorDir: 1 },
+    'wind': { tag: 'wind', solid: false, windX: 2, windY: 0 },
+    'tree':  { tag: 'tree',  solid: false, width: 60, height: 100 },
+    'bush':  { tag: 'bush',  solid: false, width: 50, height: 35  },
 };
 
     const preset = tagMap[currentTool];
@@ -4751,6 +4991,62 @@ const occupied = objects.some(o =>
         canvas.style.cursor = 'default';
     }
 });
+function drawDecorations() {
+    objects.forEach(obj => {
+        if (obj.tag !== 'tree' && obj.tag !== 'bush') return;
+        const sx = obj.x - camera.x;
+        const sy = obj.y - camera.y;
+        ctx.save();
+        ctx.translate(sx + obj.width / 2, sy + obj.height / 2);
+
+        if (obj.tag === 'tree') {
+            const trunkW = obj.width * 0.18;
+            const trunkH = obj.height * 0.45;
+            // Trunk
+            ctx.fillStyle = '#78350f';
+            ctx.fillRect(-trunkW / 2, obj.height * 0.08, trunkW, trunkH);
+            // Shadow under canopy
+            ctx.fillStyle = 'rgba(0,0,0,0.1)';
+            ctx.beginPath();
+            ctx.ellipse(2, -obj.height * 0.1, obj.width * 0.42, obj.height * 0.18, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Canopy layers
+            const t = performance.now() / 1000;
+            const sway = Math.sin(t * 0.8 + obj.x * 0.01) * 1.5;
+            ctx.fillStyle = '#15803d';
+            ctx.beginPath();
+            ctx.ellipse(sway * 0.3, -obj.height * 0.18, obj.width * 0.44, obj.height * 0.35, sway * 0.02, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#16a34a';
+            ctx.beginPath();
+            ctx.ellipse(sway * 0.5 - obj.width * 0.1, -obj.height * 0.28, obj.width * 0.32, obj.height * 0.26, sway * 0.02 - 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath();
+            ctx.ellipse(sway * 0.5 + obj.width * 0.08, -obj.height * 0.32, obj.width * 0.28, obj.height * 0.22, sway * 0.02 + 0.15, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        if (obj.tag === 'bush') {
+            const t = performance.now() / 1000;
+            const sway = Math.sin(t * 1.1 + obj.x * 0.01) * 1;
+            ctx.fillStyle = '#15803d';
+            ctx.beginPath();
+            ctx.ellipse(sway, 0, obj.width * 0.48, obj.height * 0.38, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#16a34a';
+            ctx.beginPath();
+            ctx.ellipse(sway - obj.width * 0.18, -obj.height * 0.08, obj.width * 0.3, obj.height * 0.28, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath();
+            ctx.ellipse(sway + obj.width * 0.16, -obj.height * 0.1, obj.width * 0.28, obj.height * 0.26, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    });
+}
 function drawScaledBlock(ctx, tag, w, h) {
     const x = -w / 2, y = -h / 2;
     let borderColor = '#475569';
@@ -5272,84 +5568,91 @@ if (Math.abs(obj.x - other.x) > maxReach || Math.abs(obj.y - other.y) > maxReach
 }
 
 function resolveCollision(obj, collision) {
-  const other = collision.object;
-  const overlap = collision.overlap;
-  const isGround = other === ground;
-  const isPlayer = other.tag === 'player'; 
-  
-  if (collision.axis === 'y') {
-    const direction = isGround || isPlayer ? 1 : Math.sign(collision.centerDist);
-    obj.y -= overlap * direction;
-    
-    if (obj.vy * direction > 0) {
-    if (direction === 1 && obj.tag === "player") {
-        // Landing on top of something
-        if (obj.vy > 4) {
-            obj.scaleX = 1.3;
-            obj.scaleY = 0.8;
-            if (settings.particles) spawnParticles(obj.x + obj.width/2, obj.y + obj.height, 10, "#888", 3);
-            if (settings.shake && obj.vy > 10) addShake(5);
-            playSFX('land', obj.vy); // ADD
+    const other = collision.object;
+    const overlap = collision.overlap;
+    const isGround = other === ground;
+    const isPlayer = other.tag === 'player';
+
+    if (collision.axis === 'y') {
+        const direction = isGround || isPlayer ? 1 : Math.sign(collision.centerDist);
+
+        // One-way platform — only block if falling down onto the top surface
+        if (other.tag === 'oneway') {
+    if (obj.vy < 0) return; // moving upward — pass through
+    if (obj.y + obj.height > other.y + other.height * 0.5) return; // more than halfway through — pass through
+    if (obj.vy === 0 && obj.y + obj.height > other.y + 4) return; // standing but clipped in — pass through
+}
+
+        obj.y -= overlap * direction;
+
+        if (obj.vy * direction > 0) {
+            if (direction === 1 && obj.tag === 'player') {
+                if (obj.vy > 4) {
+                    obj.scaleX = 1.3;
+                    obj.scaleY = 0.8;
+                    if (settings.particles) spawnParticles(obj.x + obj.width/2, obj.y + obj.height, 10, "#888", 3);
+                    if (settings.shake && obj.vy > 10) addShake(5);
+                    playSFX('land', obj.vy);
+                }
+                obj.vy = 0;
+                obj.isJumping = false;
+                obj.jumpsLeft = obj.maxJumps;
+            } else if (direction === -1 && obj.tag === 'player') {
+                obj.vy = 0;
+            }
         }
-        obj.vy = 0;
-        obj.isJumping = false;
-        obj.jumpsLeft = obj.maxJumps;
-    } else if (direction === -1 && obj.tag === "player") {
-        // Hitting the underside of a block — just kill upward velocity
-        obj.vy = 0;
-    }
-}
-    if (obj.tag === 'player' && other.tag === 'breakable' && !other.breakTimer && !other.broken) {
-        other.breakTimer = Date.now(); 
-        other.opacity = 0.8; // Visual feedback that it's triggered
-    }
-    // Death / Checkpoint logic
-    if (obj.tag === "player") {
-      if (other.slime) obj.jumpsLeft = obj.maxJumps;
-      if (other.kill) {
-          if (settings.particles) spawnParticles(obj.x + obj.width/2, obj.y + obj.height/2, 30, "red", 8);
-          if (settings.shake) addShake(15);
-          resetPlayer(obj);
-      }
-      if (other.bounce && direction === 1) {
-    obj.vy = -18;
-    obj.isJumping = true;
-    spawnParticles(obj.x + obj.width/2, obj.y + obj.height, 8, "#fbbf24", 5);
-}
-      // BREAKABLE TOUCH (Top/Bottom)
-    
-      
-    } else if (isPlayer && direction === 1) {
-       obj.vy = 0;
-       obj.isJumping = false;
-    }
 
-  } else if (collision.axis === 'x') {
-    const direction = Math.sign(collision.centerDist);
-    obj.x -= overlap * direction;
-    
-    if (other.pushable && obj.tag === 'player') { 
-      const pushForce = obj.vx * 0.4;
-      other.vx += pushForce;
-      other.vx = Math.max(Math.min(other.vx, 3), -3); 
-    }
-    if (obj.tag === 'player' && other.tag === 'breakable' && !other.breakTimer && !other.broken) {
-        other.breakTimer = Date.now(); 
-        other.opacity = 0.8;
-    }
-    obj.vx *= 0.5;
-    if (obj.tag === "player") {
-      if (other.slime) {
-        obj.jumpsLeft = obj.maxJumps;
-        if (obj.vy > 0) obj.vy = Math.min(obj.vy, 1.0);
-      }
-      if (other.kill) resetPlayer(obj);
-      // BREAKABLE TOUCH (Side)
-    
-    }
-  }
-}
+        if (obj.tag === 'player' && other.tag === 'breakable' && !other.breakTimer && !other.broken) {
+            other.breakTimer = Date.now();
+            other.opacity = 0.8;
+        }
 
+        if (obj.tag === 'player') {
+            if (other.slime) obj.jumpsLeft = obj.maxJumps;
+            if (other.kill) {
+                if (settings.particles) spawnParticles(obj.x + obj.width/2, obj.y + obj.height/2, 30, "red", 8);
+                if (settings.shake) addShake(15);
+                resetPlayer(obj);
+            }
+            if (other.bounce && direction === 1) {
+                obj.vy = -18;
+                obj.isJumping = true;
+                spawnParticles(obj.x + obj.width/2, obj.y + obj.height, 8, "#fbbf24", 5);
+            }
+        } else if (isPlayer && direction === 1) {
+            obj.vy = 0;
+            obj.isJumping = false;
+        }
+
+    } else if (collision.axis === 'x') {
+        // One-way platforms have no horizontal collision
+        if (other.tag === 'oneway') return;
+
+        const direction = Math.sign(collision.centerDist);
+        obj.x -= overlap * direction;
+
+        if (other.pushable && obj.tag === 'player') {
+            const pushForce = obj.vx * 0.4;
+            other.vx += pushForce;
+            other.vx = Math.max(Math.min(other.vx, 3), -3);
+        }
+
+        if (obj.tag === 'player' && other.tag === 'breakable' && !other.breakTimer && !other.broken) {
+            other.breakTimer = Date.now();
+            other.opacity = 0.8;
+        }
+
+        obj.vx *= 0.5;
+
+        if (obj.tag === 'player') {
+            if (other.slime) {
+                obj.jumpsLeft = obj.maxJumps;
+                if (obj.vy > 0) obj.vy = Math.min(obj.vy, 1.0);
+            }
+            if (other.kill) resetPlayer(obj);
+        }
+    }
+}
 function resetPlayer(obj) {
   playSFX('die'); // ADD
   deathFlash = 1.0;
@@ -5385,7 +5688,25 @@ if (obj.tag === "player") {
     const maxSpeed = onIce ? 10 : 6;
     const friction = Math.pow(onIce ? 0.99 : 0.85, delta);
     const wasGrounded = !obj.isJumping;
+    
 
+    obj.gravity = 0.6;
+
+const onConveyor = objects.find(o =>
+    o.tag === 'conveyor' && o.solid &&
+    Math.abs((obj.y + obj.height) - o.y) < 6 &&
+    obj.x < o.x + o.width && obj.x + obj.width > o.x
+);
+if (onConveyor) {
+    obj.vx += (onConveyor.conveyorDir || 1) * 0.4 * delta;
+}
+const inWind = objects.find(o =>
+    o.tag === 'wind' && rectsCollide(obj, o)
+);
+if (inWind) {
+    obj.vx += (inWind.windX || 2) * 0.08 * delta;
+    obj.vy += (inWind.windY || 0) * 0.08 * delta;
+}
     if (keys.left)       obj.vx -= accel;
     else if (keys.right) obj.vx += accel;
     else                 obj.vx *= friction;
@@ -5584,6 +5905,7 @@ const ACTION_TYPES = [
   { value:'shake_screen',      label:'Shake screen' },
   { value:'spawn_particles',   label:'Particles at group' },
   { value:'log',               label:'Log to console' },
+  { value:'set_theme', label:'Set lighting theme' }
 ];
 
 /* ===== open / close ===== */
@@ -5944,6 +6266,15 @@ function appendActionInputs(row, action, i) {
     v.oninput = () => { scriptActions[i].value = v.value; };
     row.appendChild(v); return;
   }
+  if (t === 'set_theme') {
+    const sel = makeSelect(
+        Object.keys(LIGHTING_THEMES).map(k => ({ value: k, label: k })),
+        action.value || 'normal'
+    );
+    sel.onchange = () => { scriptActions[i].value = sel.value; };
+    row.appendChild(sel);
+    return;
+}
 }
 
 /* ===== APPLY ===== */
@@ -6125,6 +6456,10 @@ function executeScriptActions(actions, vars) {
     if (t === 'respawn_player')   { resetPlayer(player); return; }
     if (t === 'shake_screen')     { addShake(parseFloat(val) || 10); return; }
     if (t === 'log')              { console.log('[Script]', String(val)); return; }
+    if (t === 'set_theme') {
+    setLightingTheme(val);
+    return;
+}
 
     if (t === 'set_var') {
       vars[group] = val;
@@ -6300,6 +6635,15 @@ function appendActionInputsFlat(row, action, i) {
     v.oninput = () => { scriptSteps[i].value = v.value; };
     row.appendChild(v); return;
   }
+  if (t === 'set_theme') {
+    const sel = makeSelect(
+      Object.keys(LIGHTING_THEMES).map(k => ({ value: k, label: k })),
+      action.value || 'normal'
+    );
+    sel.onchange = () => { scriptSteps[i].value = sel.value; };
+    row.appendChild(sel);
+    return;
+  }
 }
 function runTriggerScript(trigger, event = 'touched') {
   const sc = trigger.script;
@@ -6372,7 +6716,9 @@ function executeTriggerLogic(trigger) {
             if (mods.kill  !== undefined) target.kill  = (mods.kill  === 'true' || mods.kill  === true);
             if (mods.slime !== undefined) target.slime = (mods.slime === 'true' || mods.slime === true);
             if (mods.text  !== undefined) target.text  = mods.text;
-
+            if (mods.theme !== undefined && mods.theme !== '') {
+    setLightingTheme(mods.theme);
+}
             // Active state — handles triggers, clocks, and anything else
             if (mods.active === 'on' || mods.active === 'off') {
     const turningOn = mods.active === 'on';
@@ -6445,6 +6791,19 @@ function checkTriggers() {
                 }
             }
         }
+        objects.forEach(obj => {
+    if (obj.tag !== 'coin') return;
+    if (obj._collected) return;
+    if (rectsCollide(player, obj)) {
+        obj._collected = true;
+        obj.opacity = 0;
+        const val = obj.coinValue || 10;
+        addCoins(val);
+        playSFX('coin');
+        spawnParticles(obj.x + obj.width/2, obj.y + obj.height/2, 12, '#f59e0b', 5);
+        spawnFloatingText(obj.x + obj.width/2, obj.y, `+${val}`);
+    }
+});
     });
 
     // Step 2: Update the master list for the next frame
@@ -6753,13 +7112,14 @@ function drawStar(ctx, cx, cy, points, outerR, innerR) {
     ctx.fill();
 }
 
-function drawBlockGraphic(ctx, tag, w, h) {
+function drawBlockGraphic(ctx, tag, w, h, obj = null, noSurface = false) {
     const x = -w / 2, y = -h / 2;
     ctx.save();
 
     switch (tag) {
 
         case 'box': {
+            
             // Stone brick
             ctx.fillStyle = '#94a3b8';
             ctx.fillRect(x, y, w, h);
@@ -6778,6 +7138,167 @@ function drawBlockGraphic(ctx, tag, w, h) {
             ctx.strokeRect(x, y, w, h);
             break;
         }
+        case 'light': {
+    const t = performance.now() / 1000;
+    const pulse = Math.sin(t * 2.5) * 0.08 + 0.92;
+    const r = obj?.lightR ?? 255;
+    const g = obj?.lightG ?? 220;
+    const b = obj?.lightB ?? 100;
+
+    // Outer glow ring
+    ctx.fillStyle = `rgba(${r},${g},${b},0.08)`;
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.min(w,h) * 0.7 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Main bulb
+    ctx.fillStyle = `rgba(${r},${g},${b},0.9)`;
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.min(w,h) * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bright core
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(-Math.min(w,h)*0.06, -Math.min(w,h)*0.06, Math.min(w,h)*0.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Mounting bracket
+    ctx.fillStyle = '#374151';
+    ctx.fillRect(-3, -Math.min(w,h)*0.46, 6, Math.min(w,h)*0.22);
+    ctx.beginPath();
+    ctx.arc(0, -Math.min(w,h)*0.26, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    break;
+}
+        case 'wind': {
+    const t = performance.now() / 1000;
+    ctx.fillStyle = 'rgba(186,230,253,0.15)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(186,230,253,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+    ctx.setLineDash([]);
+    // Animated wind lines
+    const lineCount = Math.floor(h / 12);
+    for (let i = 0; i < lineCount; i++) {
+        const ly = y + (i / lineCount) * h + ((t * 40) % (h / lineCount));
+        const len = w * (0.3 + ((i * 37) % 100) / 100 * 0.5);
+        const lx = x + (w - len) / 2;
+        ctx.strokeStyle = `rgba(186,230,253,${0.3 + Math.sin(t * 2 + i) * 0.2})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(lx, ly);
+        ctx.lineTo(lx + len, ly);
+        ctx.stroke();
+    }
+    break;
+}
+        case 'conveyor': {
+    const t = performance.now() / 1000;
+    const dir = 1; // direction — will be obj.conveyorDir at runtime
+
+    ctx.save();
+    // Clip everything to block bounds so stripes can't overflow
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+
+    // Base
+    ctx.fillStyle = '#374151';
+    ctx.fillRect(x, y, w, h);
+
+    // Animated diagonal stripes
+    const stripeW = 14;
+    const speed = t * 35 * dir;
+    const offset = ((speed % (stripeW * 2)) + stripeW * 2) % (stripeW * 2);
+    ctx.fillStyle = '#4b5563';
+    for (let i = -stripeW * 2; i < w + stripeW * 2; i += stripeW * 2) {
+        ctx.fillRect(x + i + offset, y + 4, stripeW, h - 8);
+    }
+
+    // Top and bottom rails
+    ctx.fillStyle = '#6b7280';
+    ctx.fillRect(x, y, w, 5);
+    ctx.fillRect(x, y + h - 5, w, 5);
+
+    // Arrow
+    ctx.fillStyle = '#a3e635';
+    ctx.font = `bold ${Math.min(h * 0.55, 16)}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(dir >= 0 ? '→' : '←', 0, 0);
+
+    ctx.restore();
+    break;
+}
+
+case 'oneway': {
+    ctx.fillStyle = '#4ade80';
+    ctx.fillRect(x, y, w, h);
+
+    // Darker bottom half for depth
+    ctx.fillStyle = '#16a34a';
+    ctx.fillRect(x, y + h * 0.5, w, h * 0.5);
+
+    // Bright landing strip on top
+    ctx.fillStyle = '#86efac';
+    ctx.fillRect(x, y, w, h * 0.22);
+
+    // Top sheen
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillRect(x, y, w, h * 0.08);
+
+    // Upward chevrons showing pass-through direction
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    const count = Math.floor(w / 18);
+    for (let i = 0; i < count; i++) {
+        const ax = x + (i + 0.5) * (w / count);
+        ctx.beginPath();
+        ctx.moveTo(ax - 5, y + h * 0.72);
+        ctx.lineTo(ax,     y + h * 0.52);
+        ctx.lineTo(ax + 5, y + h * 0.72);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(ax - 5, y + h * 0.88);
+        ctx.lineTo(ax,     y + h * 0.68);
+        ctx.lineTo(ax + 5, y + h * 0.88);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    ctx.strokeStyle = '#15803d';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    break;
+}
+        case 'coin': {
+    const t = performance.now() / 1000;
+    const squish = Math.abs(Math.cos(t * 3)) * 0.4 + 0.6;
+    ctx.save();
+    ctx.scale(squish, 1);
+    // Outer ring
+    ctx.fillStyle = '#f59e0b';
+    ctx.beginPath();
+    ctx.arc(0, 0, w * 0.46, 0, Math.PI * 2);
+    ctx.fill();
+    // Inner shine
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(-w * 0.08, -h * 0.08, w * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    // Dollar symbol
+    ctx.fillStyle = '#92400e';
+    ctx.font = `bold ${w * 0.38}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('$', 0, h * 0.04);
+    ctx.restore();
+    break;
+}
         case 'wood': {
     ctx.fillStyle = '#c17f3a';
     ctx.fillRect(x, y, w, h);
@@ -7625,57 +8146,205 @@ function wrapText(context, text, maxWidth) {
     lines.push(line);
     return lines;
 }
+/* ============================================================
+   RAYCAST LIGHTING SYSTEM
+============================================================ */
+
+// Reusable offscreen canvases
+let _lightCanvas  = null;
+let _shadowCanvas = null;
+
+
+// Subtle top-highlight / bottom-shadow on every solid block.
+// No raycasting, no grid sampling — just clean directional cues.
+function drawSurfaceShading() {
+    const viewRect = { x: camera.x, y: camera.y, width: canvas.width, height: canvas.height };
+    const visible = getNearbyObjects(viewRect);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+
+    visible.forEach(obj => {
+        if (!obj.solid) return;
+        if (obj.tag === 'player'  || obj.tag === 'trigger' || obj.tag === 'coin' ||
+            obj.tag === 'wind'    || obj.tag === 'tree'    || obj.tag === 'bush' ||
+            obj.tag === 'oneway'  || obj.tag === 'goal'    || obj.tag === 'spawn' ||
+            obj.tag === 'defaultspawn') return;
+
+        const sx = obj.x - camera.x;
+        const sy = obj.y - camera.y;
+        const w  = obj.width;
+        const h  = obj.height;
+
+        // Top highlight — simulates light from above
+        ctx.fillStyle = 'rgba(255,255,255,0.09)';
+        ctx.fillRect(sx, sy, w, Math.min(h * 0.22, 6));
+
+        // Bottom shadow — ground contact darkening
+        const bH = Math.min(h * 0.28, 7);
+        ctx.fillStyle = 'rgba(0,0,0,0.14)';
+        ctx.fillRect(sx, sy + h - bH, w, bH);
+
+        // Right-edge shadow — very subtle side depth
+        const rW = Math.min(w * 0.12, 4);
+        ctx.fillStyle = 'rgba(0,0,0,0.07)';
+        ctx.fillRect(sx + w - rW, sy + 3, rW, h - 6);
+    });
+
+    ctx.restore();
+}
+
+
+// Clean ambient darkness + smooth radial light cutouts.
+// Uses a multi-stop exponential gradient to eliminate Mach banding.
+function drawLighting() {
+    // Advance theme transition
+    if (themeTransition < 1) {
+        themeTransition = Math.min(1, themeTransition + 0.018);
+        currentAmbientRGBA = lerpRGBA(
+            parseRGBA(oldThemeAmbient),
+            targetAmbientRGBA,
+            themeTransition
+        );
+        if (themeTransition >= 1) currentTheme = targetTheme;
+    }
+
+    // Always apply block shading regardless of theme
+    drawSurfaceShading();
+
+    const [ar, ag, ab, aa] = currentAmbientRGBA;
+    if (aa < 0.01) return; // Normal theme — nothing more to do
+
+    const W = canvas.width, H = canvas.height;
+
+    // Reuse or create offscreen canvas
+    if (!_lightCanvas || _lightCanvas.width !== W || _lightCanvas.height !== H) {
+        _lightCanvas = document.createElement('canvas');
+        _lightCanvas.width  = W;
+        _lightCanvas.height = H;
+    }
+    const lc   = _lightCanvas;
+    const lctx = lc.getContext('2d');
+
+    // Fill with ambient darkness
+    lctx.clearRect(0, 0, W, H);
+    lctx.fillStyle = `rgba(${ar},${ag},${ab},${aa})`;
+    lctx.fillRect(0, 0, W, H);
+
+    // --- Build light list ---
+    const lights = [];
+
+    objects.forEach(obj => {
+        if (obj.tag === 'light') {
+            const pulse = Math.sin(performance.now() / 400 + obj.x) * 0.04 + 0.96;
+            lights.push({
+                x:         obj.x - camera.x + obj.width  / 2,
+                y:         obj.y - camera.y + obj.height / 2,
+                radius:    (obj.lightRadius ?? 220) * pulse,
+                r:         obj.lightR  ?? 255,
+                g:         obj.lightG  ?? 220,
+                b:         obj.lightB  ?? 100,
+                intensity: obj.lightIntensity ?? 1.0
+            });
+        }
+    });
+
+    // --- Punch smooth holes in the darkness for each light ---
+    // 16 gradient stops with exponential falloff eliminates Mach banding rings
+    lctx.globalCompositeOperation = 'destination-out';
+
+    lights.forEach(light => {
+        if (light.x + light.radius < 0 || light.x - light.radius > W ||
+            light.y + light.radius < 0 || light.y - light.radius > H) return;
+
+        const grad = lctx.createRadialGradient(
+            light.x, light.y, 0,
+            light.x, light.y, light.radius
+        );
+
+        const STOPS = 16;
+        for (let i = 0; i <= STOPS; i++) {
+            const t     = i / STOPS;
+            const alpha = Math.pow(1 - t, 2.0) * light.intensity;
+            grad.addColorStop(t, `rgba(0,0,0,${alpha.toFixed(3)})`);
+        }
+
+        lctx.fillStyle = grad;
+        lctx.beginPath();
+        lctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
+        lctx.fill();
+    });
+
+    lctx.globalCompositeOperation = 'source-over';
+
+    // Draw darkness mask onto main canvas in screen space
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(lc, 0, 0);
+
+    // Warm colour tint pass for light objects (additive glow)
+    ctx.globalCompositeOperation = 'screen';
+    lights.forEach(light => {
+        if (light.r === 255 && light.g === 210 && light.b === 140 && light.radius < 200) return;
+        const tintAlpha = 0.14 * aa * light.intensity;
+        const tintGrad  = ctx.createRadialGradient(
+            light.x, light.y, 0,
+            light.x, light.y, light.radius * 0.55
+        );
+        tintGrad.addColorStop(0, `rgba(${light.r},${light.g},${light.b},${tintAlpha})`);
+        tintGrad.addColorStop(1, `rgba(${light.r},${light.g},${light.b},0)`);
+        ctx.fillStyle = tintGrad;
+        ctx.beginPath();
+        ctx.arc(light.x, light.y, light.radius * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+}
+// Surface shading — draws a subtle directional shadow on every block
+// based on the nearest light source angle. Works in ALL themes.
 
 function draw() {
-  // 1. Update Shake
-  if (screenShake > 0) {
-      screenShake *= 0.9; // Fade out shake
-      if (screenShake < 0.5) screenShake = 0;
-  }
-  const shakeX = (Math.random() - 0.5) * screenShake;
-  const shakeY = (Math.random() - 0.5) * screenShake;
+    if (screenShake > 0) {
+        screenShake *= 0.9;
+        if (screenShake < 0.5) screenShake = 0;
+    }
+    const shakeX = (Math.random() - 0.5) * screenShake;
+    const shakeY = (Math.random() - 0.5) * screenShake;
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  // 2. Draw Sky
-  ctx.fillStyle = skyGradient || "#C0E8FF"; 
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  // 3. Apply Camera Shake & Transform
-  ctx.save();
-  ctx.translate(shakeX, shakeY); 
-
-  // 4. Draw Parallax (Background Layer)
-  drawBackground();
-  
-  // 5. Standard Drawing
-  // Note: Grid and Objects need to be drawn relative to camera manually 
-  // because your original code calculates (x - camera.x). 
-  // We keep that logic.
-  if (settings.grid) drawGrid(); 
-  drawObjects(); 
-  drawPlayerTrail();
-  
-  // 6. Draw Particles
-  particles.forEach(p => p.draw(ctx));
-  
-  drawGround();
-  drawGhost();
-  drawHUD();
-
-  // 7. Draw Lighting Overlay (Atmosphere)
-  const player = objects.find(o => o.tag === "player");
-  if (deathFlash > 0) {
-    ctx.fillStyle = `rgba(255,255,255,${deathFlash})`;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = skyGradient || '#C0E8FF';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    deathFlash -= 0.08;
-}
-  //drawLighting(player);
-  drawFloatingTexts()
-  ctx.restore(); // Undo shake
 
-  if (settings.debug) drawDebug();
-  if (settings.fps) drawFPS();
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    drawBackground();
+    drawDecorations();
+    if (settings.grid) drawGrid();
+    drawObjects();
+    drawPlayerTrail();
+    particles.forEach(p => p.draw(ctx));
+    drawGround();
+    drawGhost();
+
+    if (deathFlash > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${deathFlash})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        deathFlash -= 0.08;
+    }
+
+    drawFloatingTexts();
+    ctx.restore();
+
+    // These run in absolute screen space — no shake transform
+    //drawSurfaceShading();
+    drawLighting();
+    drawHUD();
+
+    if (settings.debug) drawDebug();
+    if (settings.fps) drawFPS();
 }
 function drawHUD() {
     if (!playMode && !testMode) return;
@@ -7846,10 +8515,11 @@ function drawSingleObject(obj) {
     }
 
     // Block drawing
-    if (obj.tag !== "text") {
+    const SKIP_DRAW = new Set(['tree', 'bush']);
+if (obj.tag !== "text" && !SKIP_DRAW.has(obj.tag)) {
         const SCALEABLE = new Set([
     'box','wood','metal','grass','pushablebox','sticky','kill','breakable','bounce','ice',
-    'dirt','stone','sand','snow','gravel','obsidian','marble'
+    'dirt','stone','sand','snow','gravel','obsidian','marble',"oneway","light"
 ]);
 
         if (customBlocks[obj.tag] && images[obj.tag] && images[obj.tag].complete) {
@@ -7869,13 +8539,12 @@ function drawSingleObject(obj) {
             }
             ctx.restore();
         } else if (SCALEABLE.has(obj.tag)) {
-            // Use default graphic at 50x50, scaled version otherwise
-            if (obj.width === 50 && obj.height === 50) {
-                drawBlockGraphic(ctx, obj.tag, obj.width, obj.height);
-            } else {
-                drawScaledBlock(ctx, obj.tag, obj.width, obj.height);
-            }
-        } else if (obj.tag === 'player') {
+    if (obj.width === 50 && obj.height === 50) {
+drawBlockGraphic(ctx, obj.tag, obj.width, obj.height, obj);
+    } else {
+        drawScaledBlock(ctx, obj.tag, obj.width, obj.height);
+    }
+} else if (obj.tag === 'player') {
             ctx.save();
             ctx.scale(50 / 40, 1);
             drawBlockGraphic(ctx, obj.tag, 40, obj.height);
@@ -7929,7 +8598,6 @@ function drawSingleObject(obj) {
         const operatorSymbol = {"==":"=","!=":"≠",">":">","<":"<",">=":"≥","<=":"≤"}[cmpProps.operator] || "?";
         ctx.fillText(operatorSymbol, 0, 0);
     }
-
     ctx.restore();
 
     // Selection handles (drawn outside the save/restore so they aren't affected by scale)
@@ -8203,8 +8871,10 @@ case 'KeyQ':
         case 'Escape':
     if (testMode) {
         exitTestMode();
-    } else {
+    } else if (playMode) {
         togglePause();
+    } else {
+        goToMenu();
     }
     break;
         }
@@ -8276,7 +8946,6 @@ function gameLoop(timestamp) {
     }
 
     draw();
-    drawHUD();
     gameLoopId = requestAnimationFrame(gameLoop);
 }
 </script>
