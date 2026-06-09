@@ -1515,34 +1515,168 @@ const CASES = {
 };
 const LIGHTING_THEMES = {
     normal: {
-        ambient: 'rgba(0,0,0,0)',
-        fog: 0
+        ambient:       'rgba(0,0,0,0)',
+        skyTop:        '#3b82f6',
+        skyMid:        '#60a5fa',
+        skyBot:        '#fde8b0',
+        sunColor:      '#fef9c3',
+        sunGlow:       'rgba(255,230,80,0.25)',
+        moonVisible:   false,
+        stars:         false,
+        cloudTint:     'rgba(255,255,255,0.93)',
+        mountainTints: ['rgba(160,200,225,0.28)','rgba(120,175,210,0.38)','rgba(85,150,190,0.48)'],
+        groundTop:     '#22c55e',
+        groundLine:    '#15803d',
+        fogColor:      null,
+        fogAlpha:      0,
     },
     night: {
-        ambient: 'rgba(0,10,40,0.72)',
-        fog: 0.4
+        ambient:       'rgba(0,8,35,0.78)',
+        skyTop:        '#020818',
+        skyMid:        '#041030',
+        skyBot:        '#0a1a4a',
+        sunColor:      null,
+        sunGlow:       null,
+        moonVisible:   true,
+        stars:         true,
+        cloudTint:     'rgba(30,50,100,0.5)',
+        mountainTints: ['rgba(10,20,60,0.6)','rgba(8,16,50,0.7)','rgba(5,10,40,0.8)'],
+        groundTop:     '#14532d',
+        groundLine:    '#166534',
+        fogColor:      null,
+        fogAlpha:      0,
+    },
+    golden_hour: {
+        ambient:       'rgba(120,40,0,0.22)',
+        skyTop:        '#7c2d12',
+        skyMid:        '#ea580c',
+        skyBot:        '#fbbf24',
+        sunColor:      '#fff7ed',
+        sunGlow:       'rgba(251,146,60,0.5)',
+        moonVisible:   false,
+        stars:         false,
+        cloudTint:     'rgba(251,146,60,0.85)',
+        mountainTints: ['rgba(120,50,20,0.45)','rgba(100,40,15,0.55)','rgba(80,30,10,0.65)'],
+        groundTop:     '#854d0e',
+        groundLine:    '#713f12',
+        fogColor:      'rgba(251,146,60,1)',
+        fogAlpha:      0.18,
     },
     cave: {
-        ambient: 'rgba(0,0,0,0.85)',
-        fog: 0.6
+        ambient:       'rgba(0,0,0,0.9)',
+        skyTop:        '#000000',
+        skyMid:        '#000000',
+        skyBot:        '#000000',
+        sunColor:      null,
+        sunGlow:       null,
+        moonVisible:   false,
+        stars:         false,
+        cloudTint:     'rgba(0,0,0,0)',
+        mountainTints: ['rgba(0,0,0,0)','rgba(0,0,0,0)','rgba(0,0,0,0)'],
+        groundTop:     '#1c1917',
+        groundLine:    '#292524',
+        fogColor:      null,
+        fogAlpha:      0,
     },
     sunset: {
-        ambient: 'rgba(80,20,0,0.45)',
-        fog: 0.2
+        ambient:       'rgba(60,10,40,0.45)',
+        skyTop:        '#4a044e',
+        skyMid:        '#be185d',
+        skyBot:        '#fb923c',
+        sunColor:      '#fef3c7',
+        sunGlow:       'rgba(251,113,133,0.55)',
+        moonVisible:   false,
+        stars:         true,
+        cloudTint:     'rgba(251,113,133,0.7)',
+        mountainTints: ['rgba(100,20,60,0.5)','rgba(80,15,50,0.6)','rgba(60,10,40,0.7)'],
+        groundTop:     '#9f1239',
+        groundLine:    '#881337',
+        fogColor:      'rgba(251,113,133,1)',
+        fogAlpha:      0.12,
+    },
+    stormy: {
+        ambient:       'rgba(10,15,20,0.6)',
+        skyTop:        '#111827',
+        skyMid:        '#1f2937',
+        skyBot:        '#374151',
+        sunColor:      null,
+        sunGlow:       null,
+        moonVisible:   false,
+        stars:         false,
+        cloudTint:     'rgba(55,65,81,0.95)',
+        mountainTints: ['rgba(30,40,50,0.6)','rgba(25,35,45,0.7)','rgba(20,30,40,0.8)'],
+        groundTop:     '#1a2e1a',
+        groundLine:    '#14532d',
+        fogColor:      'rgba(100,120,140,1)',
+        fogAlpha:      0.35,
     },
     dungeon: {
-        ambient: 'rgba(10,0,30,0.78)',
-        fog: 0.5
+        ambient:       'rgba(8,0,24,0.82)',
+        skyTop:        '#050010',
+        skyMid:        '#0a0020',
+        skyBot:        '#100030',
+        sunColor:      null,
+        sunGlow:       null,
+        moonVisible:   false,
+        stars:         false,
+        cloudTint:     'rgba(50,0,80,0.4)',
+        mountainTints: ['rgba(20,0,50,0.6)','rgba(15,0,40,0.7)','rgba(10,0,30,0.8)'],
+        groundTop:     '#1e1b4b',
+        groundLine:    '#312e81',
+        fogColor:      null,
+        fogAlpha:      0,
     },
     underwater: {
-        ambient: 'rgba(0,30,80,0.65)',
-        fog: 0.35
+        ambient:       'rgba(0,40,100,0.6)',
+        skyTop:        '#0c2461',
+        skyMid:        '#1a56db',
+        skyBot:        '#3b82f6',
+        sunColor:      '#bfdbfe',
+        sunGlow:       'rgba(59,130,246,0.4)',
+        moonVisible:   false,
+        stars:         false,
+        cloudTint:     'rgba(59,130,246,0.5)',
+        mountainTints: ['rgba(10,40,100,0.5)','rgba(8,35,90,0.6)','rgba(5,30,80,0.7)'],
+        groundTop:     '#1e40af',
+        groundLine:    '#1d4ed8',
+        fogColor:      'rgba(37,99,235,1)',
+        fogAlpha:      0.28,
     },
     horror: {
-        ambient: 'rgba(20,0,0,0.88)',
-        fog: 0.7
-    }
+        ambient:       'rgba(30,0,0,0.88)',
+        skyTop:        '#0c0000',
+        skyMid:        '#1a0000',
+        skyBot:        '#2d0000',
+        sunColor:      null,
+        sunGlow:       null,
+        moonVisible:   true,
+        stars:         false,
+        cloudTint:     'rgba(80,0,0,0.7)',
+        mountainTints: ['rgba(40,0,0,0.6)','rgba(30,0,0,0.7)','rgba(20,0,0,0.8)'],
+        groundTop:     '#1c0505',
+        groundLine:    '#3b0a0a',
+        fogColor:      'rgba(80,0,0,1)',
+        fogAlpha:      0.25,
+    },
+    arctic: {
+        ambient:       'rgba(180,220,255,0.15)',
+        skyTop:        '#e0f2fe',
+        skyMid:        '#bae6fd',
+        skyBot:        '#f0f9ff',
+        sunColor:      '#ffffff',
+        sunGlow:       'rgba(255,255,255,0.4)',
+        moonVisible:   false,
+        stars:         false,
+        cloudTint:     'rgba(255,255,255,0.98)',
+        mountainTints: ['rgba(200,230,255,0.35)','rgba(180,215,245,0.45)','rgba(160,200,235,0.55)'],
+        groundTop:     '#e0f2fe',
+        groundLine:    '#bae6fd',
+        fogColor:      'rgba(240,249,255,1)',
+        fogAlpha:      0.3,
+    },
 };
+let currentThemeProps = { ...LIGHTING_THEMES.normal };
+let targetThemeProps  = { ...LIGHTING_THEMES.normal };
 
 let currentTheme     = 'normal';
 let targetTheme      = 'normal';
@@ -1922,11 +2056,29 @@ function setLightingTheme(name, instant = false) {
     currentAmbientRGBA = lerpRGBA(currentAmbientRGBA, targetAmbientRGBA, themeTransition);
     targetTheme        = name;
     targetAmbientRGBA  = parseRGBA(LIGHTING_THEMES[name].ambient);
+    targetThemeProps   = LIGHTING_THEMES[name];
     themeTransition    = instant ? 1 : 0;
     if (instant) {
         currentAmbientRGBA = [...targetAmbientRGBA];
         currentTheme       = name;
+        currentThemeProps  = { ...targetThemeProps };
     }
+}
+function parseColor(str) {
+    if (!str) return [0, 0, 0, 0];
+    const hex = str.match(/^#([0-9a-f]{6})$/i);
+    if (hex) {
+        const n = parseInt(hex[1], 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 1];
+    }
+    return parseRGBA(str);
+}
+
+function lerpColor(a, b, t) {
+    const ca = parseColor(a);
+    const cb = parseColor(b);
+    const r  = lerpRGBA(ca, cb, t);
+    return `rgba(${r[0]},${r[1]},${r[2]},${r[3]})`;
 }
 function updateFloatingTexts() {
     floatingTexts.forEach(t => {
@@ -2406,50 +2558,128 @@ function spawnParticles(x, y, count, color, speed = 5) {
 }
 
 function drawBackground() {
-    // Rebuild offscreen canvas if screen was resized
     if (!bgCache || bgCache.width !== canvas.width || bgCache.height !== canvas.height) {
         bgCache = document.createElement('canvas');
-        bgCache.width = canvas.width;
+        bgCache.width  = canvas.width;
         bgCache.height = canvas.height;
-        bgCacheLastX = null;
+        bgCacheLastX   = null;
     }
 
-    // Only re-render when camera moves 3+ pixels (parallax shift is subtle)
+    const t = themeTransition;
+    const A = currentThemeProps || LIGHTING_THEMES.normal;
+    const B = targetThemeProps  || LIGHTING_THEMES.normal;
+
+    // Interpolate all sky colors
+    const skyTop = lerpColor(A.skyTop, B.skyTop, t);
+    const skyMid = lerpColor(A.skyMid, B.skyMid, t);
+    const skyBot = lerpColor(A.skyBot, B.skyBot, t);
+    const groundTopColor  = lerpColor(A.groundTop,  B.groundTop,  t);
+    const groundLineColor = lerpColor(A.groundLine, B.groundLine, t);
+    const fogAlpha = A.fogAlpha + (B.fogAlpha - A.fogAlpha) * t;
+    const fogColor = B.fogColor || A.fogColor;
+    const showStars = B.stars || (A.stars && t < 0.5);
+    const showMoon  = B.moonVisible || (A.moonVisible && t < 0.5);
+    const cloudTint = lerpColor(A.cloudTint, B.cloudTint, t);
+
     if (bgCacheLastX === null || Math.abs(camera.x - bgCacheLastX) >= 3) {
         bgCacheLastX = camera.x;
         const bc = bgCache.getContext('2d');
-        const W = bgCache.width, H = bgCache.height;
+        const W  = bgCache.width;
+        const H  = bgCache.height;
 
         // Sky gradient
         const grad = bc.createLinearGradient(0, 0, 0, H);
-        grad.addColorStop(0,    '#3b82f6');
-        grad.addColorStop(0.35, '#60a5fa');
-        grad.addColorStop(0.72, '#93c5fd');
-        grad.addColorStop(0.88, '#bfdbfe');
-        grad.addColorStop(1,    '#fde8b0');
+        grad.addColorStop(0,    skyTop);
+        grad.addColorStop(0.45, skyMid);
+        grad.addColorStop(0.85, skyBot);
+        grad.addColorStop(1,    skyBot);
         bc.fillStyle = grad;
         bc.fillRect(0, 0, W, H);
 
-        // Sun (flat circles - no per-frame radial gradient)
-        const sx = W * 0.82, sy = H * 0.13;
-        bc.fillStyle = 'rgba(255, 230, 80, 0.25)';
-        bc.beginPath(); bc.arc(sx, sy, 60, 0, Math.PI * 2); bc.fill();
-        bc.fillStyle = '#fef9c3';
-        bc.beginPath(); bc.arc(sx, sy, 26, 0, Math.PI * 2); bc.fill();
-        bc.fillStyle = '#fde047';
-        bc.beginPath(); bc.arc(sx, sy, 20, 0, Math.PI * 2); bc.fill();
+        // Stars
+        if (showStars) {
+            const starAlpha = Math.min(1, t * 2) * (B.stars ? 1 : 1 - t * 2);
+            bc.fillStyle = `rgba(255,255,255,${starAlpha * 0.9})`;
+            for (let i = 0; i < 120; i++) {
+                const sx = ((i * 137 + camera.x * 0.02) % W + W) % W;
+                const sy = ((i * 97)  % (H * 0.65));
+                const sr = 0.6 + (i % 3) * 0.4;
+                const twinkle = Math.sin(performance.now() / 1000 + i) * 0.3 + 0.7;
+                bc.globalAlpha = starAlpha * twinkle;
+                bc.beginPath();
+                bc.arc(sx, sy, sr, 0, Math.PI * 2);
+                bc.fill();
+            }
+            bc.globalAlpha = 1;
+        }
 
-        // Mountain layers
-        const mx = camera.x;
-        cachedMountainLayer(bc, W, H, mx * 0.03, H * 0.58, 'rgba(160,200,225,0.28)', 60, 11);
-        cachedMountainLayer(bc, W, H, mx * 0.06, H * 0.64, 'rgba(120,175,210,0.38)', 85, 7);
-        cachedMountainLayer(bc, W, H, mx * 0.10, H * 0.70, 'rgba(85,150,190,0.48)',  100, 3);
+        // Moon
+        if (showMoon) {
+            const moonAlpha = t < 0.5 ? t * 2 : 1;
+            const mx = W * 0.75, my = H * 0.12;
+            bc.save();
+            bc.globalAlpha = moonAlpha;
+            // Moon glow
+            const moonGlow = bc.createRadialGradient(mx, my, 0, mx, my, 55);
+            moonGlow.addColorStop(0, 'rgba(200,220,255,0.25)');
+            moonGlow.addColorStop(1, 'rgba(200,220,255,0)');
+            bc.fillStyle = moonGlow;
+            bc.beginPath(); bc.arc(mx, my, 55, 0, Math.PI * 2); bc.fill();
+            // Moon body
+            bc.fillStyle = '#e0e8ff';
+            bc.beginPath(); bc.arc(mx, my, 22, 0, Math.PI * 2); bc.fill();
+            // Crescent shadow
+            bc.fillStyle = parseColor(B.skyTop || A.skyTop).slice(0,3).reduce ? skyTop : '#020818';
+            bc.beginPath(); bc.arc(mx + 8, my - 4, 18, 0, Math.PI * 2); bc.fill();
+            bc.restore();
+        }
+
+        // Sun
+        const hasSun = B.sunColor && t > 0.5 ? true : A.sunColor && t < 0.5;
+        if (hasSun) {
+            const sunColor = B.sunColor || A.sunColor;
+            const sunGlow  = B.sunGlow  || A.sunGlow;
+            const sx = W * 0.82, sy = H * 0.13;
+            if (sunGlow) {
+                bc.fillStyle = sunGlow;
+                bc.beginPath(); bc.arc(sx, sy, 62, 0, Math.PI * 2); bc.fill();
+            }
+            bc.fillStyle = sunColor || '#fef9c3';
+            bc.beginPath(); bc.arc(sx, sy, 26, 0, Math.PI * 2); bc.fill();
+            bc.fillStyle = '#fde047';
+            bc.beginPath(); bc.arc(sx, sy, 20, 0, Math.PI * 2); bc.fill();
+        }
+
+        // Mountains — use theme mountain tints
+        const mt = B.mountainTints;
+        const ma = A.mountainTints;
+        const m0 = lerpColor(ma[0], mt[0], t);
+        const m1 = lerpColor(ma[1], mt[1], t);
+        const m2 = lerpColor(ma[2], mt[2], t);
+        cachedMountainLayer(bc, W, H, camera.x * 0.03, H * 0.58, m0, 60, 11);
+        cachedMountainLayer(bc, W, H, camera.x * 0.06, H * 0.64, m1, 85, 7);
+        cachedMountainLayer(bc, W, H, camera.x * 0.10, H * 0.70, m2, 100, 3);
 
         // Clouds
-        cachedClouds(bc, W, H, camera.x * 0.12);
+        cachedClouds(bc, W, H, camera.x * 0.12, cloudTint);
+
+        // Fog/atmosphere layer at horizon
+        if (fogAlpha > 0.01 && fogColor) {
+            const fogGrad = bc.createLinearGradient(0, H * 0.55, 0, H);
+            const fc = parseRGBA(fogColor.includes('rgba') ? fogColor : fogColor + '');
+            fogGrad.addColorStop(0, `rgba(${fc[0]},${fc[1]},${fc[2]},0)`);
+            fogGrad.addColorStop(0.6, `rgba(${fc[0]},${fc[1]},${fc[2]},${fogAlpha * 0.5})`);
+            fogGrad.addColorStop(1,   `rgba(${fc[0]},${fc[1]},${fc[2]},${fogAlpha})`);
+            bc.fillStyle = fogGrad;
+            bc.fillRect(0, H * 0.55, W, H * 0.45);
+        }
     }
 
     ctx.drawImage(bgCache, 0, 0);
+
+    // Ground color — update drawGround to use theme colors
+    window._themeGroundTop  = groundTopColor;
+    window._themeGroundLine = groundLineColor;
 }
 function checkScriptTriggers() {
     objects.forEach(trigger => {
@@ -2477,7 +2707,7 @@ function cachedMountainLayer(bc, W, H, offsetX, baseY, color, height, seed) {
     bc.fill();
 }
 
-function cachedClouds(bc, W, H, scrollX) {
+function cachedClouds(bc, W, H, scrollX, tint) {
     const slots = [
         { t: 0.08, y: 0.17, s: 1.1  },
         { t: 0.30, y: 0.11, s: 0.85 },
@@ -2490,21 +2720,19 @@ function cachedClouds(bc, W, H, scrollX) {
         const base = c.t * period;
         let sx = ((base - scrollX) % period + period) % period;
         sx = (sx / period) * W * 1.4 - W * 0.2;
-        cachedCloud(bc, W, sx,          H * c.y, c.s);
-        cachedCloud(bc, W, sx - period, H * c.y, c.s);
+        cachedCloud(bc, W, sx,          H * c.y, c.s, tint);
+        cachedCloud(bc, W, sx - period, H * c.y, c.s, tint);
     });
 }
 
-function cachedCloud(bc, W, x, y, scale) {
+function cachedCloud(bc, W, x, y, scale, tint) {
     if (x + 110 * scale < 0 || x - 110 * scale > W) return;
     bc.save();
     bc.translate(x, y);
     bc.scale(scale, scale);
-    // Shadow
-    bc.fillStyle = 'rgba(155, 205, 230, 0.3)';
+    bc.fillStyle = 'rgba(155,205,230,0.3)';
     bc.beginPath(); bc.ellipse(4, 10, 58, 16, 0, 0, Math.PI * 2); bc.fill();
-    // 3 puffs (was 5 — saves 40% ellipse calls)
-    bc.fillStyle = 'rgba(255, 255, 255, 0.93)';
+    bc.fillStyle = tint || 'rgba(255,255,255,0.93)';
     bc.beginPath(); bc.ellipse(0,   0, 55, 22, 0, 0, Math.PI * 2); bc.fill();
     bc.beginPath(); bc.ellipse(-22,-14, 32, 24, 0, 0, Math.PI * 2); bc.fill();
     bc.beginPath(); bc.ellipse(20, -12, 36, 26, 0, 0, Math.PI * 2); bc.fill();
@@ -4753,8 +4981,8 @@ case 'marble':
             case 'light':
     newObj.tag = 'light';
     newObj.solid = false;
-    newObj.width = 30;
-    newObj.height = 30;
+    newObj.width = 50;
+    newObj.height = 50;
     newObj.lightR = 255;
     newObj.lightG = 220;
     newObj.lightB = 100;
@@ -6638,13 +6866,13 @@ function appendActionInputsFlat(row, action, i) {
   }
   if (t === 'set_theme') {
     const sel = makeSelect(
-      Object.keys(LIGHTING_THEMES).map(k => ({ value: k, label: k })),
-      action.value || 'normal'
+        Object.keys(LIGHTING_THEMES).map(k => ({ value: k, label: k.replace('_', ' ') })),
+        action.value || 'normal'
     );
     sel.onchange = () => { scriptSteps[i].value = sel.value; };
     row.appendChild(sel);
     return;
-  }
+}
 }
 function runTriggerScript(trigger, event = 'touched') {
   const sc = trigger.script;
@@ -8201,14 +8429,17 @@ function drawSurfaceShading() {
 function drawLighting() {
     // Advance theme transition
     if (themeTransition < 1) {
-        themeTransition = Math.min(1, themeTransition + 0.018);
-        currentAmbientRGBA = lerpRGBA(
-            parseRGBA(oldThemeAmbient),
-            targetAmbientRGBA,
-            themeTransition
-        );
-        if (themeTransition >= 1) currentTheme = targetTheme;
-    }
+    themeTransition = Math.min(1, themeTransition + 0.018);
+    currentAmbientRGBA = lerpRGBA(
+        parseRGBA(oldThemeAmbient),
+        targetAmbientRGBA,
+        themeTransition
+    );
+    // ADD THESE:
+    currentThemeProps = targetThemeProps;
+    bgCacheLastX = null; // force background redraw every frame during transition
+    if (themeTransition >= 1) currentTheme = targetTheme;
+}
 
     // Always apply block shading regardless of theme
     drawSurfaceShading();
@@ -8718,7 +8949,7 @@ function drawGround() {
     const endX   = camera.x + W + STEP;
 
     // --- 2. Grass fill (lineTo — much faster than quadraticCurveTo) ---
-    ctx.fillStyle = '#22c55e';
+    ctx.fillStyle   = window._themeGroundTop  || '#22c55e';
     ctx.beginPath();
     ctx.moveTo(startX - camera.x, dy + ground.height);
     for (let lx = startX; lx <= endX; lx += STEP) {
@@ -8729,7 +8960,7 @@ function drawGround() {
     ctx.fill();
 
     // --- 3. Dark green outline ---
-    ctx.strokeStyle = '#15803d';
+    ctx.strokeStyle = window._themeGroundLine || '#15803d';
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(startX - camera.x, hillY(startX));
