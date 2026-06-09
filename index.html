@@ -1546,22 +1546,6 @@ const LIGHTING_THEMES = {
         fogColor:      null,
         fogAlpha:      0,
     },
-    golden_hour: {
-        ambient:       'rgba(120,40,0,0.22)',
-        skyTop:        '#7c2d12',
-        skyMid:        '#ea580c',
-        skyBot:        '#fbbf24',
-        sunColor:      '#fff7ed',
-        sunGlow:       'rgba(251,146,60,0.5)',
-        moonVisible:   false,
-        stars:         false,
-        cloudTint:     'rgba(251,146,60,0.85)',
-        mountainTints: ['rgba(120,50,20,0.45)','rgba(100,40,15,0.55)','rgba(80,30,10,0.65)'],
-        groundTop:     '#854d0e',
-        groundLine:    '#713f12',
-        fogColor:      'rgba(251,146,60,1)',
-        fogAlpha:      0.18,
-    },
     cave: {
         ambient:       'rgba(0,0,0,0.9)',
         skyTop:        '#000000',
@@ -1577,22 +1561,6 @@ const LIGHTING_THEMES = {
         groundLine:    '#292524',
         fogColor:      null,
         fogAlpha:      0,
-    },
-    sunset: {
-        ambient:       'rgba(60,10,40,0.45)',
-        skyTop:        '#4a044e',
-        skyMid:        '#be185d',
-        skyBot:        '#fb923c',
-        sunColor:      '#fef3c7',
-        sunGlow:       'rgba(251,113,133,0.55)',
-        moonVisible:   false,
-        stars:         true,
-        cloudTint:     'rgba(251,113,133,0.7)',
-        mountainTints: ['rgba(100,20,60,0.5)','rgba(80,15,50,0.6)','rgba(60,10,40,0.7)'],
-        groundTop:     '#9f1239',
-        groundLine:    '#881337',
-        fogColor:      'rgba(251,113,133,1)',
-        fogAlpha:      0.12,
     },
     stormy: {
         ambient:       'rgba(10,15,20,0.6)',
@@ -2739,123 +2707,7 @@ function cachedCloud(bc, W, x, y, scale, tint) {
     bc.restore();
 }
 
-// 3. Lighting Overlay
-// function drawLighting() {
-//     // Advance transition
-//     if (themeTransition < 1) {
-//         themeTransition = Math.min(1, themeTransition + 0.02);
-//         currentAmbientRGBA = lerpRGBA(
-//             parseRGBA(oldThemeAmbient),
-//             targetAmbientRGBA,
-//             themeTransition
-//         );
-//         if (themeTransition >= 1) currentTheme = targetTheme;
-//     }
 
-//     const ambientAlpha = currentAmbientRGBA[3];
-//     if (ambientAlpha < 0.01) return;
-
-//     // Build list of light sources
-//     const lights = [];
-
-//     lights.push({
-//     x:         player.x - camera.x + player.width  / 2,
-//     y:         player.y - camera.y + player.height / 2,
-//     radius:    220 + Math.sin(performance.now() / 500) * 6,
-//     r: 255, g: 220, b: 160,
-//     intensity: 1.0,
-//     numRays:   120
-// });
-
-//     objects.forEach(obj => {
-//         if (obj.tag === 'light') {
-//             const t = performance.now() / 1000;
-//             const pulse = Math.sin(t * 2.5) * 0.06 + 0.94;
-//             lights.push({
-//                 x:         obj.x - camera.x + obj.width  / 2,
-//                 y:         obj.y - camera.y + obj.height / 2,
-//                 radius:    (obj.lightRadius ?? 200) * pulse,
-//                 intensity: obj.lightIntensity ?? 0.95,
-//                 r:         obj.lightR ?? 255,
-//                 g:         obj.lightG ?? 220,
-//                 b:         obj.lightB ?? 100
-//             });
-//         }
-//         if (obj.tag === 'lava') {
-//             const t = performance.now() / 1000;
-//             lights.push({
-//                 x:         obj.x - camera.x + obj.width  / 2,
-//                 y:         obj.y - camera.y + obj.height / 2,
-//                 radius:    90 + Math.sin(t * 1.8 + obj.x * 0.01) * 8,
-//                 intensity: 0.55,
-//                 r: 249, g: 115, b: 22
-//             });
-//         }
-//     });
-
-//     // Create offscreen canvas for the lighting mask
-//     const W = canvas.width;
-//     const H = canvas.height;
-
-//     if (!window._lightCanvas || window._lightCanvas.width !== W || window._lightCanvas.height !== H) {
-//         window._lightCanvas = document.createElement('canvas');
-//         window._lightCanvas.width  = W;
-//         window._lightCanvas.height = H;
-//     }
-
-//     const lc = window._lightCanvas;
-//     const lctx = lc.getContext('2d');
-
-//     // Fill with ambient darkness
-//     const [r, g, b, a] = currentAmbientRGBA;
-//     lctx.clearRect(0, 0, W, H);
-//     lctx.fillStyle = `rgba(${r},${g},${b},${a})`;
-//     lctx.fillRect(0, 0, W, H);
-
-//     // Cut holes for each light using destination-out on the OFFSCREEN canvas
-//     lctx.globalCompositeOperation = 'destination-out';
-
-//     lights.forEach(light => {
-//         const grad = lctx.createRadialGradient(
-//             light.x, light.y, 0,
-//             light.x, light.y, light.radius
-//         );
-//         grad.addColorStop(0,   `rgba(0,0,0,${light.intensity})`);
-//         grad.addColorStop(0.45,`rgba(0,0,0,${light.intensity * 0.55})`);
-//         grad.addColorStop(0.8, `rgba(0,0,0,${light.intensity * 0.1})`);
-//         grad.addColorStop(1,   'rgba(0,0,0,0)');
-//         lctx.fillStyle = grad;
-//         lctx.beginPath();
-//         lctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
-//         lctx.fill();
-//     });
-
-//     lctx.globalCompositeOperation = 'source-over';
-
-//     // Draw the finished mask onto the main canvas — no transforms needed
-//     ctx.save();
-//     ctx.setTransform(1, 0, 0, 1, 0, 0); // absolute screen space
-//     ctx.drawImage(lc, 0, 0);
-
-//     // Colored tint pass for non-player lights
-//     lights.forEach(light => {
-//         if (!light.r || (light.r === 255 && light.g === 220 && light.b === 160)) return;
-//         const grad = ctx.createRadialGradient(
-//             light.x, light.y, 0,
-//             light.x, light.y, light.radius * 0.5
-//         );
-//         grad.addColorStop(0, `rgba(${light.r},${light.g},${light.b},${0.1 * ambientAlpha})`);
-//         grad.addColorStop(1, `rgba(${light.r},${light.g},${light.b},0)`);
-//         ctx.fillStyle = grad;
-//         ctx.globalCompositeOperation = 'screen';
-//         ctx.beginPath();
-//         ctx.arc(light.x, light.y, light.radius * 0.5, 0, Math.PI * 2);
-//         ctx.fill();
-//     });
-
-//     ctx.globalCompositeOperation = 'source-over';
-//     ctx.restore();
-// }
 
 // 4. Screen Shake Logic
 function addShake(amount) {
@@ -4994,7 +4846,8 @@ case 'marble':
 case 'oneway':
     newObj.tag = "oneway";
     newObj.solid = true;
-    newObj.height = 16;
+    newObj.height = 50;
+    newObj.width = 50;
     break;
 case 'conveyor':
     newObj.tag = "conveyor";
