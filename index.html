@@ -9657,10 +9657,20 @@ window.addEventListener('keydown', (e) => {
     }
     switch (e.code) {
         case 'KeyE':
-    selectTool('edit');
+    if (currentTool === 'edit') {
+        selectTool(lastSelectedBlock || 'box');
+    } else {
+        if (!['edit','delete'].includes(currentTool)) lastSelectedBlock = currentTool;
+        selectTool('edit');
+    }
     break;
 case 'KeyQ':
-    selectTool('delete');
+    if (currentTool === 'delete') {
+        selectTool(lastSelectedBlock || 'box');
+    } else {
+        if (!['edit','delete'].includes(currentTool)) lastSelectedBlock = currentTool;
+        selectTool('delete');
+    }
     break;
         case 'ArrowLeft':
         case 'KeyA':
