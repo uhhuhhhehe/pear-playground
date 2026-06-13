@@ -687,96 +687,67 @@
   </div>
 </div>
 
-<button id="toolbarOpenBtn" onclick="openToolbar()" style="display:none; position:fixed; top:10px; left:10px; z-index:20; padding:7px 14px; background:#fff; border:1px solid #ddd; border-radius:8px; font-family:Inter,sans-serif; font-size:13px; font-weight:500; cursor:pointer;">
-  ☰ Tools
-</button>
-
-<div id="toolbar" style="display:none;">
-  <!-- Top action bar -->
-  <div style="display:flex; align-items:center; gap:6px; padding-bottom:8px; border-bottom:1px solid #e4e4e7; margin-bottom:8px;">
-    <span style="font-size:13px; font-weight:500; color:#888; flex:1;">Map Editor</span>
-    <button onclick="openBlockCreator()" class="btn-create">+ New Block</button>
-    <button onclick="resetAllTriggers()" class="btn-reset">Reset</button>
-    <button onclick="saveMap()" class="btn-save">Save</button>
-    <button onclick="hostGame()" id="hostBtn" class="btn-host">Host</button>
-    <button onclick="toggleTestMode()" id="testModeBtn" style="background:#f59e0b !important; color:white !important; border-color:#f59e0b !important;">▶ Test</button>
-    <button onclick="goToMenu()" class="btn-exit">Menu</button>
-    <button onclick="closeToolbar()" style="background:none; border:none; font-size:18px; cursor:pointer; color:#888; padding:2px 6px;">✕</button>
-  </div>
-
-  <!-- Tool categories -->
-  <div style="display:flex; gap:16px; overflow-x:auto; scrollbar-width:none; padding-bottom:2px;">
-    <div>
-      <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Editor</div>
-      <div style="display:flex; gap:4px;">
-        <button onclick="selectTool('select')" data-tool="select">Select</button>
-        <button onclick="selectTool('edit')" data-tool="edit">Edit</button>
-        <button onclick="selectTool('copy')" data-tool="copy">Copy</button>
-        <button onclick="selectTool('delete')" data-tool="delete">Delete</button>
-      </div>
-    </div>
-    <div style="position:relative;">
-    <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Terrain</div>
-    <button id="terrainDropdownBtn" onclick="toggleTerrainDropdown()"
-        style="padding:6px 12px; font-size:12px; font-weight:500; background:#f4f4f5; color:#27272a; border:1px solid #e4e4e7; border-radius:6px; cursor:pointer;">
-        Terrain ▾
-    </button>
-    <div id="terrainDropdown" style="
-        display:none; position:fixed; background:#fff;
-        border:1px solid #e4e4e7; border-radius:12px;
-        box-shadow:0 8px 32px rgba(0,0,0,0.12);
-        z-index:200; padding:10px; width:260px;
-    ">
-        <div id="terrainGrid" style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px;"></div>
-    </div>
+<!-- Selected tool preview bubble -->
+<div id="toolPreviewBubble" style="
+    display:none; position:fixed; bottom:20px; right:20px;
+    width:54px; height:54px;
+    background:#18181b; border:2px solid #3f3f46;
+    border-radius:12px; z-index:50;
+    align-items:center; justify-content:center;
+    box-shadow:0 4px 20px rgba(0,0,0,0.4);
+    transition:bottom 0.3s cubic-bezier(0.4,0,0.2,1);
+">
+    <canvas id="toolPreviewCanvas" width="44" height="44" style="width:44px;height:44px;border-radius:6px;display:block;"></canvas>
 </div>
 
-    <div style="width:1px; background:#e4e4e7; align-self:stretch;"></div>
+<!-- Toggle button -->
+<button id="toolbarToggleBtn" onclick="toggleNewToolbar()" style="
+    display:none; position:fixed; bottom:16px; left:50%;
+    transform:translateX(-50%);
+    background:#18181b; color:#fff; border:1px solid #3f3f46;
+    border-radius:999px; padding:10px 28px;
+    font-family:system-ui; font-size:13px; font-weight:600;
+    cursor:pointer; z-index:50;
+    box-shadow:0 4px 20px rgba(0,0,0,0.4);
+    transition:all 0.2s;
+    white-space:nowrap;
+">☰ Tools</button>
 
-    <div>
-      <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Hazards</div>
-      <div style="display:flex; gap:4px;">
-        
-        <button onclick="selectTool('kill')" data-tool="kill">Kill Block</button>
-      </div>
+<!-- Main toolbar panel -->
+<div id="newToolbar" style="
+    display:none; position:fixed; bottom:-200px; left:50%;
+    transform:translateX(-50%);
+    width:62%; min-width:480px; max-width:860px;
+    background:#18181b; border:1px solid #3f3f46;
+    border-radius:20px 20px 0 0;
+    box-shadow:0 -4px 40px rgba(0,0,0,0.5);
+    z-index:49; padding:14px 16px 20px;
+    box-sizing:border-box;
+    transition:bottom 0.3s cubic-bezier(0.4,0,0.2,1);
+    font-family:system-ui;
+">
+    <!-- Top bar inside toolbar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div id="toolbarBackBtn" onclick="showToolbarCategories()" style="
+            display:none; cursor:pointer; color:#a1a1aa; font-size:13px;
+            font-weight:600; padding:4px 8px; border-radius:6px;
+            background:#27272a; border:none;
+        ">← Back</div>
+        <div id="toolbarTitle" style="font-size:13px;font-weight:600;color:#71717a;flex:1;text-align:center;">Tools</div>
+        <div style="display:flex;gap:6px;align-items:center;">
+            <button onclick="saveMap()" style="padding:5px 10px;font-size:11px;font-weight:600;background:#06b6d4;color:#fff;border:none;border-radius:6px;cursor:pointer;">Save</button>
+            <button onclick="toggleTestMode()" id="testModeBtn" style="padding:5px 10px;font-size:11px;font-weight:600;background:#f59e0b;color:#fff;border:none;border-radius:6px;cursor:pointer;">▶ Test</button>
+            <button onclick="hostGame()" id="hostBtn" style="padding:5px 10px;font-size:11px;font-weight:600;background:#6366f1;color:#fff;border:none;border-radius:6px;cursor:pointer;">Host</button>
+            <button onclick="resetAllTriggers()" style="padding:5px 10px;font-size:11px;font-weight:600;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer;">Reset</button>
+            <button onclick="toggleNewToolbar()" style="background:none;border:none;color:#71717a;font-size:18px;cursor:pointer;padding:2px 4px;line-height:1;">✕</button>
+        </div>
     </div>
 
-    <div style="width:1px; background:#e4e4e7; align-self:stretch;"></div>
+    <!-- Category view -->
+    <div id="toolbarCategories" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;"></div>
 
-    <div>
-      <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Logic</div>
-      <div style="display:flex; gap:4px;">
-        <button onclick="selectTool('trigger')" data-tool="trigger">Trigger</button>
-        <button onclick="selectTool('monitor')" data-tool="monitor">Monitor</button>
-        <button onclick="selectTool('counter')" data-tool="counter">Counter</button>
-        <button onclick="selectTool('comparer')" data-tool="comparer">Comparer</button>
-        <button onclick="selectTool('clock')" data-tool="clock">Clock</button>
-      </div>
-    </div>
-
-    <div style="width:1px; background:#e4e4e7; align-self:stretch;"></div>
-
-    <div>
-      <div style="font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">Objects</div>
-      <div style="display:flex; gap:4px;">
-        <button onclick="selectTool('spawn')" data-tool="spawn">Spawn</button>
-        <button onclick="selectTool('defaultspawn')" data-tool="defaultspawn">Default Spawn</button>
-        <button onclick="selectTool('text')" data-tool="text">Text</button>
-        <button onclick="selectTool('platform')" data-tool="platform">Platform</button>
-        <button onclick="selectTool('goal')" data-tool="goal">Goal</button>
-        <button onclick="selectTool('tree')"  data-tool="tree">Tree</button>
-        <button onclick="selectTool('bush')"  data-tool="bush">Bush</button>
-
-        <button onclick="selectTool('oneway')"data-tool="oneway">One-Way</button>
-        <button onclick="selectTool('conveyor')" data-tool="conveyor">Conveyor</button>
-        <button onclick="selectTool('coin')"  data-tool="coin">Coin</button>
-        <button onclick="selectTool('light')" data-tool="light">Light</button>
-      </div>
-    </div>
-
-    <div style="width:1px; background:#e4e4e7; align-self:stretch;"></div>
-
-  </div>
+    <!-- Tool grid view -->
+    <div id="toolbarToolGrid" style="display:none;"></div>
 </div>
 
 
@@ -1476,6 +1447,13 @@ let moveStartPos = { x: 0, y: 0 };
 // At the top of your globals add these:
 let coyoteTimer = 0;
 let jumpBuffer = 0;
+let multiSelect = [];
+let isDragSelecting = false;
+let dragSelectStart = { x: 0, y: 0 };
+let dragSelectEnd   = { x: 0, y: 0 };
+let isMovingMulti   = false;
+let multiMoveStart  = { x: 0, y: 0 };
+let multiMoveOrigins = [];
 const COYOTE_TIME = 8; // frames
 const JUMP_BUFFER = 8; // frames
 let playerTrail = [];
@@ -2031,64 +2009,6 @@ const TERRAIN_TOOLS = [
     { tool: 'ice',          name: 'Ice'       },
 ];
 
-function buildTerrainGrid() {
-    const grid = document.getElementById('terrainGrid');
-    if (!grid || grid.children.length > 0) return;
-
-    TERRAIN_TOOLS.forEach(({ tool, name }) => {
-        const card = document.createElement('div');
-        card.id = `terrain-card-${tool}`;
-        card.style.cssText = `
-            display:flex; flex-direction:column; align-items:center;
-            padding:6px 4px; border-radius:8px; cursor:pointer;
-            border:2px solid transparent; background:#f4f4f5;
-            transition:all 0.1s;
-        `;
-
-        const cvs = document.createElement('canvas');
-        cvs.width = 40; cvs.height = 40;
-        cvs.style.cssText = 'width:40px;height:40px;display:block;border-radius:4px;';
-        card.appendChild(cvs);
-
-        const lbl = document.createElement('div');
-        lbl.textContent = name;
-        lbl.style.cssText = 'font-size:9px;font-weight:600;color:#52525b;margin-top:3px;text-align:center;line-height:1.2;';
-        card.appendChild(lbl);
-
-        card.addEventListener('mouseenter', () => {
-            if (currentTool !== tool) card.style.background = '#e4e4e7';
-        });
-        card.addEventListener('mouseleave', () => {
-            if (currentTool !== tool) card.style.background = '#f4f4f5';
-        });
-        card.addEventListener('click', () => selectTerrainTool(tool));
-
-        grid.appendChild(card);
-
-        // Draw preview
-        requestAnimationFrame(() => {
-            const c = cvs.getContext('2d');
-            c.save();
-            c.translate(20, 20);
-            drawBlockGraphic(c, tool, 40, 40);
-            c.restore();
-        });
-    });
-}
-
-function refreshTerrainSelection() {
-    TERRAIN_TOOLS.forEach(({ tool }) => {
-        const card = document.getElementById(`terrain-card-${tool}`);
-        if (!card) return;
-        if (currentTool === tool) {
-            card.style.background = '#dbeafe';
-            card.style.borderColor = '#007aff';
-        } else {
-            card.style.background = '#f4f4f5';
-            card.style.borderColor = 'transparent';
-        }
-    });
-}
 function spawnFloatingText(x, y, text, color = '#a3e635') {
     floatingTexts.push({ x, y, text, color, life: 1.0, vy: -1.5 });
 }
@@ -2166,31 +2086,6 @@ function drawFloatingTexts() {
 }
 let terrainDropdownOpen = false;
 
-function toggleTerrainDropdown() {
-    const dropdown = document.getElementById('terrainDropdown');
-    const btn = document.getElementById('terrainDropdownBtn');
-    const rect = btn.getBoundingClientRect();
-    terrainDropdownOpen = !terrainDropdownOpen;
-    if (terrainDropdownOpen) {
-        dropdown.style.display = 'block';
-        dropdown.style.top  = (rect.bottom + 6) + 'px';
-        dropdown.style.left = rect.left + 'px';
-        buildTerrainGrid();
-        refreshTerrainSelection();
-    } else {
-        dropdown.style.display = 'none';
-    }
-}
-
-function selectTerrainTool(tool) {
-    selectTool(tool);
-    refreshTerrainSelection();
-    terrainDropdownOpen = false;
-    document.getElementById('terrainDropdown').style.display = 'none';
-    const entry = TERRAIN_TOOLS.find(t => t.tool === tool);
-    document.getElementById('terrainDropdownBtn').textContent = (entry?.name || tool) + ' ▾';
-}
-
 document.addEventListener('click', e => {
     const dropdown = document.getElementById('terrainDropdown');
     const btn = document.getElementById('terrainDropdownBtn');
@@ -2200,6 +2095,279 @@ document.addEventListener('click', e => {
         terrainDropdownOpen = false;
     }
 });
+/* ============================================================
+   NEW TOOLBAR SYSTEM
+============================================================ */
+let toolbarOpen = false;
+let toolbarCurrentCategory = null;
+
+const TOOLBAR_CATEGORIES = [
+    {
+        id: 'editor', label: 'Editor', icon: '✏️',
+        color: '#3b82f6',
+        tools: [
+            { tool: 'select',  name: 'Select'  },
+            { tool: 'edit',    name: 'Edit'    },
+            { tool: 'copy',    name: 'Copy'    },
+            { tool: 'delete',  name: 'Delete'  },
+        ]
+    },
+    {
+        id: 'terrain', label: 'Terrain', icon: '🧱',
+        color: '#10b981',
+        tools: [
+            { tool: 'box',          name: 'Brick'     },
+            { tool: 'wood',         name: 'Wood'      },
+            { tool: 'metal',        name: 'Metal'     },
+            { tool: 'grass',        name: 'Grass'     },
+            { tool: 'dirt',         name: 'Dirt'      },
+            { tool: 'stone',        name: 'Stone'     },
+            { tool: 'sand',         name: 'Sand'      },
+            { tool: 'snow',         name: 'Snow Block'},
+            { tool: 'gravel',       name: 'Gravel'    },
+            { tool: 'obsidian',     name: 'Obsidian'  },
+            { tool: 'marble',       name: 'Marble'    },
+            { tool: 'box-pushable', name: 'Crate'     },
+            { tool: 'box-stickable',name: 'Slime'     },
+            { tool: 'breakable',    name: 'Breakable' },
+            { tool: 'bounce',       name: 'Bounce'    },
+            { tool: 'ice',          name: 'Ice'       },
+        ]
+    },
+    {
+        id: 'hazards', label: 'Hazards', icon: '⚠️',
+        color: '#ef4444',
+        tools: [
+            { tool: 'kill', name: 'Kill Block' },
+        ]
+    },
+    {
+        id: 'logic', label: 'Logic', icon: '⚡',
+        color: '#8b5cf6',
+        tools: [
+            { tool: 'trigger',  name: 'Trigger'  },
+            { tool: 'monitor',  name: 'Monitor'  },
+            { tool: 'counter',  name: 'Counter'  },
+            { tool: 'comparer', name: 'Comparer' },
+            { tool: 'clock',    name: 'Clock'    },
+        ]
+    },
+    {
+        id: 'objects', label: 'Objects', icon: '🎮',
+        color: '#f59e0b',
+        tools: [
+            { tool: 'spawn',        name: 'Spawn'       },
+            { tool: 'defaultspawn', name: 'Default Spawn'},
+            { tool: 'text',         name: 'Text'        },
+            { tool: 'platform',     name: 'Platform'    },
+            { tool: 'goal',         name: 'Goal'        },
+            { tool: 'tree',         name: 'Tree'        },
+            { tool: 'bush',         name: 'Bush'        },
+            { tool: 'oneway',       name: 'One-Way'     },
+            { tool: 'conveyor',     name: 'Conveyor'    },
+            { tool: 'coin',         name: 'Coin'        },
+            { tool: 'light',        name: 'Light'       },
+        ]
+    },
+];
+
+function toggleNewToolbar() {
+    if (toolbarOpen) closeNewToolbar();
+    else openNewToolbar();
+}
+
+function openNewToolbar() {
+    toolbarOpen = true;
+    document.getElementById('toolbarToggleBtn').style.display = 'none';
+    const tb = document.getElementById('newToolbar');
+    tb.style.display = 'block';
+    requestAnimationFrame(() => { tb.style.bottom = '0px'; });
+
+    // If a tool is selected, jump straight to its category
+    if (currentTool) {
+        const cat = TOOLBAR_CATEGORIES.find(c =>
+            c.tools.some(t => t.tool === currentTool) ||
+            (c.id === 'objects' && customBlocks[currentTool])
+        );
+        if (cat) {
+            showToolbarCategory(cat);
+            updateToolPreviewBubble();
+            return;
+        }
+    }
+
+    showToolbarCategories();
+    updateToolPreviewBubble();
+}
+
+function closeNewToolbar() {
+    toolbarOpen = false;
+    document.getElementById('toolbarToggleBtn').style.display = 'block';
+    const tb = document.getElementById('newToolbar');
+    tb.style.bottom = '-200px';
+    setTimeout(() => { if (!toolbarOpen) tb.style.display = 'none'; }, 300);
+    updateToolPreviewBubble();
+}
+
+function showToolbarCategories() {
+    toolbarCurrentCategory = null;
+    document.getElementById('toolbarCategories').style.display = 'grid';
+    document.getElementById('toolbarToolGrid').style.display   = 'none';
+    document.getElementById('toolbarBackBtn').style.display    = 'none';
+    document.getElementById('toolbarTitle').textContent        = 'Tools';
+
+    const grid = document.getElementById('toolbarCategories');
+    grid.innerHTML = '';
+
+    TOOLBAR_CATEGORIES.forEach(cat => {
+        const btn = document.createElement('button');
+        btn.style.cssText = `
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            gap:6px; padding:14px 8px; border-radius:12px; cursor:pointer;
+            background:#27272a; border:1px solid #3f3f46; color:#fff;
+            font-family:system-ui; transition:all 0.15s;
+        `;
+        btn.innerHTML = `
+            <span style="font-size:24px;">${cat.icon}</span>
+            <span style="font-size:11px;font-weight:600;color:#a1a1aa;">${cat.label}</span>
+        `;
+        btn.addEventListener('mouseenter', () => { btn.style.background = cat.color; btn.style.borderColor = cat.color; });
+        btn.addEventListener('mouseleave', () => { btn.style.background = '#27272a'; btn.style.borderColor = '#3f3f46'; });
+        btn.addEventListener('click', () => showToolbarCategory(cat));
+        grid.appendChild(btn);
+    });
+}
+
+function showToolbarCategory(cat) {
+    toolbarCurrentCategory = cat.id;
+    document.getElementById('toolbarCategories').style.display = 'none';
+    document.getElementById('toolbarToolGrid').style.display   = 'block';
+    document.getElementById('toolbarBackBtn').style.display    = 'block';
+    document.getElementById('toolbarTitle').textContent        = cat.label;
+
+    const grid = document.getElementById('toolbarToolGrid');
+    grid.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill,minmax(70px,1fr)); gap:8px; max-height:200px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#3f3f46 transparent;';
+    grid.innerHTML = '';
+
+    // Add custom blocks at end of objects category
+    const tools = [...cat.tools];
+    if (cat.id === 'objects') {
+        for (const tag in customBlocks) {
+            tools.push({ tool: tag, name: tag, custom: true });
+        }
+        tools.push({ tool: '__new_block__', name: '+ New Block', isNew: true });
+    }
+
+    tools.forEach(({ tool, name, custom, isNew }) => {
+        const card = document.createElement('div');
+        const isSelected = currentTool === tool;
+        card.style.cssText = `
+            display:flex; flex-direction:column; align-items:center; gap:5px;
+            padding:8px 4px; border-radius:10px; cursor:pointer;
+            background:${isSelected ? cat.color : '#27272a'};
+            border:1px solid ${isSelected ? cat.color : '#3f3f46'};
+            transition:all 0.12s;
+        `;
+
+        if (isNew) {
+            card.innerHTML = `
+                <div style="width:44px;height:44px;border-radius:8px;background:#3f3f46;display:flex;align-items:center;justify-content:center;font-size:22px;">+</div>
+                <span style="font-size:9px;font-weight:600;color:#a1a1aa;text-align:center;line-height:1.2;">${name}</span>
+            `;
+            card.addEventListener('click', () => { closeNewToolbar(); openBlockCreator(); });
+        } else {
+            const cvs = document.createElement('canvas');
+            cvs.width = 44; cvs.height = 44;
+            cvs.style.cssText = 'width:44px;height:44px;border-radius:8px;display:block;';
+            card.appendChild(cvs);
+
+            const lbl = document.createElement('span');
+            lbl.textContent = name;
+            lbl.style.cssText = 'font-size:9px;font-weight:600;color:#a1a1aa;text-align:center;line-height:1.2;';
+            card.appendChild(lbl);
+
+            requestAnimationFrame(() => {
+                const c = cvs.getContext('2d');
+                c.clearRect(0, 0, 44, 44);
+                c.save();
+                c.translate(22, 22);
+                if (custom && images[tool]?.complete) {
+                    c.drawImage(images[tool], -20, -20, 40, 40);
+                } else {
+                    drawBlockGraphic(c, tool, 38, 38);
+                }
+                c.restore();
+            });
+
+            card.addEventListener('click', () => {
+                selectTool(tool);
+                updateToolPreviewBubble();
+                closeNewToolbar();
+            });
+        }
+
+        card.addEventListener('mouseenter', () => {
+            if (currentTool !== tool) { card.style.background = '#3f3f46'; card.style.borderColor = '#52525b'; }
+        });
+        card.addEventListener('mouseleave', () => {
+            if (currentTool !== tool) { card.style.background = '#27272a'; card.style.borderColor = '#3f3f46'; }
+        });
+
+        grid.appendChild(card);
+    });
+}
+
+function updateToolPreviewBubble() {
+    const bubble = document.getElementById('toolPreviewBubble');
+    const cvs    = document.getElementById('toolPreviewCanvas');
+    if (!currentTool || playMode) {
+        bubble.style.display = 'none';
+        return;
+    }
+    bubble.style.display = 'flex';
+    bubble.style.bottom  = toolbarOpen ? '20px' : '20px';
+    bubble.style.right   = '20px';
+    bubble.style.left    = 'auto';
+    bubble.style.transform = 'none';
+
+    requestAnimationFrame(() => {
+        const c = cvs.getContext('2d');
+        c.clearRect(0, 0, 44, 44);
+        c.save();
+        c.translate(22, 22);
+        if (customBlocks[currentTool] && images[currentTool]?.complete) {
+            c.drawImage(images[currentTool], -18, -18, 36, 36);
+        } else {
+            drawBlockGraphic(c, currentTool, 36, 36);
+        }
+        c.restore();
+    });
+}
+
+function selectTool(tool) {
+    currentTool  = tool;
+    multiSelect  = [];
+    isDragSelecting = false;
+    updateToolPreviewBubble();
+    closePopup();
+    closeBlockCreator();
+}
+
+function addNewToolButton(tag, imageUrl) {
+    // Custom blocks now appear in the Objects category automatically
+    // but we still need to load the image
+    const img = new Image();
+    img.src = imageUrl || sources.missing;
+    img.onerror = () => { img.src = sources.missing; };
+    images[tag] = img;
+}
+
+function clearCustomTools() {
+    // Custom tools are dynamic in the toolbar now, nothing to clear from DOM
+}
+
+function openToolbar() { openNewToolbar(); }
+function closeToolbar() { closeNewToolbar(); }
 /* ============================================================
    MOBILE CONTROLS
 ============================================================ */
@@ -2467,9 +2635,8 @@ function enterTestMode() {
 
     // Update button
     const btn = document.getElementById('testModeBtn');
-    btn.textContent = '◼ Stop';
-    btn.style.background = '#ef4444 !important';
-    btn.style.cssText = btn.style.cssText.replace('#f59e0b', '#ef4444');
+btn.textContent = '◼ Stop';
+btn.style.cssText = 'padding:5px 10px;font-size:11px;font-weight:600;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer;';
 
     // Show toast
     showCoinToast('Test mode — ESC or Stop to exit', '#f59e0b');
@@ -2501,13 +2668,10 @@ function exitTestMode() {
 
     // Update button
     const btn = document.getElementById('testModeBtn');
-    if (btn) {
-        btn.textContent = '▶ Test';
-        btn.style.background = '';
-        btn.style.cssText = '';
-        btn.style.background = '#f59e0b';
-        btn.style.color = 'white';
-    }
+if (btn) {
+    btn.textContent = '▶ Test';
+    btn.style.cssText = 'padding:5px 10px;font-size:11px;font-weight:600;background:#f59e0b;color:#fff;border:none;border-radius:6px;cursor:pointer;';
+}
 
     showCoinToast('Back to editor', '#71717a');
 }
@@ -2525,30 +2689,21 @@ function hasGroup(obj, groupName) {
 }
 function setPlayMode(enabled) {
     playMode = enabled;
-
-    const testBtn = document.getElementById('testModeBtn');
-    const topBar  = document.querySelector('#toolbar > div:first-child');
-    const catRow  = document.querySelector('#toolbar > div:nth-child(2)');
-    const label   = document.querySelector('#toolbar span');
-    const menuBtn = document.querySelector('#toolbar .btn-exit');
-
+    const toggleBtn = document.getElementById('toolbarToggleBtn');
+    const bubble    = document.getElementById('toolPreviewBubble');
     if (enabled) {
-        if (topBar) topBar.querySelectorAll('button').forEach(btn => {
-            if (testMode && btn === testBtn) return;
-            if (!testMode && btn === menuBtn) return;
-            btn.style.display = 'none';
-        });
-        if (catRow) catRow.style.display = 'none';
-        if (label) label.style.display = 'none';
+      document.getElementById('toolPreviewBubble').style.display = 'none';
+        closeNewToolbar();
+        if (toggleBtn) toggleBtn.style.display = 'none';
+        if (bubble)    bubble.style.display    = 'none';
         showMobileControls(true);
         selectTool(null);
         closePopup();
         closeBlockCreator();
     } else {
+      updateToolPreviewBubble();
+        if (toggleBtn) toggleBtn.style.display = 'block';
         showMobileControls(false);
-        if (topBar) topBar.querySelectorAll('button').forEach(btn => btn.style.display = '');
-        if (catRow) catRow.style.display = 'flex';
-        if (label) label.style.display = '';
     }
 }
 function saveUndoState() {
@@ -3557,15 +3712,18 @@ function showHome() {
 }
 
 function goToMenu() {
+  document.getElementById('toolPreviewBubble').style.display = 'none';
   document.getElementById("toolbar").style.display = "none";  // ADD
     document.getElementById("toolbar").classList.remove("open"); // ADD
     if (gameLoopId) cancelAnimationFrame(gameLoopId);
     gameLoopId = null;
-
+    
     canvas.style.display = "none";
-    document.getElementById("toolbar").style.display = "none";
-    document.getElementById("toolbar").classList.remove("open");
-    document.getElementById("toolbarOpenBtn").style.display = "none";
+    // Inside goToMenu(), replace toolbar hide lines with:
+document.getElementById('newToolbar').style.display       = 'none';
+document.getElementById('toolbarToggleBtn').style.display = 'none';
+document.getElementById('toolPreviewBubble').style.display = 'none';
+toolbarOpen = false;
     homeScreen.style.display = "flex";
     if (testMode) {
       testMode = false;
@@ -3772,14 +3930,14 @@ async function joinCurrentGame() {
 ============================================================ */
 function startGame() {
     setLightingTheme('normal');
-    homeScreen.style.display = "none";
-    canvas.style.display = "block";
-    document.getElementById("toolbar").style.display = "block";
-    document.getElementById("toolbarOpenBtn").style.display = "block";
-    openToolbar();
+    homeScreen.style.display = 'none';
+    canvas.style.display     = 'block';
+    document.getElementById('toolbarToggleBtn').style.display = 'block';
+    document.getElementById('newToolbar').style.display       = 'none';
+    openNewToolbar();
     resizeCanvas();
     setupSFX();
-    setupMobileControls(); // ADD THIS
+    setupMobileControls();
     if (settings.music) setupMusic();
     if (gameLoopId) cancelAnimationFrame(gameLoopId);
     loadImages(sources, () => {
@@ -4071,23 +4229,7 @@ function confirmCopyBlock() {
 /* ============================================================
    EDITOR TOOLBAR AND POPUP LOGIC
 ============================================================ */
-function openToolbar() {
-  document.getElementById("toolbar").classList.add("open");
-  document.getElementById("toolbarOpenBtn").style.display = "none";
-}
 
-function closeToolbar() {
-  document.getElementById("toolbar").classList.remove("open");
-  document.getElementById("toolbarOpenBtn").style.display = "block";
-}
-function selectTool(tool) {
-  currentTool = tool;
-  document.querySelectorAll("#toolbar button[data-tool]").forEach(btn => {
-    btn.classList.toggle("selected-tool", btn.getAttribute("data-tool") === tool);
-  });
-  closePopup();
-  closeBlockCreator();
-}
 function checkResetBreakables() {
   objects.forEach(o => {
         
@@ -4653,6 +4795,25 @@ canvas.addEventListener("mouseup", () => {
     resizeObject = null;
     resizeHandle = null;
     isMoving = false;   // ADD
+    if (isDragSelecting) {
+    isDragSelecting = false;
+    const minX = Math.min(dragSelectStart.x, dragSelectEnd.x);
+    const maxX = Math.max(dragSelectStart.x, dragSelectEnd.x);
+    const minY = Math.min(dragSelectStart.y, dragSelectEnd.y);
+    const maxY = Math.max(dragSelectStart.y, dragSelectEnd.y);
+
+    if (maxX - minX > 4 || maxY - minY > 4) {
+        multiSelect = objects.filter(obj =>
+            obj.tag !== 'player' &&
+            obj.x >= minX && obj.x + obj.width  <= maxX &&
+            obj.y >= minY && obj.y + obj.height <= maxY
+        );
+    }
+}
+if (isMovingMulti) {
+    isMovingMulti    = false;
+    multiMoveOrigins = [];
+}
 });
 
 canvas.addEventListener("mouseleave", () => {
@@ -4662,12 +4823,15 @@ canvas.addEventListener("mouseleave", () => {
     resizeObject = null;
     resizeHandle = null;
     isMoving = false;   // ADD
+    isMovingMulti = false;
 });
 // --- CANVAS MOUSELISTENER ---
 
 canvas.addEventListener("mousedown", e => {
     if (playMode) return;
-
+    if (currentTool && !['select','edit','copy','delete'].includes(currentTool)) {
+    closeNewToolbar();
+}
     isMouseDown = true;
     lastPlacedCell = { x: -1, y: -1 };
 
@@ -4737,50 +4901,69 @@ canvas.addEventListener("mousedown", e => {
 
     // --- EDIT tool ---
     if (currentTool === 'edit') {
-        if (selectedObject) {
-            // Check resize handles first
-            const handle = getHandleAtPoint(selectedObject, mx, my);
-            if (handle) {
-                isResizing = true;
-                resizeObject = selectedObject;
-                resizeHandle = handle;
-                resizeStartMouse = { x: mx, y: my };
-                resizeStartRect = {
-                    x: selectedObject.x,
-                    y: selectedObject.y,
-                    width: selectedObject.width,
-                    height: selectedObject.height
-                };
-                saveUndoState();
-                return;
-            }
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
 
-            // Check if clicking inside selected object body — move it
-            const insideSelected = clickX >= selectedObject.x &&
-                                   clickX <= selectedObject.x + selectedObject.width &&
-                                   clickY >= selectedObject.y &&
-                                   clickY <= selectedObject.y + selectedObject.height;
-            if (insideSelected) {
-                isMoving = true;
-                moveStartMouse = { x: mx, y: my };
-                moveStartPos = { x: selectedObject.x, y: selectedObject.y };
-                saveUndoState();
-                return;
-            }
+    // If we have a multi-selection, check if clicking inside it to move
+    if (multiSelect.length > 0) {
+        const inMulti = multiSelect.some(obj =>
+            clickX >= obj.x && clickX <= obj.x + obj.width &&
+            clickY >= obj.y && clickY <= obj.y + obj.height
+        );
+        if (inMulti) {
+            isMovingMulti = true;
+            multiMoveStart   = { x: mx, y: my };
+            multiMoveOrigins = multiSelect.map(o => ({ x: o.x, y: o.y }));
+            saveUndoState();
+            return;
+        } else {
+            // Clicked outside multi-select — clear it
+            multiSelect = [];
+        }
+    }
 
-            // Clicked outside selected object — deselect
-            selectedObject = null;
+    if (selectedObject) {
+        // Check resize handles
+        const handle = getHandleAtPoint(selectedObject, mx, my);
+        if (handle) {
+            isResizing = true;
+            resizeObject = selectedObject;
+            resizeHandle = handle;
+            resizeStartMouse = { x: mx, y: my };
+            resizeStartRect = {
+                x: selectedObject.x, y: selectedObject.y,
+                width: selectedObject.width, height: selectedObject.height
+            };
+            saveUndoState();
+            return;
         }
 
-        // Nothing selected — open popup on clicked object
-        // Single click — just select the object, enabling drag/resize
-if (clickedObject) {
-    selectedObject = clickedObject;
-    selectedObjectIndex = objects.indexOf(clickedObject);
-    return;
-}
+        const insideSelected =
+            clickX >= selectedObject.x && clickX <= selectedObject.x + selectedObject.width &&
+            clickY >= selectedObject.y && clickY <= selectedObject.y + selectedObject.height;
+
+        if (insideSelected) {
+            isMoving = true;
+            moveStartMouse = { x: mx, y: my };
+            moveStartPos   = { x: selectedObject.x, y: selectedObject.y };
+            saveUndoState();
+            return;
+        }
+        selectedObject = null;
+    }
+
+    if (clickedObject) {
+        selectedObject = clickedObject;
+        selectedObjectIndex = objects.indexOf(clickedObject);
         return;
     }
+
+    // Nothing clicked — start drag select
+    isDragSelecting  = true;
+    dragSelectStart  = { x: clickX, y: clickY };
+    dragSelectEnd    = { x: clickX, y: clickY };
+    return;
+}
 
     // --- COPY tool ---
     if (currentTool === 'copy' && clickedObject) {
@@ -5073,162 +5256,143 @@ canvas.addEventListener("mousemove", e => {
     if (!currentTool) return;
     const rect = canvas.getBoundingClientRect();
     ghostX = Math.floor((e.clientX - rect.left + camera.x) / GRID_SIZE) * GRID_SIZE;
-    ghostY = Math.floor((e.clientY - rect.top + camera.y) / GRID_SIZE) * GRID_SIZE;
+    ghostY = Math.floor((e.clientY - rect.top  + camera.y) / GRID_SIZE) * GRID_SIZE;
 
-    // Drag to place
     if (!isMouseDown) return;
     if (playMode) return;
 
+    // Single object resize — highest priority
     if (isResizing && resizeObject) {
-        const rect = canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
         const dx = mx - resizeStartMouse.x;
         const dy = my - resizeStartMouse.y;
-
-        let newX = resizeStartRect.x;
-        let newY = resizeStartRect.y;
-        let newW = resizeStartRect.width;
-        let newH = resizeStartRect.height;
-
+        let newX = resizeStartRect.x, newY = resizeStartRect.y;
+        let newW = resizeStartRect.width, newH = resizeStartRect.height;
         if (resizeHandle === 'se') {
-    newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  + dx));
-    newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height + dy));
-} else if (resizeHandle === 'sw') {
-    newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  - dx));
-    newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height + dy));
-    newX = resizeStartRect.x + resizeStartRect.width - newW;
-} else if (resizeHandle === 'ne') {
-    newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  + dx));
-    newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height - dy));
-    newY = resizeStartRect.y + resizeStartRect.height - newH;
-} else if (resizeHandle === 'nw') {
-    newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  - dx));
-    newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height - dy));
-    newX = resizeStartRect.x + resizeStartRect.width  - newW;
-    newY = resizeStartRect.y + resizeStartRect.height - newH;
-}
-
-        resizeObject.x = newX;
-        resizeObject.y = newY;
-        resizeObject.width  = newW;
-        resizeObject.height = newH;
+            newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  + dx));
+            newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height + dy));
+        } else if (resizeHandle === 'sw') {
+            newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  - dx));
+            newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height + dy));
+            newX = resizeStartRect.x + resizeStartRect.width - newW;
+        } else if (resizeHandle === 'ne') {
+            newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  + dx));
+            newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height - dy));
+            newY = resizeStartRect.y + resizeStartRect.height - newH;
+        } else if (resizeHandle === 'nw') {
+            newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  - dx));
+            newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height - dy));
+            newX = resizeStartRect.x + resizeStartRect.width  - newW;
+            newY = resizeStartRect.y + resizeStartRect.height - newH;
+        }
+        resizeObject.x = newX; resizeObject.y = newY;
+        resizeObject.width = newW; resizeObject.height = newH;
         return;
     }
 
+    // Single object move
     if (isMoving && selectedObject) {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    selectedObject.x = snap(moveStartPos.x + (mx - moveStartMouse.x));
-    selectedObject.y = snap(moveStartPos.y + (my - moveStartMouse.y));
-    return;
-}
-    // Only drag-place for block tools, not editor tools or special blocks
-    const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
-    'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform',
-    'coin', 'tree', 'bush',"light"];
-    if (dragBlacklist.includes(currentTool)) return;
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        selectedObject.x = snap(moveStartPos.x + (mx - moveStartMouse.x));
+        selectedObject.y = snap(moveStartPos.y + (my - moveStartMouse.y));
+        return;
+    }
 
-    // Don't place in the same grid cell twice
-    if (ghostX === lastPlacedCell.x && ghostY === lastPlacedCell.y) return;
-    lastPlacedCell = { x: ghostX, y: ghostY };
-
-    const clickX = ghostX;
-    const clickY = ghostY;
-    const x = clickX;
-    const y = clickY;
-
-    // Don't place on top of existing objects
-    // NEW — checks actual overlap based on block size
-const placeW = customBlocks[currentTool]?.width ?? 50;
-const placeH = customBlocks[currentTool]?.height ?? 50;
-const occupied = objects.some(o =>
-    o.tag !== 'player' &&
-    x < o.x + o.width  && x + placeW > o.x &&
-    y < o.y + o.height && y + placeH > o.y
-);
-    if (occupied) return;
-
-    // Handle custom blocks
-    if (customBlocks[currentTool]) {
-        const def = customBlocks[currentTool];
-        objects.push({
-            ...def,
-            x, y,
-            vx: 0, vy: 0,
-            scaleX: 1, scaleY: 1,
-            opacity: 1,
-            group: []
+    // Multi-select move
+    if (isMovingMulti && multiSelect.length > 0) {
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const dx = mx - multiMoveStart.x;
+        const dy = my - multiMoveStart.y;
+        multiSelect.forEach((obj, idx) => {
+            obj.x = snap(multiMoveOrigins[idx].x + dx);
+            obj.y = snap(multiMoveOrigins[idx].y + dy);
         });
         return;
     }
 
-    // Handle built-in blocks
-    const tagMap = {
-    'box':           { tag: 'box' },
-    'wood':          { tag: 'wood' },
-    'metal':         { tag: 'metal' },
-    'grass':         { tag: 'grass' },
-    'dirt':          { tag: 'dirt' },
-    'stone':         { tag: 'stone' },
-    'sand':          { tag: 'sand' },
-    'snow':          { tag: 'snow' },
-    'gravel':        { tag: 'gravel' },
-    'obsidian':      { tag: 'obsidian' },
-    'marble':        { tag: 'marble' },
-    'kill':          { tag: 'kill', kill: true },
-    'bounce':        { tag: 'bounce', solid: true, bounce: true },
-    'ice':           { tag: 'ice', solid: true, ice: true },
-    'breakable':     { tag: 'breakable', solid: true, reappearTime: 300 },
-    'box-pushable':  { tag: 'pushablebox', gravity: 0.6, pushable: true },
-    'box-stickable': { tag: 'sticky', slime: true },
-    'oneway': { tag: 'oneway', solid: true },
-    'conveyor': { tag: 'conveyor', solid: true, conveyorDir: 1 },
-    'tree':  { tag: 'tree',  solid: false, width: 60, height: 100 },
-    'bush':  { tag: 'bush',  solid: false, width: 50, height: 35  },
-};
+    // Drag selection box
+    if (isDragSelecting) {
+        dragSelectEnd = {
+            x: e.clientX - rect.left + camera.x,
+            y: e.clientY - rect.top  + camera.y
+        };
+        return;
+    }
 
+    // Drag-to-place blocks
+    const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
+        'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform',
+        'coin', 'tree', 'bush', 'wind', 'light'];
+    if (dragBlacklist.includes(currentTool)) return;
+
+    if (ghostX === lastPlacedCell.x && ghostY === lastPlacedCell.y) return;
+    lastPlacedCell = { x: ghostX, y: ghostY };
+
+    const x = ghostX, y = ghostY;
+    const placeW = customBlocks[currentTool]?.width ?? 50;
+    const placeH = customBlocks[currentTool]?.height ?? 50;
+    const occupied = objects.some(o =>
+        o.tag !== 'player' &&
+        x < o.x + o.width  && x + placeW > o.x &&
+        y < o.y + o.height && y + placeH > o.y
+    );
+    if (occupied) return;
+
+    if (customBlocks[currentTool]) {
+        const def = customBlocks[currentTool];
+        objects.push({ ...def, x, y, vx:0, vy:0, scaleX:1, scaleY:1, opacity:1, group:[] });
+        return;
+    }
+
+    const tagMap = {
+        'box':           { tag: 'box' },
+        'wood':          { tag: 'wood' },
+        'metal':         { tag: 'metal' },
+        'grass':         { tag: 'grass' },
+        'dirt':          { tag: 'dirt' },
+        'stone':         { tag: 'stone' },
+        'sand':          { tag: 'sand' },
+        'snow':          { tag: 'snow' },
+        'gravel':        { tag: 'gravel' },
+        'obsidian':      { tag: 'obsidian' },
+        'marble':        { tag: 'marble' },
+        'kill':          { tag: 'kill', kill: true },
+        'bounce':        { tag: 'bounce', solid: true, bounce: true },
+        'ice':           { tag: 'ice', solid: true, ice: true },
+        'breakable':     { tag: 'breakable', solid: true, reappearTime: 300 },
+        'box-pushable':  { tag: 'pushablebox', gravity: 0.6, pushable: true },
+        'box-stickable': { tag: 'sticky', slime: true },
+        'oneway':        { tag: 'oneway', solid: true },
+        'conveyor':      { tag: 'conveyor', solid: true, conveyorDir: 1 },
+        'wind':          { tag: 'wind', solid: false, windX: 2, windY: 0 },
+        'tree':          { tag: 'tree',  solid: false, width: 60, height: 100 },
+        'bush':          { tag: 'bush',  solid: false, width: 50, height: 35 },
+    };
     const preset = tagMap[currentTool];
     if (!preset) return;
-
     objects.push({
-        tag: "box",
-        shape: "box",
-        x, y,
-        width: 50, height: 50,  // was GRID_SIZE
-        vx: 0, vy: 0,
-        gravity: 0,
-        pushable: false,
-        scaleX: 1, scaleY: 1,
-        slime: false,
-        solid: true,
-        kill: false,
-        spawn: false,
-        text: "",
-        opacity: 1,
-        group: [],
-        bounce: false,
-        ice: false,
+        tag:'box', shape:'box', x, y, width:50, height:50,
+        vx:0, vy:0, gravity:0, pushable:false, scaleX:1, scaleY:1,
+        slime:false, solid:true, kill:false, spawn:false,
+        text:'', opacity:1, group:[], bounce:false, ice:false,
         ...preset
     });
 
-    // Cursor hint for resize handles
+    // Cursor hint
     if (currentTool === 'edit' && selectedObject && !isResizing && !isMoving) {
-        const rect = canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
         const handle = getHandleAtPoint(selectedObject, mx, my);
         if (handle) {
-            const cursors = { nw: 'nw-resize', ne: 'ne-resize', sw: 'sw-resize', se: 'se-resize' };
+            const cursors = { nw:'nw-resize', ne:'ne-resize', sw:'sw-resize', se:'se-resize' };
             canvas.style.cursor = cursors[handle];
         } else {
-            const worldX = mx + camera.x;
-            const worldY = my + camera.y;
-            const inside = worldX >= selectedObject.x &&
-                           worldX <= selectedObject.x + selectedObject.width &&
-                           worldY >= selectedObject.y &&
-                           worldY <= selectedObject.y + selectedObject.height;
+            const worldX = mx + camera.x, worldY = my + camera.y;
+            const inside = worldX >= selectedObject.x && worldX <= selectedObject.x + selectedObject.width &&
+                           worldY >= selectedObject.y && worldY <= selectedObject.y + selectedObject.height;
             canvas.style.cursor = inside ? 'grab' : 'default';
         }
     } else if (isMoving) {
@@ -7529,7 +7693,111 @@ function drawBlockGraphic(ctx, tag, w, h, obj = null, noSurface = false) {
     ctx.save();
 
     switch (tag) {
-
+        case 'select': {
+    // Dashed selection rectangle with handles
+    ctx.strokeStyle = '#007aff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(x + w * 0.12, y + h * 0.12, w * 0.76, h * 0.76);
+    ctx.setLineDash([]);
+    const handles = [
+        [x + w * 0.12, y + h * 0.12],
+        [x + w * 0.88, y + h * 0.12],
+        [x + w * 0.12, y + h * 0.88],
+        [x + w * 0.88, y + h * 0.88],
+    ];
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#007aff';
+    ctx.lineWidth = 1.5;
+    handles.forEach(([hx, hy]) => {
+        ctx.beginPath();
+        ctx.rect(hx - 3.5, hy - 3.5, 7, 7);
+        ctx.fill(); ctx.stroke();
+    });
+    break;
+}
+case 'delete': {
+    // Red X
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.28, y + h * 0.28);
+    ctx.lineTo(x + w * 0.72, y + h * 0.72);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.72, y + h * 0.28);
+    ctx.lineTo(x + w * 0.28, y + h * 0.72);
+    ctx.stroke();
+    ctx.strokeStyle = '#dc2626';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+    break;
+}
+case 'edit': {
+    // Pencil icon
+    ctx.fillStyle = '#27272a';
+    ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+    ctx.strokeStyle = '#3f3f46';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+    // Pencil body
+    const angle = -Math.PI / 4;
+    ctx.save();
+    ctx.translate(x + w / 2, y + h / 2);
+    ctx.rotate(angle);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(-4, -14, 8, 20);
+    // Pencil tip
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath();
+    ctx.moveTo(-4, 6); ctx.lineTo(4, 6); ctx.lineTo(0, 13);
+    ctx.closePath(); ctx.fill();
+    // Pencil top eraser
+    ctx.fillStyle = '#f87171';
+    ctx.fillRect(-4, -18, 8, 5);
+    ctx.fillStyle = '#fcd34d';
+    ctx.fillRect(-4, -14, 8, 2);
+    ctx.restore();
+    break;
+}
+case 'copy': {
+    // Two overlapping document icons
+    ctx.fillStyle = '#27272a';
+    ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+    ctx.strokeStyle = '#3f3f46';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+    // Back document
+    ctx.fillStyle = '#3f3f46';
+    ctx.strokeStyle = '#52525b';
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, x + w * 0.28, y + h * 0.2, w * 0.44, h * 0.5, 2);
+    ctx.fill(); ctx.stroke();
+    // Front document
+    ctx.fillStyle = '#52525b';
+    ctx.strokeStyle = '#71717a';
+    roundRect(ctx, x + w * 0.18, y + h * 0.3, w * 0.44, h * 0.5, 2);
+    ctx.fill(); ctx.stroke();
+    // Lines on front doc
+    ctx.strokeStyle = '#a1a1aa';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.26, y + h * 0.44);
+    ctx.lineTo(x + w * 0.54, y + h * 0.44);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.26, y + h * 0.54);
+    ctx.lineTo(x + w * 0.54, y + h * 0.54);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.26, y + h * 0.64);
+    ctx.lineTo(x + w * 0.46, y + h * 0.64);
+    ctx.stroke();
+    break;
+}
         case 'box': {
             
             // Stone brick
@@ -8587,7 +8855,7 @@ function drawSurfaceShading() {
     visible.forEach(obj => {
         if (!obj.solid) return;
         if (obj.tag === 'player'  || obj.tag === 'trigger' || obj.tag === 'coin' ||
-            obj.tag === 'wind'    || obj.tag === 'tree'    || obj.tag === 'bush' ||
+            obj.tag === 'tree'    || obj.tag === 'bush' ||
             obj.tag === 'oneway'  || obj.tag === 'goal'    || obj.tag === 'spawn' ||
             obj.tag === 'defaultspawn') return;
 
@@ -9168,7 +9436,59 @@ function drawObjects() {
   visibleObjects.forEach(obj => {
     if (obj.tag !== 'trigger') drawSingleObject(obj);
   });
+  // Draw drag selection rectangle
+if (isDragSelecting) {
+    const sx = Math.min(dragSelectStart.x, dragSelectEnd.x) - camera.x;
+    const sy = Math.min(dragSelectStart.y, dragSelectEnd.y) - camera.y;
+    const sw = Math.abs(dragSelectEnd.x - dragSelectStart.x);
+    const sh = Math.abs(dragSelectEnd.y - dragSelectStart.y);
+    ctx.save();
+    ctx.fillStyle   = 'rgba(0,122,255,0.08)';
+    ctx.strokeStyle = '#007aff';
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.fillRect(sx, sy, sw, sh);
+    ctx.strokeRect(sx, sy, sw, sh);
+    ctx.setLineDash([]);
+    ctx.restore();
+}
 
+// Draw multi-select highlights
+if (multiSelect.length > 0) {
+    ctx.save();
+    ctx.strokeStyle = '#007aff';
+    ctx.lineWidth   = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.fillStyle   = 'rgba(0,122,255,0.06)';
+
+    // Bounding box around all selected
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    multiSelect.forEach(obj => {
+        const sx = obj.x - camera.x;
+        const sy = obj.y - camera.y;
+        ctx.fillRect(sx, sy, obj.width, obj.height);
+        ctx.strokeRect(sx, sy, obj.width, obj.height);
+        minX = Math.min(minX, sx);
+        minY = Math.min(minY, sy);
+        maxX = Math.max(maxX, sx + obj.width);
+        maxY = Math.max(maxY, sy + obj.height);
+    });
+
+    // Outer bounding box
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(0,122,255,0.5)';
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
+
+    // Label
+    ctx.fillStyle   = 'rgba(0,122,255,0.9)';
+    ctx.font        = 'bold 11px system-ui';
+    ctx.textAlign   = 'left';
+    ctx.textBaseline= 'bottom';
+    ctx.fillText(`${multiSelect.length} selected  •  Del to delete  •  drag to move`, minX - 2, minY - 8);
+
+    ctx.restore();
+}
   for (const u in smoothedPlayers) {
     const op = smoothedPlayers[u];
     // rest stays the same
@@ -9370,7 +9690,24 @@ case 'KeyQ':
         goToMenu();
     }
     break;
+    case 'KeyF':
+    if (!playMode) toggleNewToolbar();
+    break;
+    case 'Delete':
+case 'Backspace':
+    if (currentTool === 'edit' && multiSelect.length > 0 && !playMode) {
+        const tag = document.activeElement?.tagName?.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') break;
+        saveUndoState();
+        multiSelect.forEach(obj => {
+            const idx = objects.indexOf(obj);
+            if (idx !== -1) objects.splice(idx, 1);
+        });
+        multiSelect = [];
+    }
+    break;
         }
+        
         
 });
 
