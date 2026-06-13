@@ -739,6 +739,7 @@
             <button onclick="toggleTestMode()" id="testModeBtn" style="padding:5px 10px;font-size:11px;font-weight:600;background:#f59e0b;color:#fff;border:none;border-radius:6px;cursor:pointer;">▶ Test</button>
             <button onclick="hostGame()" id="hostBtn" style="padding:5px 10px;font-size:11px;font-weight:600;background:#6366f1;color:#fff;border:none;border-radius:6px;cursor:pointer;">Host</button>
             <button onclick="resetAllTriggers()" style="padding:5px 10px;font-size:11px;font-weight:600;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer;">Reset</button>
+<button onclick="goToMenu()" style="padding:5px 10px;font-size:11px;font-weight:600;background:#71717a;color:#fff;border:none;border-radius:6px;cursor:pointer;">☰ Menu</button>
             <button onclick="toggleNewToolbar()" style="background:none;border:none;color:#71717a;font-size:18px;cursor:pointer;padding:2px 4px;line-height:1;">✕</button>
         </div>
     </div>
@@ -3713,8 +3714,6 @@ function showHome() {
 
 function goToMenu() {
   document.getElementById('toolPreviewBubble').style.display = 'none';
-  document.getElementById("toolbar").style.display = "none";  // ADD
-    document.getElementById("toolbar").classList.remove("open"); // ADD
     if (gameLoopId) cancelAnimationFrame(gameLoopId);
     gameLoopId = null;
     
@@ -3732,6 +3731,8 @@ toolbarOpen = false;
     selectTool(null);
     stopMultiplayer();
     setPlayMode(false);
+    document.getElementById('toolbarToggleBtn').style.display = 'none'; // ADD THIS
+    showMobileControls(false);
     showMobileControls(false);
     otherPlayers = {};
 
