@@ -908,108 +908,19 @@
     </div>
 </div>
     <div id="triggerProps" style="display:none;">
-        <h4>Trigger Settings</h4>
-        <button onclick="openScriptEditor()" type="button" style="
+    <h4>Trigger Settings</h4>
+    <button onclick="openScriptEditor()" type="button" style="
   width:100%; margin-bottom:14px; padding:9px;
   background:#f0f0ff; color:#6366f1;
   border:1px solid #c7d2fe; border-radius:7px;
   font-size:13px; font-weight:600; cursor:pointer;
 ">⚡ Open Script Editor</button>
-        <div class="input-group">
-            <label for="propTargetGroup">Target Group:</label>
-            <input type="text" id="propTargetGroup" placeholder="e.g., 'door_level1'">
-        </div>
 
-        <div class="input-group">
-            <label for="propModDelay">Delay (seconds):</label>
-            <input type="number" id="propModDelay" step="0.1" min="0" placeholder="0">
-        </div>
-        
-        <div class="checkbox-group">
-            <input type="checkbox" id="propModOneTime">
-            <label for="propModOneTime">One-Time Trigger (Won't fire again until reset)</label>
-        </div>
-
-        <h5 style="margin-bottom: 5px; margin-top: 15px;">Modifications (Leave blank to ignore)</h5>
-        
-        <div class="input-group">
-            <label for="propModX">New X Position:</label>
-            <input type="number" id="propModX" placeholder="e.g., 500">
-        </div>
-        
-        <div class="input-group">
-            <label for="propModY">New Y Position:</label>
-            <input type="number" id="propModY" placeholder="e.g., 300">
-        </div>
-
-        <div class="input-group">
-            <label for="propModVX">New VX (Velocity X):</label>
-            <input type="number" id="propModVX" placeholder="e.g., 5 (Right), -5 (Left)">
-        </div>
-        
-        <div class="input-group">
-            <label for="propModVY">New VY (Velocity Y):</label>
-            <input type="number" id="propModVY" placeholder="e.g., -10 (Jump Up)">
-        </div>
-        
-        <div class="input-group">
-            <label for="propModOpacity">New Opacity (0.0 to 1.0):</label>
-            <input type="number" id="propModOpacity" step="0.1" min="0" max="1" placeholder="e.g., 0.5">
-        </div>
-
-        <div class="input-group">
-            <label for="propModWidth">New Width:</label>
-            <input type="number" id="propModWidth" placeholder="e.g., 100">
-        </div>
-        
-        <div class="input-group">
-            <label for="propModHeight">New Height:</label>
-            <input type="number" id="propModHeight" placeholder="e.g., 100">
-        </div>
-        
-        <div class="input-group">
-            <label for="propModSolidVal">Change Solid State:</label>
-            <select id="propModSolidVal">
-                <option value="">(Ignore)</option>
-                <option value="true">Solid</option>
-                <option value="false">Not Solid</option>
-            </select>
-        </div>
-        
-        <div class="input-group">
-            <label for="propModKillVal">Change Kill State:</label>
-            <select id="propModKillVal">
-                <option value="">(Ignore)</option>
-                <option value="true">Kill Block</option>
-                <option value="false">Not Kill Block</option>
-            </select>
-        </div>
-        
-        <div class="input-group">
-            <label for="propModSlimeVal">Change Slime State:</label>
-            <select id="propModSlimeVal">
-                <option value="">(Ignore)</option>
-                <option value="true">Slime</option>
-                <option value="false">Not Slime</option>
-            </select>
-        </div>
-        
-        <div class="input-group">
-            <label for="propModActiveVal">Change Active State (for Triggers):</label>
-            <select id="propModActiveVal">
-                <option value="">(Ignore)</option>
-                <option value="true">Activate Target Triggers</option>
-                <option value="false">Deactivate Target Triggers</option>
-                <option value="fire">Trigger Target Triggers (Chain Reaction)</option>
-            </select>
-        </div>
-        
-        <div class="checkbox-group" style="margin-top: 10px;">
-            <input type="checkbox" id="propModTextCheck">
-            <label for="propModTextCheck">Change Text Content (for Text)?</label>
-        </div>
-        <textarea id="propModText" placeholder="New text..." style="display:none; width: 100%; box-sizing: border-box;"></textarea>
+    <div class="checkbox-group">
+        <input type="checkbox" id="propModOneTime">
+        <label for="propModOneTime">One-Time Trigger (Won't fire again until reset)</label>
     </div>
+</div>
     
     <div id="monitorProps" style="display:none; padding-top: 10px; border-top: 1px solid #ddd; margin-top: 10px;">
         <h3>Monitor Settings</h3>
@@ -4499,25 +4410,8 @@ function openPopup(obj) {
   // Trigger fields
   if (isTrigger) {
     const mods = obj.mods || {};
-    document.getElementById("propTargetGroup").value    = mods.targetGroup || "";
-    document.getElementById("propModDelay").value       = mods.delay ?? "";
-    document.getElementById("propModOneTime").checked   = !!mods.oneTime;
-    document.getElementById("propModX").value           = mods.x ?? "";
-    document.getElementById("propModY").value           = mods.y ?? "";
-    document.getElementById("propModVX").value          = mods.vx ?? "";
-    document.getElementById("propModVY").value          = mods.vy ?? "";
-    document.getElementById("propModOpacity").value     = mods.opacity ?? "";
-    document.getElementById("propModWidth").value       = mods.width ?? "";
-    document.getElementById("propModHeight").value      = mods.height ?? "";
-    document.getElementById("propModSolidVal").value    = mods.solid ?? "";
-    document.getElementById("propModKillVal").value     = mods.kill ?? "";
-    document.getElementById("propModSlimeVal").value    = mods.slime ?? "";
-    document.getElementById("propModActiveVal").value   = mods.active ?? "";
-    const changeText = mods.text !== undefined;
-    document.getElementById("propModTextCheck").checked      = changeText;
-    document.getElementById("propModText").value             = mods.text ?? "";
-    document.getElementById("propModText").style.display     = changeText ? "block" : "none";
-  }
+    document.getElementById("propModOneTime").checked = !!mods.oneTime;
+}
 
   // Monitor fields
   if (isMonitor) {
@@ -4626,28 +4520,8 @@ selectedObject.group = rawGroup
   if (selectedObject.tag === "trigger") {
     // Save trigger-specific properties
     selectedObject.mods = {
-        targetGroup: document.getElementById("propTargetGroup").value,
-        // ADD THIS LINE: Save the delay
-        delay: parseFloat(document.getElementById("propModDelay").value) || 0,
-        oneTime: document.getElementById("propModOneTime").checked,
-        
-        x: document.getElementById("propModX").value !== "" ? parseFloat(document.getElementById("propModX").value) : undefined,
-        y: document.getElementById("propModY").value !== "" ? parseFloat(document.getElementById("propModY").value) : undefined,
-        vx: document.getElementById("propModVX").value !== "" ? parseFloat(document.getElementById("propModVX").value) : undefined,
-        vy: document.getElementById("propModVY").value !== "" ? parseFloat(document.getElementById("propModVY").value) : undefined,
-        opacity: document.getElementById("propModOpacity").value !== "" ? parseFloat(document.getElementById("propModOpacity").value) : undefined,
-        width: document.getElementById("propModWidth").value !== "" ? parseFloat(document.getElementById("propModWidth").value) : undefined,
-        height: document.getElementById("propModHeight").value !== "" ? parseFloat(document.getElementById("propModHeight").value) : undefined,
-        
-        solid: document.getElementById("propModSolidVal").value,
-        kill: document.getElementById("propModKillVal").value,
-        slime: document.getElementById("propModSlimeVal").value,
-        
-        active: document.getElementById("propModActiveVal").value, // Saves "true", "false", or ""
-        
-        text: document.getElementById("propModTextCheck").checked ? document.getElementById("propModText").value : undefined,
-        
-    };
+    oneTime: document.getElementById("propModOneTime").checked
+};
     // Ensure 'hasFired' and 'active' exist
     if (selectedObject.hasFired === undefined) selectedObject.hasFired = false;
     if (selectedObject.active === undefined) selectedObject.active = true;
@@ -4786,9 +4660,7 @@ function handleResize() {
 // 3. Attach the debounced wrapper to the window resize event
 // 200ms is the sweet spot: invisible to the user, but saves hundreds of frames of lag
 window.addEventListener('resize', debounce(handleResize, 200));
-document.getElementById("propModTextCheck").addEventListener("change", (e) => {
-    document.getElementById("propModText").style.display = e.target.checked ? 'block' : 'none';
-});
+
 canvas.addEventListener("mouseup", () => {
     isMouseDown = false;
     lastPlacedCell = { x: -1, y: -1 };
