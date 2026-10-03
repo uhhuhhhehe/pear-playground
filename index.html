@@ -329,12 +329,12 @@
     color: #27272a !important;
 }
 
-#triggerProps {
+#triggerProps, #effectTriggerProps {
     border-top: 1px solid #e4e4e7;
     margin-top: 12px;
     padding-top: 12px;
 }
-#triggerProps h4 {
+#triggerProps h4, #effectTriggerProps h4 {
     margin-top: 0;
     margin-bottom: 10px;
     font-size: 13px;
@@ -745,7 +745,7 @@
     </div>
 
     <!-- Category view -->
-    <div id="toolbarCategories" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;"></div>
+    <div id="toolbarCategories" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;"></div>
 
     <!-- Tool grid view -->
     <div id="toolbarToolGrid" style="display:none;"></div>
@@ -908,20 +908,24 @@
     </div>
 </div>
     <div id="triggerProps" style="display:none;">
-    <h4>Trigger Settings</h4>
-    <button onclick="openScriptEditor()" type="button" style="
+        <h4>Main Trigger Settings</h4>
+        <button onclick="openScriptEditor()" type="button" style="
   width:100%; margin-bottom:14px; padding:9px;
   background:#f0f0ff; color:#6366f1;
   border:1px solid #c7d2fe; border-radius:7px;
   font-size:13px; font-weight:600; cursor:pointer;
 ">⚡ Open Script Editor</button>
-
-    <div class="checkbox-group">
-        <input type="checkbox" id="propModOneTime">
-        <label for="propModOneTime">One-Time Trigger (Won't fire again until reset)</label>
+        <div class="checkbox-group">
+            <input type="checkbox" id="propModOneTime">
+            <label for="propModOneTime">One-Time Trigger (Won't fire again until reset)</label>
+        </div>
     </div>
-</div>
     
+    <div id="effectTriggerProps" style="display:none;">
+        <h4 id="effectTriggerTitle">Effect Trigger</h4>
+        <div id="effectTriggerFields"></div>
+    </div>
+
     <div id="monitorProps" style="display:none; padding-top: 10px; border-top: 1px solid #ddd; margin-top: 10px;">
         <h3>Monitor Settings</h3>
         
@@ -1213,8 +1217,8 @@
 ">
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #e4e4e7;">
     <div>
-      <div style="font-size:15px; font-weight:600; color:#18181b;">Trigger Script Editor</div>
-      <div style="font-size:12px; color:#71717a; margin-top:2px;">Variables → Conditions → Actions, run top to bottom</div>
+      <div style="font-size:15px; font-weight:600; color:#18181b;">Main Trigger — Logic Editor</div>
+      <div style="font-size:12px; color:#71717a; margin-top:2px;">Calculate, decide, and fire other triggers. Use Move / Modify / Lighting / Misc effect triggers to change the world.</div>
     </div>
     <button onclick="closeScriptEditor()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#71717a;padding:4px 8px;">✕</button>
   </div>
@@ -1860,7 +1864,7 @@ function applyLevelData(data) {
                     restored.group = restored.group.split(',').map(g => g.trim()).filter(g => g.length > 0);
                 }
                 if (!Array.isArray(restored.group)) restored.group = [];
-                if (restored.tag === 'trigger') {
+                if (isAnyTrigger(restored.tag)) {
                     restored.active = restored.active ?? true;
                     restored.hasFired = restored.hasFired ?? false;
                     restored.mods = restored.mods || {};
@@ -2057,11 +2061,21 @@ const TOOLBAR_CATEGORIES = [
         id: 'logic', label: 'Logic', icon: '⚡',
         color: '#8b5cf6',
         tools: [
-            { tool: 'trigger',  name: 'Trigger'  },
+            { tool: 'trigger',  name: 'Main Trigger' },
             { tool: 'monitor',  name: 'Monitor'  },
             { tool: 'counter',  name: 'Counter'  },
             { tool: 'comparer', name: 'Comparer' },
             { tool: 'clock',    name: 'Clock'    },
+        ]
+    },
+    {
+        id: 'effects', label: 'Effects', icon: '✨',
+        color: '#0ea5e9',
+        tools: [
+            { tool: 'trigger_move',     name: 'Move'     },
+            { tool: 'trigger_modify',   name: 'Modify'   },
+            { tool: 'trigger_lighting', name: 'Lighting' },
+            { tool: 'trigger_effect',   name: 'Misc'     },
         ]
     },
     {
@@ -2598,6 +2612,12 @@ function getGroups(obj) {
 
 function hasGroup(obj, groupName) {
     return getGroups(obj).includes(groupName);
+}
+function isEffectTag(tag) {
+    return Object.prototype.hasOwnProperty.call(EFFECT_TRIGGER_DEFS, tag);
+}
+function isAnyTrigger(tag) {
+    return tag === 'trigger' || isEffectTag(tag);
 }
 function setPlayMode(enabled) {
     playMode = enabled;
@@ -3806,7 +3826,7 @@ async function joinCurrentGame() {
         .map(g => g.trim())
         .filter(g => g.length > 0);
 }
-        if (restored.tag === 'trigger') {
+        if (isAnyTrigger(restored.tag)) {
             if (restored.active === undefined) restored.active = true;
             if (restored.hasFired === undefined) restored.hasFired = false;
             if (!restored.mods) restored.mods = {};
@@ -3931,7 +3951,7 @@ function loadMapFile(ev) {
 
                         if (restored.opacity === undefined) restored.opacity = 1;
 
-                        if (restored.tag === 'trigger') {
+                        if (isAnyTrigger(restored.tag)) {
                             if (restored.active === undefined) restored.active = true;
                             if (restored.hasFired === undefined) restored.hasFired = false;
                             if (!restored.mods) restored.mods = {};
@@ -4163,7 +4183,7 @@ function checkResetBreakables() {
 // --- Reset Triggers ---
 function resetAllTriggers() {
     objects.forEach(o => {
-        if (o.tag === 'trigger') { o.hasFired = false; o.active = true; }
+        if (isAnyTrigger(o.tag)) { o.hasFired = false; o.active = true; }
         
         // Reset Breakables
         if (o.tag === 'breakable') { 
@@ -4364,6 +4384,7 @@ function openPopup(obj) {
   const isPlatform = obj.tag === "platform";
   const isGoal     = obj.tag === "goal";
   const isSpawn    = obj.tag === "spawn" || obj.tag === "defaultspawn";
+  const isEffect   = isEffectTag(obj.tag);
 
   // General
   document.getElementById("propTag").value     = obj.tag;
@@ -4381,7 +4402,7 @@ function openPopup(obj) {
   document.getElementById("labelPropText").style.display     = isText ? "block" : "none";
 
   // Physics checkboxes
-  const showPhysics = !(isSpawn || isTrigger || isMonitor || isText);
+  const showPhysics = !(isSpawn || isTrigger || isEffect || isMonitor || isText);
   document.getElementById("propVisible").checked  = (obj.opacity ?? 1) > 0;
   document.getElementById("propSolid").checked    = obj.solid !== false;
   document.getElementById("propPushable").checked = !!obj.pushable;
@@ -4406,12 +4427,14 @@ function openPopup(obj) {
   document.getElementById("clockProps").style.display    = isClock    ? "block" : "none";
   document.getElementById("platformProps").style.display = isPlatform ? "block" : "none";
   document.getElementById("goalProps").style.display     = isGoal     ? "block" : "none";
+  document.getElementById("effectTriggerProps").style.display = isEffect ? "block" : "none";
+  if (isEffect) renderEffectTriggerFields(obj);
 
   // Trigger fields
   if (isTrigger) {
     const mods = obj.mods || {};
     document.getElementById("propModOneTime").checked = !!mods.oneTime;
-}
+  }
 
   // Monitor fields
   if (isMonitor) {
@@ -4490,6 +4513,7 @@ function closePopup() {
   document.getElementById("popup").style.display = "none";
   document.getElementById("overlay").style.display = "none";
   document.getElementById("triggerProps").style.display = "none";
+  document.getElementById("effectTriggerProps").style.display = "none";
   selectedObject = null;
   selectedObjectIndex = -1;
 }
@@ -4520,13 +4544,15 @@ selectedObject.group = rawGroup
   if (selectedObject.tag === "trigger") {
     // Save trigger-specific properties
     selectedObject.mods = {
-    oneTime: document.getElementById("propModOneTime").checked
-};
+        oneTime: document.getElementById("propModOneTime").checked
+    };
     // Ensure 'hasFired' and 'active' exist
     if (selectedObject.hasFired === undefined) selectedObject.hasFired = false;
     if (selectedObject.active === undefined) selectedObject.active = true;
     
   // Corrected Code (Add the missing brace and semicolon)
+} else if (isEffectTag(selectedObject.tag)) {
+    saveEffectTriggerFields(selectedObject);
 } else if (selectedObject.tag === "monitor") { // NEW MONITOR SAVE LOGIC
     
     // START of the monProps OBJECT {
@@ -4660,7 +4686,6 @@ function handleResize() {
 // 3. Attach the debounced wrapper to the window resize event
 // 200ms is the sweet spot: invisible to the user, but saves hundreds of frames of lag
 window.addEventListener('resize', debounce(handleResize, 200));
-
 canvas.addEventListener("mouseup", () => {
     isMouseDown = false;
     lastPlacedCell = { x: -1, y: -1 };
@@ -4986,6 +5011,21 @@ case 'marble':
             newObj.mods = {};
             newObj.id = Date.now() + Math.random();
             break;
+        case 'trigger_move':
+        case 'trigger_modify':
+        case 'trigger_lighting':
+        case 'trigger_effect':
+            newObj.tag = currentTool;
+            newObj.solid = false;
+            newObj.gravity = 0;
+            newObj.pushable = false;
+            newObj.hasFired = false;
+            newObj.active = true;
+            newObj.opacity = 0.5;
+            newObj.group = [];
+            newObj.fx = {};
+            newObj.id = Date.now() + Math.random();
+            break;
         case 'clock':
             newObj.tag = "clock";
             newObj.solid = false;
@@ -5198,7 +5238,8 @@ canvas.addEventListener("mousemove", e => {
     // Drag-to-place blocks
     const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
         'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform',
-        'coin', 'tree', 'bush', 'wind', 'light'];
+        'coin', 'tree', 'bush', 'wind', 'light',
+        'trigger_move', 'trigger_modify', 'trigger_lighting', 'trigger_effect'];
     if (dragBlacklist.includes(currentTool)) return;
 
     if (ghostX === lastPlacedCell.x && ghostY === lastPlacedCell.y) return;
@@ -5959,7 +6000,7 @@ function updatePhysics(delta) {
     obj.scaleY += (1 - obj.scaleY) * 0.2 * delta;
     obj.scaleX += (1 - obj.scaleX) * 0.2 * delta;
 
-    if (obj.tag === "text" || obj.tag === "trigger") return;
+    if (obj.tag === "text" || isAnyTrigger(obj.tag)) return;
 
     // --- 1. Player Controls ---
 if (obj.tag === "player") {
@@ -6070,12 +6111,265 @@ if (onConveyor) {
  * This helper avoids recursion issues by not using a synthetic trigger object.
  * @param {string} groupName - The target group name.
  */
+let _fireDepth = 0;
 function fireTriggerGroup(groupName, sourceEvent = 'triggered') {
-    objects.forEach(target => {
-        if (target.tag === 'trigger' && target.active && hasGroup(target, groupName)) {
-            executeTriggerLogic(target, sourceEvent);
+    if (_fireDepth > 25) return; // stops a trigger that fires its own group forever
+    _fireDepth++;
+    try {
+        objects.forEach(target => {
+            if (!target.active || !hasGroup(target, groupName)) return;
+            if (target.tag === 'trigger')      executeTriggerLogic(target, sourceEvent);
+            else if (isEffectTag(target.tag))  executeEffectTrigger(target, sourceEvent);
+        });
+    } finally {
+        _fireDepth--;
+    }
+}
+
+/* ============================================================
+   EFFECT TRIGGERS
+   The main trigger does the thinking (script editor: variables,
+   calculations, if/else, firing other triggers). Effect triggers
+   each do ONE kind of job and have no scripting.
+============================================================ */
+function parseFxNum(v) {
+    if (v === undefined || v === null || String(v).trim() === '') return null;
+    const n = parseFloat(v);
+    return isNaN(n) ? null : n;
+}
+function parseFxBool(v) {
+    if (v === true  || v === 'true')  return true;
+    if (v === false || v === 'false') return false;
+    return null;
+}
+function forEachInGroup(groupName, fn) {
+    const g = String(groupName || '').trim();
+    if (!g) return;
+    objects.forEach(o => { if (hasGroup(o, g)) fn(o); });
+}
+
+const FX_TRISTATE = [
+    { value: '',      label: '(Ignore)' },
+    { value: 'true',  label: 'Yes' },
+    { value: 'false', label: 'No' }
+];
+const EFFECT_COMMON_FIELDS = [
+    { key: 'onTouch', label: 'Also fire when the player touches it', type: 'checkbox' },
+    { key: 'oneTime', label: "One-time (won't fire again until reset)", type: 'checkbox' }
+];
+
+const EFFECT_TRIGGER_DEFS = {
+    trigger_move: {
+        label: 'Move', title: 'Move Trigger', color: '#0ea5e9', glyph: '\u279c',
+        hint: 'Moves or launches every block in the target group. Leave a box blank to ignore it.',
+        fields: [
+            { key: 'targetGroup', label: 'Target Group', type: 'text', placeholder: "e.g., 'door_level1'" },
+            { key: 'x',  label: 'X Position', type: 'number', placeholder: 'e.g., 500' },
+            { key: 'y',  label: 'Y Position', type: 'number', placeholder: 'e.g., 300' },
+            { key: 'relative', label: 'X / Y are offsets from where the block is now', type: 'checkbox' },
+            { key: 'vx', label: 'Velocity X', type: 'number', placeholder: 'e.g., 5' },
+            { key: 'vy', label: 'Velocity Y', type: 'number', placeholder: 'e.g., -10' }
+        ],
+        run(fx) {
+            const x = parseFxNum(fx.x),  y = parseFxNum(fx.y);
+            const vx = parseFxNum(fx.vx), vy = parseFxNum(fx.vy);
+            forEachInGroup(fx.targetGroup, o => {
+                if (x !== null) o.x = fx.relative ? o.x + x : x;
+                if (y !== null) o.y = fx.relative ? o.y + y : y;
+                if (vx !== null) o.vx = vx;
+                if (vy !== null) o.vy = vy;
+            });
+        }
+    },
+
+    trigger_modify: {
+        label: 'Modify', title: 'Modify Trigger', color: '#f59e0b', glyph: '\u270e',
+        hint: 'Changes the properties of every block in the target group. Leave a box on (Ignore) / blank to leave it alone.',
+        fields: [
+            { key: 'targetGroup', label: 'Target Group', type: 'text', placeholder: "e.g., 'door_level1'" },
+            { key: 'opacity', label: 'Opacity (0\u20131)', type: 'number', step: '0.1', min: '0', max: '1' },
+            { key: 'width',   label: 'Width',  type: 'number' },
+            { key: 'height',  label: 'Height', type: 'number' },
+            { key: 'solid',  label: 'Solid',      type: 'select', options: FX_TRISTATE },
+            { key: 'kill',   label: 'Kill block', type: 'select', options: FX_TRISTATE },
+            { key: 'slime',  label: 'Sticky / slime', type: 'select', options: FX_TRISTATE },
+            { key: 'bounce', label: 'Bounce', type: 'select', options: FX_TRISTATE },
+            { key: 'ice',    label: 'Ice',    type: 'select', options: FX_TRISTATE },
+            { key: 'text',   label: 'Set text (for Text blocks)', type: 'text', placeholder: 'New text...' }
+        ],
+        run(fx) {
+            const op = parseFxNum(fx.opacity), w = parseFxNum(fx.width), h = parseFxNum(fx.height);
+            const solid = parseFxBool(fx.solid), kill = parseFxBool(fx.kill), slime = parseFxBool(fx.slime);
+            const bounce = parseFxBool(fx.bounce), ice = parseFxBool(fx.ice);
+            const hasText = fx.text !== undefined && fx.text !== '';
+            forEachInGroup(fx.targetGroup, o => {
+                if (op !== null) o.opacity = op;
+                if (w  !== null) o.width  = w;
+                if (h  !== null) o.height = h;
+                if (solid  !== null) o.solid  = solid;
+                if (kill   !== null) o.kill   = kill;
+                if (slime  !== null) o.slime  = slime;
+                if (bounce !== null) o.bounce = bounce;
+                if (ice    !== null) o.ice    = ice;
+                if (hasText) o.text = String(fx.text);
+            });
+        }
+    },
+
+    trigger_lighting: {
+        label: 'Lighting', title: 'Lighting Trigger', color: '#eab308', glyph: '\u2600',
+        hint: 'Changes the world lighting theme and/or edits Light blocks in a group. Blank = ignore.',
+        fields: [
+            { key: 'theme', label: 'Lighting theme', type: 'select',
+              options: () => [{ value: '', label: '(Ignore)' }]
+                  .concat(Object.keys(LIGHTING_THEMES).map(k => ({ value: k, label: k }))) },
+            { key: 'lightGroup', label: 'Light Group (Light blocks to edit)', type: 'text', placeholder: "e.g., 'torches'" },
+            { key: 'lightR', label: 'Red (0\u2013255)',   type: 'number', min: '0', max: '255' },
+            { key: 'lightG', label: 'Green (0\u2013255)', type: 'number', min: '0', max: '255' },
+            { key: 'lightB', label: 'Blue (0\u2013255)',  type: 'number', min: '0', max: '255' },
+            { key: 'lightRadius',    label: 'Radius',          type: 'number', min: '10' },
+            { key: 'lightIntensity', label: 'Intensity (0\u20131)', type: 'number', step: '0.05', min: '0', max: '1' }
+        ],
+        run(fx) {
+            if (fx.theme) setLightingTheme(fx.theme);
+            const c = v => { const n = parseFxNum(v); return n === null ? null : Math.round(Math.max(0, Math.min(255, n))); };
+            const r = c(fx.lightR), g = c(fx.lightG), b = c(fx.lightB);
+            const rad = parseFxNum(fx.lightRadius), inten = parseFxNum(fx.lightIntensity);
+            forEachInGroup(fx.lightGroup, o => {
+                if (o.tag !== 'light') return;
+                if (r !== null) o.lightR = r;
+                if (g !== null) o.lightG = g;
+                if (b !== null) o.lightB = b;
+                if (rad   !== null) o.lightRadius = rad;
+                if (inten !== null) o.lightIntensity = Math.max(0, Math.min(1, inten));
+            });
+        }
+    },
+
+    trigger_effect: {
+        label: 'Misc', title: 'Misc Effect Trigger', color: '#ec4899', glyph: '\u2726',
+        hint: 'Screen shake, respawning the player, or particles on a group.',
+        fields: [
+            { key: 'effect', label: 'Effect', type: 'select', default: 'shake', options: [
+                { value: 'shake',     label: 'Shake screen' },
+                { value: 'respawn',   label: 'Respawn player' },
+                { value: 'particles', label: 'Particles at group' }
+            ] },
+            { key: 'amount', label: 'Shake intensity (blank = 10)', type: 'number', min: '0' },
+            { key: 'targetGroup', label: 'Particle Group', type: 'text', placeholder: "e.g., 'gems'" },
+            { key: 'color', label: 'Particle color', type: 'color', default: '#6366f1' }
+        ],
+        run(fx) {
+            const effect = fx.effect || 'shake';
+            if (effect === 'shake')   { addShake(parseFxNum(fx.amount) ?? 10); return; }
+            if (effect === 'respawn') { resetPlayer(player); return; }
+            if (effect === 'particles') {
+                forEachInGroup(fx.targetGroup, o =>
+                    spawnParticles(o.x + o.width / 2, o.y + o.height / 2, 12, fx.color || '#6366f1', 6));
+            }
+        }
+    }
+};
+
+function executeEffectTrigger(trigger, sourceEvent = 'triggered') {
+    const def = EFFECT_TRIGGER_DEFS[trigger.tag];
+    if (!def) return;
+    const fx = trigger.fx || {};
+    if (fx.oneTime && trigger.hasFired) return;
+    def.run(fx, trigger);
+    if (fx.oneTime) trigger.hasFired = true;
+}
+
+// Effect triggers that have "fire when the player touches it" ticked
+let activeEffectTouches = new Set();
+function checkEffectTriggerTouches() {
+    const now = new Set();
+    objects.forEach(t => {
+        if (!isEffectTag(t.tag) || !t.fx || !t.fx.onTouch || t.active === false) return;
+        if (checkCollision(player, t)) {
+            now.add(t);
+            if (!activeEffectTouches.has(t)) executeEffectTrigger(t, 'touched');
         }
     });
+    activeEffectTouches = now;
+}
+
+/* ----- edit-popup form for effect triggers (built from the defs above) ----- */
+function getEffectFields(def) {
+    return def.fields.concat(EFFECT_COMMON_FIELDS);
+}
+function renderEffectTriggerFields(obj) {
+    const def = EFFECT_TRIGGER_DEFS[obj.tag];
+    if (!def) return;
+    document.getElementById('effectTriggerTitle').textContent = def.title;
+    const box = document.getElementById('effectTriggerFields');
+    box.innerHTML = '';
+
+    if (def.hint) {
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:11px;color:#71717a;margin-bottom:10px;line-height:1.4;';
+        hint.textContent = def.hint;
+        box.appendChild(hint);
+    }
+
+    const fx = obj.fx || {};
+    getEffectFields(def).forEach(f => {
+        const id  = 'fx_' + f.key;
+        const val = fx[f.key] !== undefined ? fx[f.key] : f.default;
+
+        if (f.type === 'checkbox') {
+            const wrap = document.createElement('div');
+            wrap.className = 'checkbox-group';
+            const inp = document.createElement('input');
+            inp.type = 'checkbox'; inp.id = id; inp.checked = !!val;
+            const lab = document.createElement('label');
+            lab.htmlFor = id; lab.textContent = f.label;
+            wrap.appendChild(inp); wrap.appendChild(lab);
+            box.appendChild(wrap);
+            return;
+        }
+
+        const wrap = document.createElement('div');
+        wrap.className = 'input-group';
+        const lab = document.createElement('label');
+        lab.htmlFor = id; lab.textContent = f.label + ':';
+        wrap.appendChild(lab);
+
+        let inp;
+        if (f.type === 'select') {
+            inp = document.createElement('select');
+            const opts = typeof f.options === 'function' ? f.options() : f.options;
+            opts.forEach(o => {
+                const opt = document.createElement('option');
+                opt.value = o.value; opt.textContent = o.label;
+                inp.appendChild(opt);
+            });
+        } else {
+            inp = document.createElement('input');
+            inp.type = f.type || 'text';
+            if (f.placeholder) inp.placeholder = f.placeholder;
+            if (f.step) inp.step = f.step;
+            if (f.min !== undefined) inp.min = f.min;
+            if (f.max !== undefined) inp.max = f.max;
+        }
+        inp.id = id;
+        inp.value = val !== undefined && val !== null ? val : '';
+        wrap.appendChild(inp);
+        box.appendChild(wrap);
+    });
+}
+function saveEffectTriggerFields(obj) {
+    const def = EFFECT_TRIGGER_DEFS[obj.tag];
+    if (!def) return;
+    const fx = {};
+    getEffectFields(def).forEach(f => {
+        const el = document.getElementById('fx_' + f.key);
+        if (!el) return;
+        fx[f.key] = f.type === 'checkbox' ? el.checked : el.value;
+    });
+    obj.fx = fx;
+    if (obj.hasFired === undefined) obj.hasFired = false;
+    if (obj.active === undefined) obj.active = true;
 }
 /* ============================================================
    TRIGGER SCRIPT EDITOR — full data processing edition
@@ -6172,6 +6466,23 @@ const ACTION_TYPES = [
   { value:'set_light_radius',    label:'Set light radius' },
   { value:'set_light_intensity', label:'Set light intensity' }
 ];
+
+/* The main trigger only does logic. Anything that changes the world
+   (move, modify, lighting, effects) lives on an effect trigger instead. */
+const MAIN_ACTION_TYPES = [
+  'fire_group', 'activate_group', 'deactivate_group',
+  'reset_counter', 'increment_counter', 'set_counter',
+  'toggle_clock', 'activate_clock', 'deactivate_clock',
+  'set_var', 'log'
+];
+function getActionOptions(current) {
+  const opts = ACTION_TYPES.filter(a => MAIN_ACTION_TYPES.includes(a.value));
+  if (current && !MAIN_ACTION_TYPES.includes(current)) {
+    const old = ACTION_TYPES.find(a => a.value === current);
+    if (old) opts.push({ value: old.value, label: '⚠ ' + old.label + ' (old — use an effect trigger)' });
+  }
+  return opts;
+}
 
 /* ===== open / close ===== */
 function openScriptEditor() {
@@ -6505,7 +6816,7 @@ function appendConditionInputs(row, step, i) {
 }
 
 function appendActionInputsForStep(row, step, i) {
-  const typeSel = makeSelect(ACTION_TYPES, step.type);
+  const typeSel = makeSelect(getActionOptions(step.type), step.type);
   typeSel.onchange = () => {
     scriptSteps[i].type   = typeSel.value;
     scriptSteps[i].value  = '';
@@ -6810,7 +7121,7 @@ function evaluateScriptConditions(conditions, vars) {
     if (t === 'object_hidden')  return objects.some(o => hasGroup(o, cond.group) && (o.opacity ?? 1) <= 0);
     if (t === 'object_solid')   return objects.some(o => hasGroup(o, cond.group) && o.solid);
     if (t === 'clock_active')   return objects.some(o => o.tag === 'clock' && hasGroup(o, cond.group) && o.active !== false);
-    if (t === 'trigger_fired')  return objects.some(o => o.tag === 'trigger' && hasGroup(o, cond.group) && o.hasFired);
+    if (t === 'trigger_fired')  return objects.some(o => isAnyTrigger(o.tag) && hasGroup(o, cond.group) && o.hasFired);
 
     return true;
   });
@@ -7185,6 +7496,8 @@ function executeTriggerLogic(trigger, sourceEvent = 'touched') {
                 } else if (mods.active === 'fire') {
                     if (target.tag === 'trigger') {
                         executeTriggerLogic(target, 'triggered');
+                    } else if (isEffectTag(target.tag)) {
+                        executeEffectTrigger(target, 'triggered');
                     }
                 }
             }
@@ -8161,6 +8474,24 @@ case 'goal': {
     ctx.strokeRect(x, y, w, h);
     break;
 }
+        case 'trigger_move':
+        case 'trigger_modify':
+        case 'trigger_lighting':
+        case 'trigger_effect': {
+            const d = EFFECT_TRIGGER_DEFS[tag];
+            ctx.fillStyle = d.color + '22';
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = d.color; ctx.lineWidth = 2;
+            ctx.setLineDash([5, 4]);
+            ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+            ctx.setLineDash([]);
+            ctx.fillStyle = d.color;
+            ctx.font = 'bold ' + Math.round(Math.min(w, h) * 0.5) + 'px system-ui';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(d.glyph, 0, 0);
+            break;
+        }
         case 'trigger': {
             ctx.fillStyle = 'rgba(99, 102, 241, 0.12)';
             ctx.fillRect(x, y, w, h);
@@ -9045,7 +9376,7 @@ function drawSingleObject(obj) {
     ctx.save();
     
     let opacity = obj.opacity ?? 1;
-    if (obj.tag === 'trigger' && !obj.active) opacity *= 0.3;
+    if (isAnyTrigger(obj.tag) && !obj.active) opacity *= 0.3;
     ctx.globalAlpha = opacity;
 
     const centerX = obj.x - camera.x + obj.width / 2;
@@ -9302,12 +9633,12 @@ function drawObjects() {
 
   // First pass: draw triggers
   visibleObjects.forEach(obj => {
-    if (obj.tag === 'trigger') drawSingleObject(obj);
+    if (isAnyTrigger(obj.tag)) drawSingleObject(obj);
   });
 
   // Second pass: draw non-triggers
   visibleObjects.forEach(obj => {
-    if (obj.tag !== 'trigger') drawSingleObject(obj);
+    if (!isAnyTrigger(obj.tag)) drawSingleObject(obj);
   });
   // Draw drag selection rectangle
 if (isDragSelecting) {
@@ -9629,6 +9960,7 @@ function gameLoop(timestamp) {
         updatePhysics(delta);
         checkClocks();
         checkTriggers();
+        checkEffectTriggerTouches();
         checkMonitors();
         checkComparers();
         updatePlatforms(delta);
