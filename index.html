@@ -826,6 +826,10 @@
 <div id="textProps" style="display:none; padding-top:10px; border-top:1px solid #e4e4e7; margin-top:10px;">
     <h4 style="margin:0 0 10px; font-size:13px; font-weight:600; color:#52525b; text-transform:uppercase; letter-spacing:.04em;">Text Settings</h4>
     <div class="input-group">
+        <label for="propTextVarGroup">Variable ID (use as {id}):</label>
+        <input type="text" id="propTextVarGroup" placeholder="e.g., 'playerName' (blank = not a variable)">
+    </div>
+    <div class="input-group">
         <label for="propTextColor">Text Color:</label>
         <input type="color" id="propTextColor" value="#ffffff">
     </div>
@@ -947,6 +951,17 @@
         <div class="checkbox-group">
             <input type="checkbox" id="monOneTime">
             <label for="monOneTime">One-Time Monitor (Fires once for each event type)</label>
+        </div>
+    </div>
+    <div id="booleanProps" style="display:none; padding-top: 10px; border-top: 1px solid #ddd; margin-top: 10px;">
+        <h3>Boolean Settings</h3>
+        <div class="input-group">
+            <label for="propBoolGroup">Variable ID (use as {id}):</label>
+            <input type="text" id="propBoolGroup" placeholder="e.g., 'doorOpen'">
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="propBoolValue">
+            <label for="propBoolValue">Starts as true</label>
         </div>
     </div>
     <div id="counterProps" style="display:none; padding-top: 10px; border-top: 1px solid #ddd; margin-top: 10px;">
@@ -2066,6 +2081,7 @@ const TOOLBAR_CATEGORIES = [
             { tool: 'counter',  name: 'Counter'  },
             { tool: 'comparer', name: 'Comparer' },
             { tool: 'clock',    name: 'Clock'    },
+            { tool: 'boolean',  name: 'Boolean'  },
         ]
     },
     {
@@ -2075,6 +2091,7 @@ const TOOLBAR_CATEGORIES = [
             { tool: 'trigger_move',     name: 'Move'     },
             { tool: 'trigger_modify',   name: 'Modify'   },
             { tool: 'trigger_lighting', name: 'Lighting' },
+            { tool: 'trigger_variable', name: 'Variable' },
             { tool: 'trigger_effect',   name: 'Misc'     },
         ]
     },
@@ -4385,6 +4402,7 @@ function openPopup(obj) {
   const isGoal     = obj.tag === "goal";
   const isSpawn    = obj.tag === "spawn" || obj.tag === "defaultspawn";
   const isEffect   = isEffectTag(obj.tag);
+  const isBoolean  = obj.tag === "boolean";
 
   // General
   document.getElementById("propTag").value     = obj.tag;
@@ -4402,7 +4420,7 @@ function openPopup(obj) {
   document.getElementById("labelPropText").style.display     = isText ? "block" : "none";
 
   // Physics checkboxes
-  const showPhysics = !(isSpawn || isTrigger || isEffect || isMonitor || isText);
+  const showPhysics = !(isSpawn || isTrigger || isEffect || isBoolean || isMonitor || isText);
   document.getElementById("propVisible").checked  = (obj.opacity ?? 1) > 0;
   document.getElementById("propSolid").checked    = obj.solid !== false;
   document.getElementById("propPushable").checked = !!obj.pushable;
@@ -4429,6 +4447,11 @@ function openPopup(obj) {
   document.getElementById("goalProps").style.display     = isGoal     ? "block" : "none";
   document.getElementById("effectTriggerProps").style.display = isEffect ? "block" : "none";
   if (isEffect) renderEffectTriggerFields(obj);
+  document.getElementById("booleanProps").style.display = isBoolean ? "block" : "none";
+  if (isBoolean) {
+    document.getElementById("propBoolGroup").value   = obj.varGroup || "";
+    document.getElementById("propBoolValue").checked = !!obj.value;
+  }
 
   // Trigger fields
   if (isTrigger) {
@@ -4505,6 +4528,7 @@ if (isTextBlock) {
     document.getElementById('propTextBg').value           = obj.textBg           || '#000000';
     document.getElementById('propTextBgOpacity').value    = obj.textBgOpacity    ?? 0;
     document.getElementById('propTextRadius').value       = obj.textRadius       ?? 0;
+    document.getElementById('propTextVarGroup').value = obj.varGroup || '';
 }
   document.getElementById("popup").style.display   = "block";
   document.getElementById("overlay").style.display = "block";
@@ -4564,7 +4588,10 @@ selectedObject.group = rawGroup
       
     }; // <--- VITAL: This semicolon closes the monProps OBJECT
     
-} else if (selectedObject.tag === "counter") {
+} else if (selectedObject.tag === "boolean") {
+      selectedObject.varGroup = document.getElementById("propBoolGroup").value.trim();
+      selectedObject.value    = document.getElementById("propBoolValue").checked;
+  } else if (selectedObject.tag === "counter") {
       selectedObject.limit = parseInt(document.getElementById("propCountLimit").value) || 1;
       selectedObject.targetGroup = document.getElementById("propCountTarget").value;
       selectedObject.countGroup = document.getElementById("propCountGroup").value;
@@ -4629,6 +4656,7 @@ if (selectedObject.tag === 'text') {
     selectedObject.textBg           = document.getElementById('propTextBg').value;
     selectedObject.textBgOpacity    = parseFloat(document.getElementById('propTextBgOpacity').value)   ?? 0;
     selectedObject.textRadius       = parseInt(document.getElementById('propTextRadius').value)         || 0;
+    selectedObject.varGroup = document.getElementById('propTextVarGroup').value.trim();
 }
 }// <--- VITAL: This brace closes the 'else if (monitor)' CODE BLOCK
 
@@ -5015,6 +5043,7 @@ case 'marble':
         case 'trigger_modify':
         case 'trigger_lighting':
         case 'trigger_effect':
+        case 'trigger_variable':
             newObj.tag = currentTool;
             newObj.solid = false;
             newObj.gravity = 0;
@@ -5043,6 +5072,14 @@ case 'marble':
             newObj.countGroup = "";
             newObj.targetGroup = "";
             newObj.solid = true;
+            newObj.id = Date.now() + Math.random();
+            break;
+        case 'boolean':
+            newObj.tag = "boolean";
+            newObj.solid = false;
+            newObj.opacity = 0.9;
+            newObj.value = false;
+            newObj.varGroup = "";
             newObj.id = Date.now() + Math.random();
             break;
         case 'comparer':
@@ -5239,7 +5276,7 @@ canvas.addEventListener("mousemove", e => {
     const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
         'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform',
         'coin', 'tree', 'bush', 'wind', 'light',
-        'trigger_move', 'trigger_modify', 'trigger_lighting', 'trigger_effect'];
+        'trigger_move', 'trigger_modify', 'trigger_lighting', 'trigger_effect', 'trigger_variable', 'boolean'];
     if (dragBlacklist.includes(currentTool)) return;
 
     if (ghostX === lastPlacedCell.x && ghostY === lastPlacedCell.y) return;
@@ -6142,14 +6179,21 @@ function parseFxBool(v) {
     if (v === false || v === 'false') return false;
     return null;
 }
-  // Replaces {counterId} with that counter's current count.
-// Unknown ids are left as typed so you can spot typos.
+// Replaces {id} with a variable's current value:
+//   Counter  (Count Group)  -> its number
+//   Boolean  (Variable ID)  -> "true" / "false"
+//   Text     (Variable ID)  -> its text
+// Unknown ids are left as typed so typos are easy to spot.
 function resolveFxVars(v) {
     if (typeof v !== 'string' || v.indexOf('{') === -1) return v;
     return v.replace(/\{([^{}]+)\}/g, (m, id) => {
         const name = id.trim();
-        const c = objects.find(o => o.tag === 'counter' && o.countGroup === name);
-        return c ? String(c.count || 0) : m;
+        for (const o of objects) {
+            if (o.tag === 'counter' && o.countGroup === name) return String(o.count || 0);
+            if (o.tag === 'boolean' && o.varGroup === name)   return String(!!o.value);
+            if (o.tag === 'text'    && o.varGroup === name)   return String(o.text ?? '');
+        }
+        return m;
     });
 }
 function forEachInGroup(groupName, fn) {
@@ -6252,6 +6296,35 @@ const EFFECT_TRIGGER_DEFS = {
                 if (b !== null) o.lightB = b;
                 if (rad   !== null) o.lightRadius = rad;
                 if (inten !== null) o.lightIntensity = Math.max(0, Math.min(1, inten));
+            });
+        }
+    },
+
+    trigger_variable: {
+        label: 'Variable', title: 'Variable Trigger', color: '#14b8a6', glyph: '=',
+        hint: 'Sets Text and Boolean variable blocks by their Variable ID. The text can contain {id} placeholders.',
+        fields: [
+            { key: 'varId',     label: 'Variable ID', type: 'text', placeholder: "e.g., 'playerName'" },
+            { key: 'textValue', label: 'Set text to (Text variables)', type: 'text', placeholder: 'New text...' },
+            { key: 'boolValue', label: 'Boolean value', type: 'select', options: [
+                { value: '',       label: '(Ignore)' },
+                { value: 'true',   label: 'True' },
+                { value: 'false',  label: 'False' },
+                { value: 'toggle', label: 'Toggle' }
+            ] }
+        ],
+        run(fx) {
+            const id = String(fx.varId || '').trim();
+            if (!id) return;
+            const hasText = fx.textValue !== undefined && fx.textValue !== '';
+            objects.forEach(o => {
+                if (o.varGroup !== id) return;
+                if (o.tag === 'text' && hasText) o.text = String(fx.textValue);
+                if (o.tag === 'boolean') {
+                    if (fx.boolValue === 'true')        o.value = true;
+                    else if (fx.boolValue === 'false')  o.value = false;
+                    else if (fx.boolValue === 'toggle') o.value = !o.value;
+                }
             });
         }
     },
@@ -6450,6 +6523,8 @@ const CONDITION_TYPES = [
   { value:'object_solid',    label:'Object is solid' },
   { value:'clock_active',    label:'Clock active' },
   { value:'trigger_fired',   label:'Trigger fired' },
+  { value:'bool_true',       label:'Boolean is true (Variable ID)' },
+  { value:'bool_false',      label:'Boolean is false (Variable ID)' },
 ];
 
 const ACTION_TYPES = [
@@ -7134,6 +7209,8 @@ function evaluateScriptConditions(conditions, vars) {
     if (t === 'object_solid')   return objects.some(o => hasGroup(o, cond.group) && o.solid);
     if (t === 'clock_active')   return objects.some(o => o.tag === 'clock' && hasGroup(o, cond.group) && o.active !== false);
     if (t === 'trigger_fired')  return objects.some(o => isAnyTrigger(o.tag) && hasGroup(o, cond.group) && o.hasFired);
+    if (t === 'bool_true')      return objects.some(o => o.tag === 'boolean' && o.varGroup === cond.group && !!o.value);
+    if (t === 'bool_false')     return objects.some(o => o.tag === 'boolean' && o.varGroup === cond.group && !o.value);
 
     return true;
   });
@@ -8489,7 +8566,8 @@ case 'goal': {
         case 'trigger_move':
         case 'trigger_modify':
         case 'trigger_lighting':
-        case 'trigger_effect': {
+        case 'trigger_effect':
+        case 'trigger_variable': {
             const d = EFFECT_TRIGGER_DEFS[tag];
             ctx.fillStyle = d.color + '22';
             ctx.fillRect(x, y, w, h);
@@ -8599,6 +8677,21 @@ case 'goal': {
             break;
         }
 
+        case 'boolean': {
+            const on = obj ? !!obj.value : true;
+            ctx.fillStyle = on ? '#16a34a' : '#b91c1c';
+            roundRect(ctx, x, y, w, h, 6); ctx.fill();
+            ctx.fillStyle = on ? '#22c55e' : '#ef4444';
+            roundRect(ctx, x + w * 0.1, y + h * 0.12, w * 0.8, h * 0.5, 4); ctx.fill();
+            ctx.strokeStyle = on ? '#14532d' : '#7f1d1d'; ctx.lineWidth = 2;
+            roundRect(ctx, x, y, w, h, 6); ctx.stroke();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold ' + Math.max(8, Math.round(Math.min(w, h) * 0.22)) + 'px system-ui';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(on ? 'TRUE' : 'FALSE', 0, -h * 0.02);
+            break;
+        }
         case 'counter': {
             ctx.fillStyle = '#1d4ed8';
             roundRect(ctx, x, y, w, h, 5); ctx.fill();
@@ -9446,7 +9539,7 @@ function drawSingleObject(obj) {
     ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
     const lineHeight  = fontSize * 1.35;
     const maxW        = w - pad * 2;
-    const fullText    = (obj.text || '').replace(/\\n/g, '\n');
+    const fullText    = String(resolveFxVars(obj.text || '')).replace(/\\n/g, '\n');
 
     // Split on manual newlines first, then wrap each line
     const rawLines    = fullText.split('\n');
@@ -9527,7 +9620,7 @@ drawBlockGraphic(ctx, obj.tag, obj.width, obj.height, obj);
             drawBlockGraphic(ctx, obj.tag, 40, obj.height);
             ctx.restore();
         } else {
-            drawBlockGraphic(ctx, obj.tag, obj.width, obj.height);
+            drawBlockGraphic(ctx, obj.tag, obj.width, obj.height, obj);
         }
     }
 
