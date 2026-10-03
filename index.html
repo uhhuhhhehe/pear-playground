@@ -6142,6 +6142,16 @@ function parseFxBool(v) {
     if (v === false || v === 'false') return false;
     return null;
 }
+  // Replaces {counterId} with that counter's current count.
+// Unknown ids are left as typed so you can spot typos.
+function resolveFxVars(v) {
+    if (typeof v !== 'string' || v.indexOf('{') === -1) return v;
+    return v.replace(/\{([^{}]+)\}/g, (m, id) => {
+        const name = id.trim();
+        const c = objects.find(o => o.tag === 'counter' && o.countGroup === name);
+        return c ? String(c.count || 0) : m;
+    });
+}
 function forEachInGroup(groupName, fn) {
     const g = String(groupName || '').trim();
     if (!g) return;
@@ -6274,7 +6284,9 @@ const EFFECT_TRIGGER_DEFS = {
 function executeEffectTrigger(trigger, sourceEvent = 'triggered') {
     const def = EFFECT_TRIGGER_DEFS[trigger.tag];
     if (!def) return;
-    const fx = trigger.fx || {};
+    const raw = trigger.fx || {};
+    const fx = {};
+    for (const k in raw) fx[k] = resolveFxVars(raw[k]);
     if (fx.oneTime && trigger.hasFired) return;
     def.run(fx, trigger);
     if (fx.oneTime) trigger.hasFired = true;
@@ -6346,7 +6358,7 @@ function renderEffectTriggerFields(obj) {
             });
         } else {
             inp = document.createElement('input');
-            inp.type = f.type || 'text';
+            inp.type = f.type === 'number' ? 'text' : (f.type || 'text');
             if (f.placeholder) inp.placeholder = f.placeholder;
             if (f.step) inp.step = f.step;
             if (f.min !== undefined) inp.min = f.min;
@@ -6977,7 +6989,7 @@ function applyScript() {
 // Resolve a value that may be a $varName or a literal
 function resolveVal(str, vars) {
   if (str === undefined || str === null) return 0;
-  const s = String(str).trim();
+  const s = String(resolveFxVars(str)).trim();
   if (s.startsWith('$')) {
     const name = s.slice(1);
     const v = vars[name];
