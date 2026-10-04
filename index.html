@@ -329,6 +329,15 @@
     color: #27272a !important;
 }
 
+.checkbox-group input.bindInput {
+    width: 104px !important;
+    margin: 0 0 0 auto !important;
+    padding: 3px 6px !important;
+    font-size: 11px !important;
+    font-family: monospace !important;
+    flex-shrink: 0;
+}
+.input-group input.bindInput { font-family: monospace; font-size: 11px; }
 #triggerProps, #effectTriggerProps {
     border-top: 1px solid #e4e4e7;
     margin-top: 12px;
@@ -754,6 +763,7 @@
 
 <div id="popup">
     <h3>Edit Object Properties</h3>
+    <div style="font-size:11px;color:#71717a;line-height:1.4;margin:-6px 0 12px;">Tip: type a variable like <b>{counter1}</b> or <b>{text1}</b> into any box. Checkboxes have a small box on the right for a Boolean variable (<b>{flag}</b> or <b>!{flag}</b>).</div>
     
     <div class="input-group">
         <label for="propTag">Tag/Type:</label>
@@ -2628,7 +2638,7 @@ function getGroups(obj) {
 }
 
 function hasGroup(obj, groupName) {
-    return getGroups(obj).includes(groupName);
+    return getGroups(obj).includes(resolveFxVars(groupName));
 }
 function isEffectTag(tag) {
     return Object.prototype.hasOwnProperty.call(EFFECT_TRIGGER_DEFS, tag);
@@ -4530,6 +4540,7 @@ if (isTextBlock) {
     document.getElementById('propTextRadius').value       = obj.textRadius       ?? 0;
     document.getElementById('propTextVarGroup').value = obj.varGroup || '';
 }
+  loadBindings(obj);
   document.getElementById("popup").style.display   = "block";
   document.getElementById("overlay").style.display = "block";
 }
@@ -4660,9 +4671,7 @@ if (selectedObject.tag === 'text') {
 }
 }// <--- VITAL: This brace closes the 'else if (monitor)' CODE BLOCK
 
-
-
-
+  saveBindings(selectedObject);
   closePopup();
 }
 
@@ -6151,6 +6160,7 @@ if (onConveyor) {
 let _fireDepth = 0;
 function fireTriggerGroup(groupName, sourceEvent = 'triggered') {
     if (_fireDepth > 25) return; // stops a trigger that fires its own group forever
+    groupName = resolveFxVars(groupName);
     _fireDepth++;
     try {
         objects.forEach(target => {
@@ -6184,9 +6194,9 @@ function parseFxBool(v) {
 //   Boolean  (Variable ID)  -> "true" / "false"
 //   Text     (Variable ID)  -> its text
 // Unknown ids are left as typed so typos are easy to spot.
-function resolveFxVars(v) {
+function resolveFxVars(v, depth = 0) {
     if (typeof v !== 'string' || v.indexOf('{') === -1) return v;
-    return v.replace(/\{([^{}]+)\}/g, (m, id) => {
+    const out = v.replace(/\{([^{}]+)\}/g, (m, id) => {
         const name = id.trim();
         for (const o of objects) {
             if (o.tag === 'counter' && o.countGroup === name) return String(o.count || 0);
@@ -6195,7 +6205,246 @@ function resolveFxVars(v) {
         }
         return m;
     });
+    // a text variable can itself contain {placeholders}
+    return (out !== v && out.indexOf('{') !== -1 && depth < 4) ? resolveFxVars(out, depth + 1) : out;
 }
+
+// true / false / yes / no / on / off / 1 / 0 / any number; a leading ! negates.
+// Returns null when the value isn't something we can read as a boolean.
+function parseVarBool(v) {
+    if (v === true || v === false) return v;
+    const t = String(v ?? '').trim().toLowerCase();
+    if (t[0] === '!') { const inner = parseVarBool(t.slice(1)); return inner === null ? null : !inner; }
+    if (['true', 'yes', 'on', '1'].includes(t))          return true;
+    if (['false', 'no', 'off', '0', ''].includes(t))     return false;
+    if (/^-?\d*\.?\d+$/.test(t)) return parseFloat(t) !== 0;
+    return null;
+}
+// "doorOpen" -> "{doorOpen}",  "!doorOpen" -> "!{doorOpen}",  "{a}" stays as typed
+function normalizeBoolBinding(raw) {
+    let t = String(raw || '').trim();
+    if (!t) return '';
+    if (t.indexOf('{') !== -1) return t;
+    const neg = t[0] === '!';
+    if (neg) t = t.slice(1).trim();
+    if (/^(true|false|yes|no|on|off|1|0)$/i.test(t)) return (neg ? '!' : '') + t;
+    return (neg ? '!' : '') + '{' + t + '}';
+}
+
+// Effect-trigger fields with every {variable} filled in, plus checkboxes /
+// Yes-No dropdowns that are driven by a Boolean variable.
+function getEffectFx(trigger) {
+    const raw = trigger.fx || {};
+    const fx = {};
+    for (const k in raw) fx[k] = resolveFxVars(raw[k]);
+    const def = EFFECT_TRIGGER_DEFS[trigger.tag];
+    if (def) {
+        getEffectFields(def).forEach(f => {
+            if (f.type !== 'checkbox' && !f.bindBool) return;
+            const bound = String(raw[f.key + 'Var'] || '').trim();
+            if (!bound) return;
+            const b = parseVarBool(resolveFxVars(normalizeBoolBinding(bound)));
+            if (b === null) return;
+            fx[f.key] = f.type === 'checkbox' ? b : String(b);
+        });
+    }
+    return fx;
+}
+
+// Counter change that behaves like the script editor's counter actions:
+// reaching the limit resets to 0 and fires the counter's target group.
+function setCounterValue(o, n) {
+    o.count = n;
+    const limit = parseFloat(o.limit);
+    if (!isNaN(limit) && o.count >= limit) {
+        o.count = 0;
+        if (o.targetGroup && String(o.targetGroup).trim() !== '') fireTriggerGroup(o.targetGroup);
+    }
+}
+
+/* ============================================================
+   FIELD BINDINGS — type {variables} into ANY popup field and it
+   is re-evaluated every frame. Checkboxes get a small companion box
+   for a Boolean variable. Paths use "__" for nested props because
+   Firebase keys can't contain ".".
+============================================================ */
+const BIND_FIELDS = [
+  // every object
+  { id:'propGroup',  path:'group',   type:'group', cls:'all' },
+  { id:'propX',      path:'x',       type:'num',   cls:'all' },
+  { id:'propY',      path:'y',       type:'num',   cls:'all' },
+  { id:'propWidth',  path:'width',   type:'num',   cls:'all' },
+  { id:'propHeight', path:'height',  type:'num',   cls:'all' },
+  { id:'propOpacity',path:'opacity', type:'num',   cls:'all' },
+  // blocks
+  { id:'propGravity',  path:'gravity',  type:'num',  cls:'physics' },
+  { id:'propVisible',  path:'visible',  type:'bool', cls:'physics' },
+  { id:'propSolid',    path:'solid',    type:'bool', cls:'physics' },
+  { id:'propPushable', path:'pushable', type:'bool', cls:'physics' },
+  { id:'propSlime',    path:'slime',    type:'bool', cls:'physics' },
+  { id:'propKill',     path:'kill',     type:'bool', cls:'physics' },
+  { id:'propBounce',   path:'bounce',   type:'bool', cls:'physics' },
+  { id:'propIce',      path:'ice',      type:'bool', cls:'physics' },
+  // text
+  { id:'propTextVarGroup',     path:'varGroup',         type:'str', cls:'text' },
+  { id:'propTextOutlineWidth', path:'textOutlineWidth', type:'num', cls:'text' },
+  { id:'propTextSize',         path:'textSize',         type:'num', cls:'text' },
+  { id:'propTextBgOpacity',    path:'textBgOpacity',    type:'num', cls:'text' },
+  { id:'propTextRadius',       path:'textRadius',       type:'num', cls:'text' },
+  // light
+  { id:'propLightR',         path:'lightR',         type:'num', cls:'light' },
+  { id:'propLightG',         path:'lightG',         type:'num', cls:'light' },
+  { id:'propLightB',         path:'lightB',         type:'num', cls:'light' },
+  { id:'propLightRadius',    path:'lightRadius',    type:'num', cls:'light' },
+  { id:'propLightIntensity', path:'lightIntensity', type:'num', cls:'light' },
+  // boolean block
+  { id:'propBoolGroup', path:'varGroup', type:'str',  cls:'boolean' },
+  { id:'propBoolValue', path:'value',    type:'bool', cls:'boolean' },
+  // main trigger
+  { id:'propModOneTime', path:'mods__oneTime', type:'bool', cls:'trigger' },
+  // monitor
+  { id:'monTargetGroup', path:'monProps__targetGroup', type:'str',  cls:'monitor' },
+  { id:'monOutputTouch', path:'monProps__outputTouch', type:'str',  cls:'monitor' },
+  { id:'monOutputClick', path:'monProps__outputClick', type:'str',  cls:'monitor' },
+  { id:'monOneTime',     path:'monProps__oneTime',     type:'bool', cls:'monitor' },
+  // counter
+  { id:'propCountLimit',  path:'limit',       type:'num', cls:'counter' },
+  { id:'propCountTarget', path:'targetGroup', type:'str', cls:'counter' },
+  { id:'propCountGroup',  path:'countGroup',  type:'str', cls:'counter' },
+  // comparer
+  { id:'propCompareGroup1',       path:'comparerProps__group1',       type:'str',  cls:'comparer' },
+  { id:'propCompareGroup2',       path:'comparerProps__group2',       type:'str',  cls:'comparer' },
+  { id:'propCompareTriggerGroup', path:'comparerProps__triggerGroup', type:'str',  cls:'comparer' },
+  { id:'propCompareOneTime',      path:'comparerProps__oneTime',      type:'bool', cls:'comparer' },
+  // clock
+  { id:'propClockInterval', path:'interval',    type:'num',  cls:'clock' },
+  { id:'propClockTarget',   path:'targetGroup', type:'str',  cls:'clock' },
+  { id:'propClockActive',   path:'active',      type:'bool', cls:'clock' },
+  // platform
+  { id:'propPlatStartX', path:'platformProps__startX', type:'num', cls:'platform' },
+  { id:'propPlatStartY', path:'platformProps__startY', type:'num', cls:'platform' },
+  { id:'propPlatEndX',   path:'platformProps__endX',   type:'num', cls:'platform' },
+  { id:'propPlatEndY',   path:'platformProps__endY',   type:'num', cls:'platform' },
+  { id:'propPlatSpeed',  path:'platformProps__speed',  type:'num', cls:'platform' },
+  // goal
+  { id:'propGoalReward', path:'coinReward', type:'num', cls:'goal' }
+];
+const BIND_TYPE = {};
+
+function getPath(o, path) {
+    return path.split('__').reduce((a, k) => (a == null ? undefined : a[k]), o);
+}
+function setPath(o, path, val) {
+    const ks = path.split('__');
+    let t = o;
+    for (let i = 0; i < ks.length - 1; i++) {
+        if (t[ks[i]] == null || typeof t[ks[i]] !== 'object') t[ks[i]] = {};
+        t = t[ks[i]];
+    }
+    t[ks[ks.length - 1]] = val;
+}
+function isPhysicsClass(o) {
+    return !isAnyTrigger(o.tag) &&
+        !['monitor', 'boolean', 'counter', 'comparer', 'clock', 'platform', 'goal'].includes(o.tag);
+}
+function specApplies(spec, o) {
+    if (spec.cls === 'all') return true;
+    if (spec.cls === 'physics') return isPhysicsClass(o);
+    return o.tag === spec.cls;
+}
+
+function applyOneBinding(o, path, raw) {
+    const type = BIND_TYPE[path];
+    if (!type) return;
+    const resolved = resolveFxVars(String(raw));
+    let val;
+    if (type === 'num') {
+        val = parseFloat(resolved);
+        if (isNaN(val)) return;
+    } else if (type === 'bool') {
+        val = parseVarBool(resolved);
+        if (val === null) return;
+    } else if (type === 'group') {
+        val = String(resolved).split(',').map(g => g.trim()).filter(g => g.length > 0);
+    } else {
+        val = String(resolved);
+    }
+    if (path === 'visible') {
+        if (!val) o.opacity = 0;
+        else if ((o.opacity ?? 1) <= 0) o.opacity = 1;
+        return;
+    }
+    setPath(o, path, val);
+}
+function applyBindings() {
+    for (let i = 0; i < objects.length; i++) {
+        const o = objects[i];
+        if (!o.bind) continue;
+        for (const path in o.bind) applyOneBinding(o, path, o.bind[path]);
+    }
+}
+
+// popup <-> bindings
+function loadBindings(obj) {
+    BIND_FIELDS.forEach(spec => {
+        if (!specApplies(spec, obj)) return;
+        const el = document.getElementById(spec.id);
+        if (!el) return;
+        const raw = obj.bind ? obj.bind[spec.path] : undefined;
+        if (spec.type === 'bool') {
+            const c = document.getElementById('bind_' + spec.id);
+            if (c) c.value = raw !== undefined ? raw : '';
+            el.disabled = raw !== undefined && String(raw).trim() !== '';
+        } else if (raw !== undefined) {
+            el.value = raw;
+        }
+    });
+}
+function saveBindings(obj) {
+    obj.bind = obj.bind || {};
+    BIND_FIELDS.forEach(spec => {
+        if (!specApplies(spec, obj)) return;
+        const el = document.getElementById(spec.id);
+        if (!el) return;
+        let raw, bound;
+        if (spec.type === 'bool') {
+            const c = document.getElementById('bind_' + spec.id);
+            raw = normalizeBoolBinding(c ? c.value : '');
+            bound = raw !== '';
+        } else {
+            raw = String(el.value ?? '').trim();
+            bound = raw.indexOf('{') !== -1;
+        }
+        if (bound) {
+            obj.bind[spec.path] = raw;
+            applyOneBinding(obj, spec.path, raw);
+        } else {
+            delete obj.bind[spec.path];
+        }
+    });
+    if (Object.keys(obj.bind).length === 0) delete obj.bind;
+}
+function initBindingUI() {
+    BIND_FIELDS.forEach(spec => {
+        BIND_TYPE[spec.path] = spec.type;
+        const el = document.getElementById(spec.id);
+        if (!el) return;
+        if (spec.type === 'bool') {
+            const host = el.closest('.checkbox-group');
+            if (!host || document.getElementById('bind_' + spec.id)) return;
+            const b = document.createElement('input');
+            b.type = 'text'; b.id = 'bind_' + spec.id; b.className = 'bindInput';
+            b.placeholder = '{boolVar}';
+            b.title = 'Boolean variable that controls this checkbox, e.g. {doorOpen} or !{doorOpen}';
+            b.addEventListener('input', () => { el.disabled = b.value.trim() !== ''; });
+            host.appendChild(b);
+        } else if (el.type === 'number') {
+            el.type = 'text';
+            el.setAttribute('inputmode', 'decimal');
+        }
+    });
+}
+
 function forEachInGroup(groupName, fn) {
     const g = String(groupName || '').trim();
     if (!g) return;
@@ -6302,26 +6551,50 @@ const EFFECT_TRIGGER_DEFS = {
 
     trigger_variable: {
         label: 'Variable', title: 'Variable Trigger', color: '#14b8a6', glyph: '=',
-        hint: 'Sets Text and Boolean variable blocks by their Variable ID. The text can contain {id} placeholders.',
+        hint: 'Changes Counter, Text and Boolean variables by their Variable ID (a counter\'s Count Group). Any box can contain {placeholders}.',
         fields: [
-            { key: 'varId',     label: 'Variable ID', type: 'text', placeholder: "e.g., 'playerName'" },
+            { key: 'varId', label: 'Variable ID', type: 'text', placeholder: "e.g., 'coins' or 'playerName'" },
+            { key: 'counterOp', label: 'Counter operation', type: 'select', options: [
+                { value: '',      label: '(Ignore)' },
+                { value: 'set',   label: 'Set to amount' },
+                { value: 'add',   label: 'Add amount' },
+                { value: 'sub',   label: 'Subtract amount' },
+                { value: 'inc',   label: 'Increment (+1)' },
+                { value: 'dec',   label: 'Decrement (\u22121)' },
+                { value: 'reset', label: 'Reset to 0' }
+            ] },
+            { key: 'counterAmount', label: 'Amount (number or {variable})', type: 'number', placeholder: 'e.g., 5 or {counter2}' },
             { key: 'textValue', label: 'Set text to (Text variables)', type: 'text', placeholder: 'New text...' },
             { key: 'boolValue', label: 'Boolean value', type: 'select', options: [
                 { value: '',       label: '(Ignore)' },
                 { value: 'true',   label: 'True' },
                 { value: 'false',  label: 'False' },
                 { value: 'toggle', label: 'Toggle' }
-            ] }
+            ] },
+            { key: 'boolFrom', label: 'Or copy a Boolean from', type: 'text', placeholder: '{otherFlag} or !{otherFlag}' }
         ],
         run(fx) {
             const id = String(fx.varId || '').trim();
             if (!id) return;
+            const op  = fx.counterOp || '';
+            const amt = parseFxNum(fx.counterAmount);
             const hasText = fx.textValue !== undefined && fx.textValue !== '';
+            const copied = String(fx.boolFrom || '').trim() !== '' ? parseVarBool(fx.boolFrom) : null;
             objects.forEach(o => {
+                if (o.tag === 'counter' && o.countGroup === id && op) {
+                    const cur = o.count || 0;
+                    if (op === 'set' && amt !== null) setCounterValue(o, amt);
+                    else if (op === 'add' && amt !== null) setCounterValue(o, cur + amt);
+                    else if (op === 'sub' && amt !== null) setCounterValue(o, cur - amt);
+                    else if (op === 'inc') setCounterValue(o, cur + 1);
+                    else if (op === 'dec') setCounterValue(o, cur - 1);
+                    else if (op === 'reset') o.count = 0;
+                }
                 if (o.varGroup !== id) return;
                 if (o.tag === 'text' && hasText) o.text = String(fx.textValue);
                 if (o.tag === 'boolean') {
-                    if (fx.boolValue === 'true')        o.value = true;
+                    if (copied !== null)                o.value = copied;
+                    else if (fx.boolValue === 'true')   o.value = true;
                     else if (fx.boolValue === 'false')  o.value = false;
                     else if (fx.boolValue === 'toggle') o.value = !o.value;
                 }
@@ -6354,12 +6627,12 @@ const EFFECT_TRIGGER_DEFS = {
     }
 };
 
+Object.values(EFFECT_TRIGGER_DEFS).forEach(d => d.fields.forEach(f => { if (f.options === FX_TRISTATE) f.bindBool = true; }));
+
 function executeEffectTrigger(trigger, sourceEvent = 'triggered') {
     const def = EFFECT_TRIGGER_DEFS[trigger.tag];
     if (!def) return;
-    const raw = trigger.fx || {};
-    const fx = {};
-    for (const k in raw) fx[k] = resolveFxVars(raw[k]);
+    const fx = getEffectFx(trigger);
     if (fx.oneTime && trigger.hasFired) return;
     def.run(fx, trigger);
     if (fx.oneTime) trigger.hasFired = true;
@@ -6370,7 +6643,8 @@ let activeEffectTouches = new Set();
 function checkEffectTriggerTouches() {
     const now = new Set();
     objects.forEach(t => {
-        if (!isEffectTag(t.tag) || !t.fx || !t.fx.onTouch || t.active === false) return;
+        if (!isEffectTag(t.tag) || !t.fx || (!t.fx.onTouch && !t.fx.onTouchVar) || t.active === false) return;
+        if (!getEffectFx(t).onTouch) return;
         if (checkCollision(player, t)) {
             now.add(t);
             if (!activeEffectTouches.has(t)) executeEffectTrigger(t, 'touched');
@@ -6410,6 +6684,14 @@ function renderEffectTriggerFields(obj) {
             const lab = document.createElement('label');
             lab.htmlFor = id; lab.textContent = f.label;
             wrap.appendChild(inp); wrap.appendChild(lab);
+            const bi = document.createElement('input');
+            bi.type = 'text'; bi.id = id + 'Var'; bi.className = 'bindInput';
+            bi.placeholder = '{boolVar}';
+            bi.title = 'Boolean variable that controls this checkbox, e.g. {doorOpen} or !{doorOpen}';
+            bi.value = fx[f.key + 'Var'] || '';
+            inp.disabled = bi.value.trim() !== '';
+            bi.addEventListener('input', () => { inp.disabled = bi.value.trim() !== ''; });
+            wrap.appendChild(bi);
             box.appendChild(wrap);
             return;
         }
@@ -6440,6 +6722,15 @@ function renderEffectTriggerFields(obj) {
         inp.id = id;
         inp.value = val !== undefined && val !== null ? val : '';
         wrap.appendChild(inp);
+        if (f.bindBool) {
+            const bi = document.createElement('input');
+            bi.type = 'text'; bi.id = id + 'Var'; bi.className = 'bindInput';
+            bi.placeholder = 'or Boolean variable: {flag} / !{flag}';
+            bi.value = fx[f.key + 'Var'] || '';
+            inp.disabled = bi.value.trim() !== '';
+            bi.addEventListener('input', () => { inp.disabled = bi.value.trim() !== ''; });
+            wrap.appendChild(bi);
+        }
         box.appendChild(wrap);
     });
 }
@@ -6451,6 +6742,10 @@ function saveEffectTriggerFields(obj) {
         const el = document.getElementById('fx_' + f.key);
         if (!el) return;
         fx[f.key] = f.type === 'checkbox' ? el.checked : el.value;
+        if (f.type === 'checkbox' || f.bindBool) {
+            const bi = document.getElementById('fx_' + f.key + 'Var');
+            fx[f.key + 'Var'] = normalizeBoolBinding(bi ? bi.value : '');
+        }
     });
     obj.fx = fx;
     if (obj.hasFired === undefined) obj.hasFired = false;
@@ -6762,7 +7057,7 @@ function findMatchingEndIf(condIdx) {
 /* ===== helper ===== */
 function makeInput(val, placeholder, width, type='text') {
   const inp = document.createElement('input');
-  inp.type = type; inp.value = val || ''; inp.placeholder = placeholder;
+  inp.type = type === 'number' ? 'text' : type; if (type === 'number') inp.setAttribute('inputmode', 'decimal'); inp.value = val || ''; inp.placeholder = placeholder;
   inp.style.width = width + 'px';
   return inp;
 }
@@ -7476,17 +7771,23 @@ function runTriggerScript(trigger, event = 'touched') {
     executeScriptSteps(sc.steps, 0, sc.steps.length, vars);
 }
 
+function resolveStepFields(step) {
+    const out = {};
+    for (const k in step) out[k] = (k === 'name' || k === 'out') ? step[k] : resolveFxVars(step[k]);
+    return out;
+}
 function executeScriptSteps(steps, start, end, vars) {
     let i = start;
     while (i < end) {
         const step = steps[i];
+        const rs = resolveStepFields(step);
 
         if (step.kind === 'var') {
-            Object.assign(vars, buildScriptVars([step]));
+            Object.assign(vars, buildScriptVars([rs]));
             i++;
 
         } else if (step.kind === 'compute') {
-            applyScriptComputes([step], vars);
+            applyScriptComputes([rs], vars);
             i++;
 
         } else if (step.kind === 'condition') {
@@ -7504,7 +7805,7 @@ function executeScriptSteps(steps, start, end, vars) {
             }
             if (endIdx === -1) endIdx = end; // no matching end_if, treat rest as block
 
-            const condPassed = evaluateScriptConditions([step], vars);
+            const condPassed = evaluateScriptConditions([rs], vars);
 
             if (condPassed) {
                 const blockEnd = elseIdx !== -1 ? elseIdx : endIdx;
@@ -7516,7 +7817,7 @@ function executeScriptSteps(steps, start, end, vars) {
             i = endIdx + 1;
 
         } else if (step.kind === 'action') {
-            executeScriptActions([step], vars);
+            executeScriptActions([rs], vars);
             i++;
 
         } else {
@@ -10061,6 +10362,7 @@ function gameLoop(timestamp) {
     const delta = Math.min(rawDelta, 50) / (1000 / 60);
 
     if (!paused) {
+        applyBindings();
         updateSpatialGrid();
         updatePhysics(delta);
         checkClocks();
@@ -10098,6 +10400,8 @@ function gameLoop(timestamp) {
     draw();
     gameLoopId = requestAnimationFrame(gameLoop);
 }
+
+initBindingUI();
 </script>
 </body>
 </html>
