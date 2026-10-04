@@ -764,6 +764,7 @@
 <div id="popup">
     <h3>Edit Object Properties</h3>
     <div style="font-size:11px;color:#71717a;line-height:1.4;margin:-6px 0 12px;">Tip: type a variable like <b>{counter1}</b> or <b>{text1}</b> into any box. Checkboxes have a small box on the right for a Boolean variable (<b>{flag}</b> or <b>!{flag}</b>).</div>
+    <div id="popupMultiNote" style="display:none;font-size:11px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;padding:6px 8px;margin:-4px 0 10px;line-height:1.4;"></div>
     
     <div class="input-group">
         <label for="propTag">Tag/Type:</label>
@@ -1408,7 +1409,7 @@ const settings = {
     fps: false,       // NEW
     music: true,   // ADD
     sfx: true,
-    lightQuality: 'high' // 'high' = 80 rays, 'medium' = 48, 'low' = 24    // ADD
+    lightQuality: 'high', snapEdges: true, snapCenters: true, snapPixels: true, snapRotation: true // 'high' = 80 rays, 'medium' = 48, 'low' = 24    // ADD
 };
 // Firebase config
 const firebaseConfig = {
@@ -1423,7 +1424,7 @@ const db = firebase.database();
 const RUNTIME_PROPS = new Set([
     'isJumping', 'wasGrounded',
     'isFiringOutput', 'hasFiredTouch', 'hasFiredClick',
-    'hasFired', 'broken', 'breakTimer'
+    'hasFired', 'broken', 'breakTimer', '_ord'
 ]);
 let isMouseDown = false;
 let lastPlacedCell = { x: -1, y: -1 }; // prevents placing same cell twice per drag
@@ -1459,7 +1460,12 @@ textAlign:        'left',
 textWeight:       '400',
 textBg:           '#000000',
 textBgOpacity:    0,
-textRadius:       0,
+textRadius: 0,
+rotation: 0,
+flipX: false,
+flipY: false,
+locked: false,
+hidden: false,
 };
 /* ============================================================
    SKIN & CASE SYSTEM
@@ -1929,7 +1935,7 @@ function applyLevelData(data) {
         }
     }
 
-    undoStack.length = 0;
+    undoStack.length = 0; redoStack.length = 0; setSelection([]);
 }
 const TERRAIN_TOOLS = [
     { tool: 'box',          name: 'Brick'     },
@@ -2222,6 +2228,7 @@ function showToolbarCategory(cat) {
             transition:all 0.12s;
         `;
 
+        card.title = TOOL_TIPS[tool] || name;
         if (isNew) {
             card.innerHTML = `
                 <div style="width:44px;height:44px;border-radius:8px;background:#3f3f46;display:flex;align-items:center;justify-content:center;font-size:22px;">+</div>
@@ -2603,6 +2610,7 @@ function exitTestMode() {
         if (objects[i].tag !== 'player') objects.splice(i, 1);
     }
     testModeSnapshot.forEach(o => objects.push(JSON.parse(JSON.stringify(o))));
+    setSelection([]);
     testModeSnapshot = [];
 
     // Reset player
@@ -2665,27 +2673,970 @@ function setPlayMode(enabled) {
         showMobileControls(false);
     }
 }
-function saveUndoState() {
-    const snapshot = objects
-        .filter(o => o.tag !== 'player')
-        .map(o => JSON.parse(JSON.stringify(o)));
-    undoStack.push(snapshot);
-    if (undoStack.length > MAX_UNDO) undoStack.shift();
+/* ============================================================
+   EDITOR CORE — selection, transforms, alignment, snapping,
+   lock / hide, z-order and duplication.
+   Everything here edits the same `objects` array and goes through
+   saveUndoState(), so undo / redo / save / load keep working.
+============================================================ */
+let primaryObject = null;      // last clicked object (reference for "match size", popup, etc.)
+let dragOp = null;             // active drag: move / resize / rotate
+let snapGuides = [];           // alignment guides drawn while dragging
+let dragSelectAdditive = false;
+let clickCollapse = null;      // plain click inside a multi-selection narrows it on release
+let clipboard = null;
+let lastDup = { dx: 50, dy: 50, count: 1 };
+let spMode = 'group';          // numeric fields with several objects selected: 'group' | 'each'
+let ghostValid = false;
+const SNAP_DIST = 8;
+const ROTATE_HANDLE_DIST = 28;
+const POPUP_SHARED = ['opacity', 'gravity', 'solid', 'pushable', 'slime', 'kill', 'bounce', 'ice'];
+let popupSnap = null;
+const MODK = /Mac/i.test(navigator.platform || '') ? '\u2318' : 'Ctrl+';
+const ALTK = /Mac/i.test(navigator.platform || '') ? 'Option' : 'Alt';
+
+const TOOL_TIPS = {
+    select: 'Select \u2014 click an object, Shift+click to add or remove, drag a box to select several. Drag the handles to resize or rotate. Esc clears.',
+    edit:   'Edit (E) \u2014 same as Select, and double-click an object to open its properties.',
+    copy:   'Copy an object into a new custom block type',
+    delete: 'Delete (Q) \u2014 click an object to remove it'
+};
+
+/* ---------- helpers ---------- */
+function px(v) { return settings.snapPixels ? Math.round(v) : v; }
+function normAngle(a) { a = ((a + 180) % 360 + 360) % 360 - 180; return Math.round(a * 100) / 100; }
+function isSelectTool() { return currentTool === 'edit' || currentTool === 'select'; }
+function selectionList() { return multiSelect; }
+function setSelection(list, primary) {
+    multiSelect = list.slice();
+    primaryObject = list.length ? (primary && list.includes(primary) ? primary : list[list.length - 1]) : null;
+}
+function clearSelection() { setSelection([]); }
+function isSelectable(o) { return !!o && o.tag !== 'player' && !o.locked && !o.hidden; }
+function selBounds(list) {
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    list.forEach(o => {
+        x1 = Math.min(x1, o.x); y1 = Math.min(y1, o.y);
+        x2 = Math.max(x2, o.x + o.width); y2 = Math.max(y2, o.y + o.height);
+    });
+    return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+}
+// Move an object; a moving platform's path travels with it.
+function setObjPos(o, nx, ny) {
+    const dx = nx - o.x, dy = ny - o.y;
+    o.x = nx; o.y = ny;
+    const pp = o.platformProps;
+    if (pp) { pp.startX += dx; pp.endX += dx; pp.startY += dy; pp.endY += dy; }
+}
+// Topmost object under a point (respects draw order). Locked / hidden are skipped unless asked.
+function pickObjectAt(wx, wy, includeLocked = false) {
+    let best = null, bestOrd = -1;
+    for (const o of getNearbyObjects({ x: wx, y: wy, width: 1, height: 1 })) {
+        if (o.tag === 'player' || o.hidden) continue;
+        if (o.locked && !includeLocked) continue;
+        if (wx < o.x || wx > o.x + o.width || wy < o.y || wy > o.y + o.height) continue;
+        const ord = o._ord || 0;
+        if (ord >= bestOrd) { best = o; bestOrd = ord; }
+    }
+    return best;
 }
 
-function undo() {
-    if (undoStack.length === 0) {
-        showCoinToast('Nothing to undo', '#71717a');
+/* ---------- snapping ---------- */
+function collectSnapTargets(b, skip, pad = 120) {
+    const xs = [], ys = [];
+    getNearbyObjects({ x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2 }).forEach(o => {
+        if (skip.has(o) || o.tag === 'player' || o.hidden) return;
+        if (settings.snapEdges) {
+            xs.push({ v: o.x, k: 'e', o }, { v: o.x + o.width, k: 'e', o });
+            ys.push({ v: o.y, k: 'e', o }, { v: o.y + o.height, k: 'e', o });
+        }
+        if (settings.snapCenters) {
+            xs.push({ v: o.x + o.width / 2, k: 'c', o });
+            ys.push({ v: o.y + o.height / 2, k: 'c', o });
+        }
+    });
+    return { xs, ys };
+}
+function bestSnap(features, targets, anyKind) {
+    let best = null;
+    features.forEach(f => targets.forEach(t => {
+        if (!anyKind && t.k !== f.k) return;
+        const d = t.v - f.v;
+        if (Math.abs(d) <= SNAP_DIST && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, t, f };
+    }));
+    return best;
+}
+function makeGuide(axis, v, b, o) {
+    const lo = Math.min(b.y, o.y), hi = Math.max(b.y + b.height, o.y + o.height);
+    const lx = Math.min(b.x, o.x), hx = Math.max(b.x + b.width, o.x + o.width);
+    return axis === 'v' ? { x1: v, y1: lo - 10, x2: v, y2: hi + 10 } : { x1: lx - 10, y1: v, x2: hx + 10, y2: v };
+}
+// How far should a moving rectangle shift to line up with other objects (or the grid)?
+function snapMoveBounds(b, skip, off) {
+    let dx = 0, dy = 0;
+    const guides = [];
+    if (off) return { dx, dy, guides };
+    const T = collectSnapTargets(b, skip);
+    const sx = bestSnap([{ v: b.x, k: 'e' }, { v: b.x + b.width, k: 'e' }, { v: b.x + b.width / 2, k: 'c' }], T.xs, false);
+    const sy = bestSnap([{ v: b.y, k: 'e' }, { v: b.y + b.height, k: 'e' }, { v: b.y + b.height / 2, k: 'c' }], T.ys, false);
+    if (sx) { dx = sx.d; guides.push(makeGuide('v', sx.t.v, b, sx.t.o)); }
+    else if (settings.grid) dx = Math.round(b.x / GRID_SIZE) * GRID_SIZE - b.x;
+    if (sy) { dy = sy.d; guides.push(makeGuide('h', sy.t.v, b, sy.t.o)); }
+    else if (settings.grid) dy = Math.round(b.y / GRID_SIZE) * GRID_SIZE - b.y;
+    return { dx, dy, guides };
+}
+// Snap one moving edge (used while resizing)
+function snapEdgeValue(v, axis, b, skip, off, guides) {
+    if (off) return v;
+    const T = collectSnapTargets(b, skip, 400);
+    const best = bestSnap([{ v, k: 'e' }], axis === 'x' ? T.xs : T.ys, true);
+    if (best) { guides.push(makeGuide(axis === 'x' ? 'v' : 'h', best.t.v, b, best.t.o)); return best.t.v; }
+    return settings.grid ? Math.round(v / GRID_SIZE) * GRID_SIZE : v;
+}
+
+/* ---------- drag operations (move / resize / rotate) ---------- */
+function hitRotateHandle(b, mx, my) {
+    return Math.hypot(mx - (b.x - camera.x + b.width / 2), my - (b.y - camera.y - ROTATE_HANDLE_DIST)) <= 9;
+}
+function beginDrag(type, handle, mx, my, wx, wy) {
+    const sel = selectionList();
+    const b = selBounds(sel);
+    dragOp = {
+        type, handle, mx0: mx, my0: my, b0: b, moved: false,
+        items: sel.map(o => ({ o, x: o.x, y: o.y, w: o.width, h: o.height, rot: o.rotation || 0 })),
+        skip: new Set(sel), c: { x: b.x + b.width / 2, y: b.y + b.height / 2 }, label: ''
+    };
+    dragOp.a0 = Math.atan2(wy - dragOp.c.y, wx - dragOp.c.x);
+    if (type === 'resize') { isResizing = true; resizeObject = sel.length === 1 ? sel[0] : null; resizeHandle = handle; }
+    canvas.style.cursor = type === 'move' ? 'grabbing' : canvas.style.cursor;
+}
+function updateDragOp(e, rect) {
+    const d = dragOp;
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const wx = mx + camera.x, wy = my + camera.y;
+    let rawDx = mx - d.mx0, rawDy = my - d.my0;
+    if (!d.moved) {
+        if (Math.hypot(rawDx, rawDy) < 3) return;
+        d.moved = true;
+        saveUndoState();               // one undo step per drag, taken before anything changes
+    }
+    const off = !!e.altKey;            // Alt / Option = snapping off while held
+    const r = v => (settings.snapPixels && !off) ? Math.round(v) : v;
+    snapGuides = [];
+    const b0 = d.b0;
+
+    if (d.type === 'move') {
+        if (e.shiftKey) { if (Math.abs(rawDx) > Math.abs(rawDy)) rawDy = 0; else rawDx = 0; }
+        const nb = { x: b0.x + rawDx, y: b0.y + rawDy, width: b0.width, height: b0.height };
+        const s = snapMoveBounds(nb, d.skip, off);
+        snapGuides = s.guides;
+        const fx = rawDx + s.dx, fy = rawDy + s.dy;
+        d.items.forEach(it => setObjPos(it.o, r(it.x + fx), r(it.y + fy)));
+        d.label = `X ${Math.round(b0.x + fx)}   Y ${Math.round(b0.y + fy)}`;
+
+    } else if (d.type === 'resize') {
+        const east = d.handle.includes('e'), south = d.handle.includes('s');
+        const ax = east ? b0.x : b0.x + b0.width, ay = south ? b0.y : b0.y + b0.height;
+        let cx = (east ? b0.x + b0.width : b0.x) + rawDx;
+        let cy = (south ? b0.y + b0.height : b0.y) + rawDy;
+        cx = snapEdgeValue(cx, 'x', b0, d.skip, off, snapGuides);
+        cy = snapEdgeValue(cy, 'y', b0, d.skip, off, snapGuides);
+        let nw = Math.max(MIN_BLOCK_SIZE, Math.abs(cx - ax)), nh = Math.max(MIN_BLOCK_SIZE, Math.abs(cy - ay));
+        if (e.shiftKey && b0.width > 0 && b0.height > 0) {        // keep proportions
+            const k = Math.max(nw / b0.width, nh / b0.height);
+            nw = Math.max(MIN_BLOCK_SIZE, b0.width * k); nh = Math.max(MIN_BLOCK_SIZE, b0.height * k);
+        }
+        nw = r(nw); nh = r(nh);
+        const nx = east ? ax : ax - nw, ny = south ? ay : ay - nh;
+        const sx = nw / b0.width, sy = nh / b0.height;
+        d.items.forEach(it => {
+            if (d.items.length === 1) {
+                setObjPos(it.o, r(nx), r(ny)); it.o.width = nw; it.o.height = nh;
+            } else {
+                it.o.width  = Math.max(MIN_BLOCK_SIZE, r(it.w * sx));
+                it.o.height = Math.max(MIN_BLOCK_SIZE, r(it.h * sy));
+                setObjPos(it.o, r(nx + (it.x - b0.x) * sx), r(ny + (it.y - b0.y) * sy));
+            }
+        });
+        d.label = `${Math.round(nw)} \u00d7 ${Math.round(nh)}`;
+
+    } else if (d.type === 'rotate') {
+        let delta = (Math.atan2(wy - d.c.y, wx - d.c.x) - d.a0) * 180 / Math.PI;
+        const snapRot = settings.snapRotation && !off;
+        if (d.items.length === 1) {
+            const it = d.items[0];
+            let nr = it.rot + delta;
+            if (snapRot) nr = Math.round(nr / 15) * 15;
+            it.o.rotation = normAngle(nr);
+            d.label = `${it.o.rotation}\u00b0`;
+        } else {
+            if (snapRot) delta = Math.round(delta / 15) * 15;
+            const a = delta * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
+            d.items.forEach(it => {
+                const ox = it.x + it.w / 2 - d.c.x, oy = it.y + it.h / 2 - d.c.y;
+                setObjPos(it.o, r(d.c.x + ox * cos - oy * sin - it.w / 2), r(d.c.y + ox * sin + oy * cos - it.h / 2));
+                it.o.rotation = normAngle(it.rot + delta);
+            });
+            d.label = `${Math.round(delta * 10) / 10}\u00b0`;
+        }
+    }
+}
+function handleSelectMouseDown(e, mx, my, wx, wy) {
+    const sel = selectionList();
+    if (sel.length) {
+        const b = selBounds(sel);
+        if (hitRotateHandle(b, mx, my)) { beginDrag('rotate', null, mx, my, wx, wy); return; }
+        const h = getHandleAtPoint(b, mx, my);
+        if (h) { beginDrag('resize', h, mx, my, wx, wy); return; }
+    }
+    const obj = pickObjectAt(wx, wy);
+    if (e.shiftKey) {                                   // add / remove from the selection
+        if (obj) {
+            if (sel.includes(obj)) setSelection(sel.filter(o => o !== obj), primaryObject);
+            else setSelection(sel.concat(obj), obj);
+        } else {
+            isDragSelecting = true; dragSelectAdditive = true;
+            dragSelectStart = { x: wx, y: wy }; dragSelectEnd = { x: wx, y: wy };
+        }
         return;
     }
-    const snapshot = undoStack.pop();
+    if (obj) {
+        if (sel.includes(obj)) { primaryObject = obj; if (sel.length > 1) clickCollapse = obj; }
+        else setSelection([obj]);
+        beginDrag('move', null, mx, my, wx, wy);
+        return;
+    }
+    isDragSelecting = true; dragSelectAdditive = false;  // empty space: box-select, or clear on release
+    dragSelectStart = { x: wx, y: wy }; dragSelectEnd = { x: wx, y: wy };
+}
+function endCanvasInteraction(fromLeave) {
+    isMouseDown = false;
+    lastPlacedCell = { x: -1, y: -1 };
+    if (dragOp) {
+        if (!dragOp.moved && dragOp.type === 'move' && clickCollapse) setSelection([clickCollapse]);
+        dragOp = null;
+        canvas.style.cursor = 'default';
+    }
+    clickCollapse = null;
+    isResizing = false; resizeObject = null; resizeHandle = null; isMoving = false; isMovingMulti = false;
+    snapGuides = [];
+    if (fromLeave) { isDragSelecting = false; return; }
+    if (isDragSelecting) {
+        isDragSelecting = false;
+        const minX = Math.min(dragSelectStart.x, dragSelectEnd.x), maxX = Math.max(dragSelectStart.x, dragSelectEnd.x);
+        const minY = Math.min(dragSelectStart.y, dragSelectEnd.y), maxY = Math.max(dragSelectStart.y, dragSelectEnd.y);
+        if (maxX - minX > 4 || maxY - minY > 4) {
+            const hit = objects.filter(o => isSelectable(o) && o.x < maxX && o.x + o.width > minX && o.y < maxY && o.y + o.height > minY);
+            const keep = dragSelectAdditive ? selectionList() : [];
+            setSelection(keep.concat(hit.filter(o => !keep.includes(o))));
+        } else if (!dragSelectAdditive) {
+            clearSelection();                           // click on empty space
+        }
+    }
+}
+function updateSelectCursor(mx, my) {
+    const sel = selectionList();
+    let c = 'default';
+    if (sel.length) {
+        const b = selBounds(sel);
+        const h = getHandleAtPoint(b, mx, my);
+        if (hitRotateHandle(b, mx, my)) c = 'crosshair';
+        else if (h) c = (h === 'nw' || h === 'se') ? 'nwse-resize' : 'nesw-resize';
+        else if (sel.some(o => mx + camera.x >= o.x && mx + camera.x <= o.x + o.width && my + camera.y >= o.y && my + camera.y <= o.y + o.height)) c = 'move';
+    }
+    if (c === 'default' && pickObjectAt(mx + camera.x, my + camera.y)) c = 'pointer';
+    canvas.style.cursor = c;
+}
 
+/* ---------- commands ---------- */
+function toast(msg) { showCoinToast(msg, '#71717a'); }
+function deleteSelection() {
+    const sel = selectionList();
+    if (!sel.length) return;
+    saveUndoState();
+    sel.forEach(o => {
+        const i = objects.indexOf(o);
+        if (i !== -1) objects.splice(i, 1);
+        if (o.tag === 'defaultspawn') { START_POS.x = 200; START_POS.y = ground.y - 300; }
+    });
+    clearSelection();
+}
+function rotateSelectionBy(deg) {
+    const sel = selectionList();
+    if (!sel.length) return;
+    saveUndoState();
+    if (sel.length === 1) { sel[0].rotation = normAngle((sel[0].rotation || 0) + deg); return; }
+    orbitSelection(sel, deg);
+}
+function orbitSelection(sel, deg) {
+    const b = selBounds(sel), cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+    const a = deg * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
+    sel.forEach(o => {
+        const ox = o.x + o.width / 2 - cx, oy = o.y + o.height / 2 - cy;
+        setObjPos(o, px(cx + ox * cos - oy * sin - o.width / 2), px(cy + ox * sin + oy * cos - o.height / 2));
+        o.rotation = normAngle((o.rotation || 0) + deg);
+    });
+}
+function flipSelection(axis) {
+    const sel = selectionList();
+    if (!sel.length) return;
+    saveUndoState();
+    const b = selBounds(sel);
+    sel.forEach(o => {
+        if (sel.length > 1) {
+            if (axis === 'h') setObjPos(o, b.x + b.width - (o.x - b.x) - o.width, o.y);
+            else setObjPos(o, o.x, b.y + b.height - (o.y - b.y) - o.height);
+        }
+        if (axis === 'h') o.flipX = !o.flipX; else o.flipY = !o.flipY;
+        o.rotation = normAngle(-(o.rotation || 0));
+    });
+}
+function scaleSelection(f) {
+    const sel = selectionList();
+    if (!sel.length || !(f > 0)) return;
+    saveUndoState();
+    const b = selBounds(sel), cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+    sel.forEach(o => {
+        const ncx = cx + (o.x + o.width / 2 - cx) * f, ncy = cy + (o.y + o.height / 2 - cy) * f;
+        o.width = Math.max(MIN_BLOCK_SIZE, px(o.width * f));
+        o.height = Math.max(MIN_BLOCK_SIZE, px(o.height * f));
+        setObjPos(o, px(ncx - o.width / 2), px(ncy - o.height / 2));
+    });
+}
+function alignSelection(mode) {
+    const sel = selectionList();
+    if (sel.length < 2) return;
+    saveUndoState();
+    const b = selBounds(sel);
+    sel.forEach(o => {
+        if (mode === 'left')        setObjPos(o, b.x, o.y);
+        else if (mode === 'hcenter') setObjPos(o, px(b.x + b.width / 2 - o.width / 2), o.y);
+        else if (mode === 'right')  setObjPos(o, b.x + b.width - o.width, o.y);
+        else if (mode === 'top')    setObjPos(o, o.x, b.y);
+        else if (mode === 'vcenter') setObjPos(o, o.x, px(b.y + b.height / 2 - o.height / 2));
+        else if (mode === 'bottom') setObjPos(o, o.x, b.y + b.height - o.height);
+    });
+}
+function distributeSelection(axis) {
+    const sel = selectionList();
+    if (sel.length < 3) return;
+    saveUndoState();
+    const h = axis === 'h';
+    const sorted = sel.slice().sort((a, b) => h ? a.x - b.x : a.y - b.y);
+    const size = o => h ? o.width : o.height;
+    const first = sorted[0], last = sorted[sorted.length - 1];
+    const start = h ? first.x : first.y, end = h ? last.x + last.width : last.y + last.height;
+    const gap = (end - start - sorted.reduce((s, o) => s + size(o), 0)) / (sorted.length - 1);
+    let pos = start;
+    sorted.forEach(o => {
+        if (h) setObjPos(o, px(pos), o.y); else setObjPos(o, o.x, px(pos));
+        pos += size(o) + gap;
+    });
+}
+function matchSelection(what) {
+    const sel = selectionList();
+    if (sel.length < 2) return;
+    const ref = sel.includes(primaryObject) ? primaryObject : sel[sel.length - 1];
+    saveUndoState();
+    sel.forEach(o => {
+        if (o === ref) return;
+        if (what !== 'height') o.width = ref.width;
+        if (what !== 'width')  o.height = ref.height;
+    });
+}
+function toggleLockSelection() {
+    const sel = selectionList();
+    if (!sel.length) return;
+    saveUndoState();
+    const lock = !sel.every(o => o.locked);
+    sel.forEach(o => { o.locked = lock; });
+    if (lock) { toast(`Locked ${sel.length} \u2014 find them again under Selection \u25b8 Select all locked`); clearSelection(); }
+    else toast(`Unlocked ${sel.length}`);
+}
+function toggleHideSelection() {
+    const sel = selectionList();
+    if (!sel.length) return;
+    saveUndoState();
+    const hide = !sel.every(o => o.hidden);
+    sel.forEach(o => { o.hidden = hide; });
+    if (hide) { toast(`Hidden ${sel.length} in the editor (they still show when you play)`); clearSelection(); }
+    else toast(`Shown ${sel.length}`);
+}
+function unlockAll() {
+    const list = objects.filter(o => o.locked);
+    if (!list.length) { toast('Nothing is locked'); return; }
+    saveUndoState(); list.forEach(o => { o.locked = false; }); toast(`Unlocked ${list.length}`);
+}
+function showAllHidden() {
+    const list = objects.filter(o => o.hidden);
+    if (!list.length) { toast('Nothing is hidden'); return; }
+    saveUndoState(); list.forEach(o => { o.hidden = false; }); toast(`Showing ${list.length} hidden`);
+}
+// Layers: draw order is the order of the `objects` array (saved with the map).
+function reorderSelection(mode) {
+    const sel = new Set(selectionList());
+    if (!sel.size) return;
+    const overlaps = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    saveUndoState();
+    if (mode === 'front' || mode === 'back') {
+        const moved = objects.filter(o => sel.has(o)), rest = objects.filter(o => !sel.has(o));
+        const lead = rest.filter(o => o.tag === 'player'), others = rest.filter(o => o.tag !== 'player');
+        const next = mode === 'front' ? lead.concat(others, moved) : lead.concat(moved, others);
+        objects.splice(0, objects.length, ...next);
+    } else if (mode === 'forward') {
+        for (let i = objects.length - 1; i >= 0; i--) {
+            const o = objects[i];
+            if (!sel.has(o)) continue;
+            for (let j = i + 1; j < objects.length; j++) {
+                if (sel.has(objects[j]) || !overlaps(o, objects[j])) continue;
+                objects.splice(i, 1); objects.splice(j, 0, o); break;
+            }
+        }
+    } else {
+        for (let i = 0; i < objects.length; i++) {
+            const o = objects[i];
+            if (!sel.has(o)) continue;
+            for (let j = i - 1; j >= 1; j--) {
+                if (sel.has(objects[j]) || objects[j].tag === 'player' || !overlaps(o, objects[j])) continue;
+                objects.splice(i, 1); objects.splice(j, 0, o); break;
+            }
+        }
+    }
+}
+
+/* ---------- duplicate / copy / paste ---------- */
+function cloneObject(o, dx, dy) {
+    const c = JSON.parse(JSON.stringify(o));
+    Object.keys(c).forEach(k => { if (k[0] === '_' || RUNTIME_PROPS.has(k)) delete c[k]; });
+    if ('id' in c) c.id = Date.now() + Math.random();
+    if (c.tag === 'counter') c.count = 0;
+    c.x += dx; c.y += dy;
+    if (c.platformProps) {
+        c.platformProps.startX += dx; c.platformProps.endX += dx;
+        c.platformProps.startY += dy; c.platformProps.endY += dy;
+    }
+    return c;
+}
+function doDuplicate(dx, dy, count) {
+    const src = selectionList().filter(o => o.tag !== 'defaultspawn');
+    if (!src.length) return;
+    saveUndoState();
+    count = Math.max(1, Math.min(100, Math.floor(count) || 1));
+    let last = [];
+    for (let n = 1; n <= count; n++) {
+        last = src.map(o => cloneObject(o, dx * n, dy * n));
+        last.forEach(c => objects.push(c));          // relative positions are preserved
+    }
+    setSelection(last);                               // so "Repeat" keeps extending the row
+    lastDup = { dx, dy, count };
+}
+function duplicateSelection() { doDuplicate(GRID_SIZE, GRID_SIZE, 1); }
+function repeatDuplicate() {
+    if (!selectionList().length) return;
+    doDuplicate(lastDup.dx, lastDup.dy, lastDup.count);
+}
+function copySelection() {
+    const sel = selectionList().filter(o => o.tag !== 'defaultspawn');
+    if (!sel.length) return;
+    const b = selBounds(sel);
+    clipboard = { items: sel.map(o => cloneObject(o, 0, 0)), x: b.x, y: b.y };
+    toast(`Copied ${sel.length} object${sel.length > 1 ? 's' : ''}`);
+}
+function pasteClipboard() {
+    if (!clipboard) return;
+    let tx = clipboard.x + GRID_SIZE, ty = clipboard.y + GRID_SIZE;
+    if (ghostValid && isSelectTool() && (ghostX !== clipboard.x || ghostY !== clipboard.y)) { tx = ghostX; ty = ghostY; }
+    saveUndoState();
+    if (!isSelectTool()) selectTool('edit');
+    const created = clipboard.items.map(o => cloneObject(o, tx - clipboard.x, ty - clipboard.y));
+    created.forEach(c => objects.push(c));
+    setSelection(created);
+}
+
+/* ---------- selection helpers ---------- */
+function selectAllCmd() {
+    if (!isSelectTool()) selectTool('edit');
+    setSelection(objects.filter(isSelectable));
+}
+function selectSameType() {
+    const p = primaryObject; if (!p) return;
+    setSelection(objects.filter(o => isSelectable(o) && o.tag === p.tag), p);
+}
+function selectSameGroup() {
+    const p = primaryObject; if (!p) return;
+    const gs = getGroups(p);
+    if (!gs.length) { toast('That object has no group'); return; }
+    setSelection(objects.filter(o => isSelectable(o) && gs.some(g => hasGroup(o, g))), p);
+}
+function selectOnScreen() {
+    setSelection(objects.filter(o => isSelectable(o) && o.x < camera.x + canvas.width && o.x + o.width > camera.x &&
+                                      o.y < camera.y + canvas.height && o.y + o.height > camera.y));
+}
+function selectByFlag(flag) {
+    const list = objects.filter(o => o.tag !== 'player' && o[flag]);
+    if (!list.length) { toast(`No ${flag} objects`); return; }
+    setSelection(list);
+}
+function invertSelection() {
+    const cur = new Set(selectionList());
+    setSelection(objects.filter(o => isSelectable(o) && !cur.has(o)));
+}
+
+/* ---------- keyboard ---------- */
+function handleEditorShortcut(e) {
+    if (playMode || canvas.style.display !== 'block') return false;
+    const mod = e.ctrlKey || e.metaKey;
+    const sel = selectionList();
+    if (mod && e.code === 'KeyZ' && e.shiftKey) { e.preventDefault(); redo(); return true; }
+    if (mod && e.code === 'KeyY')               { e.preventDefault(); redo(); return true; }
+    if (mod && e.code === 'KeyA')               { e.preventDefault(); selectAllCmd(); return true; }
+    if (mod && e.code === 'KeyC' && sel.length) { e.preventDefault(); copySelection(); return true; }
+    if (mod && e.code === 'KeyX' && sel.length) { e.preventDefault(); copySelection(); deleteSelection(); return true; }
+    if (mod && e.code === 'KeyV' && clipboard)  { e.preventDefault(); pasteClipboard(); return true; }
+    if (mod && e.code === 'KeyD' && sel.length) { e.preventDefault(); if (e.shiftKey) repeatDuplicate(); else duplicateSelection(); return true; }
+    if (e.code === 'Escape' && sel.length)      { clearSelection(); return true; }
+    if (mod || !sel.length || !isSelectTool()) return false;
+    switch (e.code) {
+        case 'Delete': case 'Backspace': deleteSelection(); return true;
+        case 'BracketRight': reorderSelection(e.shiftKey ? 'front' : 'forward'); return true;
+        case 'BracketLeft':  reorderSelection(e.shiftKey ? 'back' : 'backward'); return true;
+        case 'KeyL': toggleLockSelection(); return true;
+        case 'KeyH': if (e.shiftKey) flipSelection('h'); else toggleHideSelection(); return true;
+        case 'KeyV': if (e.shiftKey) { flipSelection('v'); return true; } return false;
+        case 'KeyR': rotateSelectionBy(e.shiftKey ? -90 : 90); return true;
+    }
+    return false;
+}
+
+/* ---------- properties popup with several objects selected ---------- */
+function snapshotShared(o) {
+    const s = { group: JSON.stringify(getGroups(o)) };
+    POPUP_SHARED.forEach(k => { s[k] = o[k]; });
+    return s;
+}
+function setupPopupMulti(obj) {
+    const sel = selectionList();
+    const multi = sel.length > 1 && sel.includes(obj);
+    popupSnap = multi ? snapshotShared(obj) : null;
+    const note = document.getElementById('popupMultiNote');
+    if (!note) return;
+    note.style.display = multi ? 'block' : 'none';
+    if (multi) note.textContent = `Editing ${sel.length} objects \u2014 changes to Group, Opacity, Gravity and the checkboxes are applied to all of them.`;
+}
+function applyPopupToSelection(obj) {
+    if (!popupSnap) return;
+    const now = snapshotShared(obj);
+    const changed = Object.keys(now).filter(k => now[k] !== popupSnap[k]);
+    if (changed.length) {
+        selectionList().forEach(o => {
+            if (o === obj) return;
+            changed.forEach(k => { o[k] = k === 'group' ? getGroups(obj).slice() : now[k]; });
+        });
+    }
+    popupSnap = null;
+}
+
+/* ---------- drawing the selection ---------- */
+function drawSelectionOverlay() {
+    if (playMode || !isSelectTool()) return;
+    const sel = selectionList();
+    ctx.save();
+    if (sel.length) {
+        sel.forEach(o => {
+            const sx = o.x - camera.x, sy = o.y - camera.y;
+            ctx.fillStyle = 'rgba(0,122,255,0.10)';
+            ctx.fillRect(sx, sy, o.width, o.height);
+            ctx.setLineDash([4, 3]);
+            ctx.strokeStyle = (sel.length > 1 && o === primaryObject) ? '#60a5fa' : '#007aff';
+            ctx.lineWidth = o === primaryObject ? 2.5 : 1.5;
+            ctx.strokeRect(sx, sy, o.width, o.height);
+        });
+        ctx.setLineDash([]);
+        const b = selBounds(sel), bx = b.x - camera.x, by = b.y - camera.y;
+        if (sel.length > 1) {
+            ctx.strokeStyle = 'rgba(0,122,255,0.6)'; ctx.lineWidth = 1;
+            ctx.strokeRect(bx - 3, by - 3, b.width + 6, b.height + 6);
+        }
+        const hs = getResizeHandles(b);
+        for (const k in hs) {
+            ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.rect(hs[k].x - RESIZE_HANDLE_SIZE / 2, hs[k].y - RESIZE_HANDLE_SIZE / 2, RESIZE_HANDLE_SIZE, RESIZE_HANDLE_SIZE);
+            ctx.fill(); ctx.stroke();
+        }
+        const rx = bx + b.width / 2, ry = by - ROTATE_HANDLE_DIST;       // rotation handle
+        ctx.strokeStyle = '#007aff'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(rx, by); ctx.lineTo(rx, ry + 6); ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(rx, ry, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(rx, ry, 2.5, 0, Math.PI * 1.5); ctx.stroke();
+
+        let label = sel.length > 1 ? `${sel.length} selected` : '';
+        if (dragOp && dragOp.moved && dragOp.label) label = dragOp.label;
+        if (label) {
+            ctx.font = 'bold 12px system-ui';
+            const tw = ctx.measureText(label).width || 40;
+            const lx = bx + b.width / 2, ly = by - ROTATE_HANDLE_DIST - 18;
+            ctx.fillStyle = '#007aff';
+            ctx.beginPath(); ctx.roundRect(lx - tw / 2 - 6, ly - 10, tw + 12, 18, 4); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(label, lx, ly - 1);
+        }
+    }
+    if (snapGuides.length) {
+        ctx.strokeStyle = 'rgba(236,72,153,0.85)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+        snapGuides.forEach(g => {
+            ctx.beginPath(); ctx.moveTo(g.x1 - camera.x, g.y1 - camera.y); ctx.lineTo(g.x2 - camera.x, g.y2 - camera.y); ctx.stroke();
+        });
+    }
+    ctx.restore();
+}
+function drawLockBadges(list) {
+    if (playMode) return;
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    list.forEach(o => {
+        if (!o.locked || o.hidden || o.width < 18 || o.height < 18) return;
+        const sx = o.x - camera.x + 4, sy = o.y - camera.y + 4;
+        ctx.fillStyle = '#18181b';
+        ctx.beginPath(); ctx.roundRect(sx, sy + 5, 11, 8, 2); ctx.fill();
+        ctx.strokeStyle = '#18181b'; ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.arc(sx + 5.5, sy + 5, 3.2, Math.PI, 0); ctx.stroke();
+    });
+    ctx.restore();
+}
+
+/* ---------- the selection panel (transform / align / arrange) ---------- */
+const IC = p => `<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICONS = {
+    rotL: IC('<path d="M4 10a6 6 0 1 0 2-4.5"/><path d="M4 3v4h4"/>'),
+    rotR: IC('<path d="M16 10a6 6 0 1 1-2-4.5"/><path d="M16 3v4h-4"/>'),
+    flipH: IC('<path d="M10 2v16" stroke-dasharray="2 2"/><path d="M7 5L2 15h5zM13 5l5 10h-5z"/>'),
+    flipV: IC('<path d="M2 10h16" stroke-dasharray="2 2"/><path d="M5 7h10l-5-5zM5 13h10l-5 5z"/>'),
+    alignL: IC('<path d="M3 2v16"/><rect x="6" y="4" width="11" height="4" rx="1"/><rect x="6" y="12" width="7" height="4" rx="1"/>'),
+    alignCH: IC('<path d="M10 2v16"/><rect x="4" y="4" width="12" height="4" rx="1"/><rect x="6" y="12" width="8" height="4" rx="1"/>'),
+    alignR: IC('<path d="M17 2v16"/><rect x="3" y="4" width="11" height="4" rx="1"/><rect x="7" y="12" width="7" height="4" rx="1"/>'),
+    alignT: IC('<path d="M2 3h16"/><rect x="4" y="6" width="4" height="11" rx="1"/><rect x="12" y="6" width="4" height="7" rx="1"/>'),
+    alignCV: IC('<path d="M2 10h16"/><rect x="4" y="4" width="4" height="12" rx="1"/><rect x="12" y="6" width="4" height="8" rx="1"/>'),
+    alignB: IC('<path d="M2 17h16"/><rect x="4" y="3" width="4" height="11" rx="1"/><rect x="12" y="7" width="4" height="7" rx="1"/>'),
+    distH: IC('<path d="M3 2v16M17 2v16"/><rect x="8" y="6" width="4" height="8" rx="1"/>'),
+    distV: IC('<path d="M2 3h16M2 17h16"/><rect x="6" y="8" width="8" height="4" rx="1"/>'),
+    matchW: IC('<path d="M3 10h14M6 7l-3 3 3 3M14 7l3 3-3 3"/>'),
+    matchH: IC('<path d="M10 3v14M7 6l3-3 3 3M7 14l3 3 3-3"/>'),
+    matchS: IC('<rect x="3" y="3" width="14" height="14" rx="2"/><path d="M7 13l6-6M9 7h4v4"/>'),
+    fwd: IC('<path d="M10 16V5M6 9l4-4 4 4"/>'),
+    bwd: IC('<path d="M10 4v11M6 11l4 4 4-4"/>'),
+    front: IC('<path d="M10 17V7M6 11l4-4 4 4M4 3h12"/>'),
+    back: IC('<path d="M10 3v10M6 9l4 4 4-4M4 17h12"/>'),
+    lock: IC('<rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/>'),
+    hide: IC('<path d="M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5z"/><circle cx="10" cy="10" r="2.5"/><path d="M3 17L17 3"/>'),
+    dup: IC('<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>'),
+    dupOff: IC('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="9" y="9" width="8" height="8" rx="1.5"/>'),
+    rep: IC('<path d="M3 10a7 7 0 0 1 12-4.9M17 10a7 7 0 0 1-12 4.9"/><path d="M15 2v4h-4M5 18v-4h4"/>'),
+    props: IC('<path d="M3 6h14M3 14h14"/><circle cx="7" cy="6" r="2"/><circle cx="13" cy="14" r="2"/>'),
+    del: IC('<path d="M4 6h12M8 6V4h4v2M6 6l1 11h6l1-11"/>'),
+    snap: IC('<path d="M5 3v7a5 5 0 0 0 10 0V3M5 6h3M12 6h3"/>'),
+    menu: IC('<rect x="3" y="3" width="14" height="14" rx="2" stroke-dasharray="3 2"/>'),
+    undo: IC('<path d="M7 5L3 9l4 4"/><path d="M3 9h9a5 5 0 0 1 0 10h-2"/>'),
+    redo: IC('<path d="M13 5l4 4-4 4"/><path d="M17 9H8a5 5 0 0 0 0 10h2"/>')
+};
+const SEL_ACTIONS = [
+    { id: 'rotL',  grp: 'xf', ico: 'rotL',  tip: 'Rotate 90\u00b0 counter-clockwise', key: 'Shift+R', min: 1, run: () => rotateSelectionBy(-90) },
+    { id: 'rotR',  grp: 'xf', ico: 'rotR',  tip: 'Rotate 90\u00b0 clockwise', key: 'R', min: 1, run: () => rotateSelectionBy(90) },
+    { id: 'flipH', grp: 'xf', ico: 'flipH', tip: 'Flip horizontally', key: 'Shift+H', min: 1, run: () => flipSelection('h') },
+    { id: 'flipV', grp: 'xf', ico: 'flipV', tip: 'Flip vertically', key: 'Shift+V', min: 1, run: () => flipSelection('v') },
+    { id: 'alignL',  grp: 'al', ico: 'alignL',  tip: 'Align left edges', min: 2, run: () => alignSelection('left') },
+    { id: 'alignCH', grp: 'al', ico: 'alignCH', tip: 'Align horizontal centers', min: 2, run: () => alignSelection('hcenter') },
+    { id: 'alignR',  grp: 'al', ico: 'alignR',  tip: 'Align right edges', min: 2, run: () => alignSelection('right') },
+    { id: 'alignT',  grp: 'al', ico: 'alignT',  tip: 'Align top edges', min: 2, run: () => alignSelection('top') },
+    { id: 'alignCV', grp: 'al', ico: 'alignCV', tip: 'Align vertical centers', min: 2, run: () => alignSelection('vcenter') },
+    { id: 'alignB',  grp: 'al', ico: 'alignB',  tip: 'Align bottom edges', min: 2, run: () => alignSelection('bottom') },
+    { id: 'distH', grp: 'al', ico: 'distH', tip: 'Distribute horizontally (equal gaps)', min: 3, run: () => distributeSelection('h') },
+    { id: 'distV', grp: 'al', ico: 'distV', tip: 'Distribute vertically (equal gaps)', min: 3, run: () => distributeSelection('v') },
+    { id: 'matchW', grp: 'al', ico: 'matchW', tip: 'Match width to the last-selected object', min: 2, run: () => matchSelection('width') },
+    { id: 'matchH', grp: 'al', ico: 'matchH', tip: 'Match height to the last-selected object', min: 2, run: () => matchSelection('height') },
+    { id: 'matchS', grp: 'al', ico: 'matchS', tip: 'Match size to the last-selected object', min: 2, run: () => matchSelection('both') },
+    { id: 'fwd',   grp: 'ar', ico: 'fwd',   tip: 'Move forward one layer', key: ']', min: 1, run: () => reorderSelection('forward') },
+    { id: 'bwd',   grp: 'ar', ico: 'bwd',   tip: 'Move backward one layer', key: '[', min: 1, run: () => reorderSelection('backward') },
+    { id: 'front', grp: 'ar', ico: 'front', tip: 'Bring to front', key: 'Shift+]', min: 1, run: () => reorderSelection('front') },
+    { id: 'back',  grp: 'ar', ico: 'back',  tip: 'Send to back', key: 'Shift+[', min: 1, run: () => reorderSelection('back') },
+    { id: 'lock',  grp: 'ar', ico: 'lock',  tip: 'Lock / unlock \u2014 locked objects stay visible but can\u2019t be selected or edited', key: 'L', min: 1, run: toggleLockSelection },
+    { id: 'hide',  grp: 'ar', ico: 'hide',  tip: 'Hide / show in the editor \u2014 hidden objects still appear when you play', key: 'H', min: 1, run: toggleHideSelection },
+    { id: 'dup',   grp: 'ar', ico: 'dup',   tip: 'Duplicate', key: MODK + 'D', min: 1, run: duplicateSelection },
+    { id: 'dupOff', grp: 'ar', ico: 'dupOff', tip: 'Duplicate with offset\u2026 (make rows, stairs, columns)', min: 1, run: () => spTogglePop('dup') },
+    { id: 'rep',   grp: 'ar', ico: 'rep',   tip: 'Repeat last duplication', key: MODK + 'Shift+D', min: 1, run: repeatDuplicate },
+    { id: 'props', grp: 'ar', ico: 'props', tip: 'Open properties (changes apply to every selected object)', key: 'Double-click', min: 1, run: () => { if (primaryObject) openPopup(primaryObject); } },
+    { id: 'del',   grp: 'ar', ico: 'del',   tip: 'Delete', key: 'Delete', min: 1, run: deleteSelection }
+];
+const SNAP_OPTS = [
+    { key: 'grid', label: 'Grid', tip: 'Show the grid and snap to it' },
+    { key: 'snapEdges', label: 'Object edges', tip: 'Snap to the edges of other objects' },
+    { key: 'snapCenters', label: 'Object centers', tip: 'Snap to the centers of other objects' },
+    { key: 'snapPixels', label: 'Whole pixels', tip: 'Round positions and sizes to whole numbers' },
+    { key: 'snapRotation', label: 'Rotation (15\u00b0 steps)', tip: 'Snap rotation to 15\u00b0 steps' }
+];
+const SEL_MENU = [
+    { label: 'Select all', key: MODK + 'A', run: selectAllCmd },
+    { label: 'Select same type', run: selectSameType, needSel: true },
+    { label: 'Select same group', run: selectSameGroup, needSel: true },
+    { label: 'Select everything on screen', run: selectOnScreen },
+    { label: 'Invert selection', run: invertSelection },
+    { sep: true },
+    { label: 'Select all locked', run: () => selectByFlag('locked'), count: 'locked' },
+    { label: 'Select all hidden', run: () => selectByFlag('hidden'), count: 'hidden' },
+    { label: 'Unlock all', run: unlockAll, count: 'locked' },
+    { label: 'Show all hidden', run: showAllHidden, count: 'hidden' }
+];
+let spEls = null, spShown = false, spSig = '';
+
+function spTogglePop(which) {
+    ['snap', 'menu', 'dup'].forEach(k => {
+        const el = spEls[k + 'Pop'];
+        el.style.display = (k === which && el.style.display === 'none') ? 'block' : 'none';
+    });
+    spSig = '';
+}
+function spFieldValues(sel) {
+    const b = selBounds(sel);
+    if (sel.length === 1 || spMode === 'each') {
+        const common = f => { const v = sel.map(f); return v.every(x => x === v[0]) ? Math.round(v[0] * 100) / 100 : ''; };
+        return { x: common(o => o.x), y: common(o => o.y), w: common(o => o.width), h: common(o => o.height), r: common(o => o.rotation || 0) };
+    }
+    const q = v => Math.round(v * 100) / 100;
+    return { x: q(b.x), y: q(b.y), w: q(b.width), h: q(b.height), r: 0 };
+}
+function spApplyField(key, raw) {
+    const sel = selectionList();
+    const n = parseFloat(raw);
+    if (!sel.length || isNaN(n)) { spSig = ''; return; }
+    saveUndoState();
+    const b = selBounds(sel);
+    if (sel.length === 1 || spMode === 'each') {
+        sel.forEach(o => {
+            if (key === 'x') setObjPos(o, n, o.y);
+            else if (key === 'y') setObjPos(o, o.x, n);
+            else if (key === 'w') o.width = Math.max(MIN_BLOCK_SIZE, n);
+            else if (key === 'h') o.height = Math.max(MIN_BLOCK_SIZE, n);
+            else if (key === 'r') o.rotation = normAngle(n);
+        });
+    } else if (key === 'x') sel.forEach(o => setObjPos(o, o.x + (n - b.x), o.y));
+    else if (key === 'y') sel.forEach(o => setObjPos(o, o.x, o.y + (n - b.y)));
+    else if (key === 'w' && n >= MIN_BLOCK_SIZE) { const k = n / b.width; sel.forEach(o => { o.width = Math.max(MIN_BLOCK_SIZE, o.width * k); setObjPos(o, b.x + (o.x - b.x) * k, o.y); }); }
+    else if (key === 'h' && n >= MIN_BLOCK_SIZE) { const k = n / b.height; sel.forEach(o => { o.height = Math.max(MIN_BLOCK_SIZE, o.height * k); setObjPos(o, o.x, b.y + (o.y - b.y) * k); }); }
+    else if (key === 'r') orbitSelection(sel, n);
+    spSig = '';
+}
+function initEditorPanel() {
+    const style = document.createElement('style');
+    style.textContent = `
+#selPanel{position:fixed;left:12px;top:12px;width:248px;max-height:calc(100vh - 24px);overflow-y:auto;background:#18181b;color:#e4e4e7;border:1px solid #3f3f46;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.35);font:12px system-ui,-apple-system,sans-serif;z-index:60;display:none;padding:10px;box-sizing:border-box;user-select:none;scrollbar-width:thin}
+#selPanel button{margin:0;padding:0;font:inherit;border-radius:7px;white-space:normal}
+#selPanel .sp-head{display:flex;align-items:center;gap:4px}
+#selPanel .sp-title{flex:1;font-weight:600;color:#fafafa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#selPanel .sp-ico{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:#27272a;border:1px solid #3f3f46;color:#d4d4d8;cursor:pointer;flex-shrink:0}
+#selPanel .sp-ico:hover{background:#3f3f46;color:#fff}
+#selPanel .sp-ico.on{background:#2563eb;border-color:#3b82f6;color:#fff}
+#selPanel .sp-ico.off{opacity:.3;pointer-events:none}
+#selPanel .sp-sec{margin-top:10px}
+#selPanel .sp-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#71717a;margin-bottom:5px}
+#selPanel .sp-row{display:flex;flex-wrap:wrap;gap:4px}
+#selPanel .sp-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+#selPanel .sp-field{display:flex;align-items:center;gap:6px;background:#27272a;border:1px solid #3f3f46;border-radius:7px;padding:0 7px;height:28px}
+#selPanel .sp-field span{color:#71717a;font-weight:700;min-width:12px}
+#selPanel .sp-field input{width:100%;min-width:0;background:transparent;border:none;color:#fafafa;font:12px ui-monospace,Menlo,monospace;outline:none;padding:0;margin:0;user-select:text}
+#selPanel .sp-field:focus-within{border-color:#3b82f6}
+#selPanel .sp-pop{background:#202023;border:1px solid #3f3f46;border-radius:9px;padding:8px;margin-top:8px}
+#selPanel .sp-pop label{display:flex;align-items:center;gap:7px;padding:3px 0;color:#d4d4d8;cursor:pointer}
+#selPanel .sp-item{display:flex;width:100%;justify-content:space-between;align-items:center;background:transparent;border:none;color:#e4e4e7;padding:6px 6px;cursor:pointer;text-align:left}
+#selPanel .sp-item:hover{background:#3f3f46}
+#selPanel .sp-item small{color:#71717a}
+#selPanel .sp-hint{font-size:10.5px;color:#a1a1aa;line-height:1.4;margin-top:6px}
+#selPanel .sp-seg{display:flex;background:#27272a;border:1px solid #3f3f46;border-radius:8px;padding:2px;gap:2px}
+#selPanel .sp-seg button{flex:1;height:24px;background:transparent;border:none;color:#a1a1aa;cursor:pointer}
+#selPanel .sp-seg button.on{background:#2563eb;color:#fff}
+#selPanel .sp-go{background:#2563eb;border:none;color:#fff;height:28px;padding:0 10px;cursor:pointer;font-weight:600}
+#selPanel .sp-go:hover{background:#1d4ed8}`;
+    document.head.appendChild(style);
+
+    const panel = document.createElement('div');
+    panel.id = 'selPanel';
+    panel.innerHTML = `
+<div class="sp-head">
+  <div class="sp-title" id="spTitle">Nothing selected</div>
+  <button class="sp-ico" id="spUndo" title="Undo (${MODK}Z)">${ICONS.undo}</button>
+  <button class="sp-ico" id="spRedo" title="Redo (${MODK}Shift+Z)">${ICONS.redo}</button>
+  <button class="sp-ico" id="spSnapBtn" title="Snapping settings \u2014 hold ${ALTK} while dragging to turn snapping off">${ICONS.snap}</button>
+  <button class="sp-ico" id="spMenuBtn" title="Selection commands (select same type, same group, locked, hidden\u2026)">${ICONS.menu}</button>
+</div>
+<div class="sp-pop" id="spSnapPop" style="display:none"></div>
+<div class="sp-pop" id="spMenuPop" style="display:none"></div>
+<div id="spEmpty" class="sp-hint">Click an object to select it \u00b7 Shift+click adds or removes \u00b7 drag a box to select several \u00b7 ${MODK}A selects all \u00b7 Esc clears.</div>
+<div id="spBody" style="display:none">
+  <div class="sp-sec" id="spModeSec" style="display:none">
+    <div class="sp-seg"><button id="spModeGroup" title="Values move, resize and rotate the whole selection as one">Group</button><button id="spModeEach" title="Values are set on every selected object individually">Each</button></div>
+    <div class="sp-hint" id="spModeHint"></div>
+  </div>
+  <div class="sp-sec">
+    <div class="sp-lbl">Transform</div>
+    <div class="sp-grid">
+      <label class="sp-field" title="X position"><span>X</span><input id="spX" inputmode="decimal"></label>
+      <label class="sp-field" title="Y position"><span>Y</span><input id="spY" inputmode="decimal"></label>
+      <label class="sp-field" title="Width"><span>W</span><input id="spW" inputmode="decimal"></label>
+      <label class="sp-field" title="Height"><span>H</span><input id="spH" inputmode="decimal"></label>
+      <label class="sp-field" id="spRotWrap" style="grid-column:span 2" title="Rotation in degrees (visual \u2014 collision stays a box)"><span id="spRotLbl" style="min-width:auto">Rotation \u00b0</span><input id="spR" inputmode="decimal"></label>
+    </div>
+    <div class="sp-row" id="spBtns_xf"></div>
+    <div class="sp-row" style="margin-top:6px;align-items:center">
+      <label class="sp-field" style="flex:1" title="Scale the selection around its center (100 = unchanged)"><span style="min-width:auto">Scale %</span><input id="spScale" value="100" inputmode="decimal"></label>
+      <button class="sp-ico" id="spScaleGo" title="Apply scale" style="width:auto;padding:0 8px">Apply</button>
+      <button class="sp-ico" id="spScaleHalf" title="Half size" style="width:auto;padding:0 6px">\u00bd\u00d7</button>
+      <button class="sp-ico" id="spScaleDouble" title="Double size" style="width:auto;padding:0 6px">2\u00d7</button>
+    </div>
+  </div>
+  <div class="sp-sec"><div class="sp-lbl">Align &amp; distribute</div><div class="sp-row" id="spBtns_al"></div></div>
+  <div class="sp-sec"><div class="sp-lbl">Arrange</div><div class="sp-row" id="spBtns_ar"></div>
+    <div class="sp-pop" id="spDupPop" style="display:none">
+      <div class="sp-grid" style="margin-bottom:6px">
+        <label class="sp-field"><span>\u0394X</span><input id="spDupX" inputmode="decimal"></label>
+        <label class="sp-field"><span>\u0394Y</span><input id="spDupY" inputmode="decimal"></label>
+        <label class="sp-field" style="grid-column:span 2"><span style="min-width:auto">Copies</span><input id="spDupN" inputmode="numeric"></label>
+      </div>
+      <button class="sp-go" id="spDupGo" style="width:100%">Duplicate</button>
+      <div class="sp-hint">Each copy is offset by \u0394X / \u0394Y from the previous one. Relative positions are kept.</div>
+    </div>
+  </div>
+</div>`;
+    document.body.appendChild(panel);
+
+    const $ = id => document.getElementById(id);
+    spEls = { panel, title: $('spTitle'), body: $('spBody'), empty: $('spEmpty'), snapPop: $('spSnapPop'), menuPop: $('spMenuPop'), dupPop: $('spDupPop'),
+              modeSec: $('spModeSec'), modeHint: $('spModeHint'), rotLbl: $('spRotLbl'),
+              f: { x: $('spX'), y: $('spY'), w: $('spW'), h: $('spH'), r: $('spR') }, btns: {} };
+
+    // never let a panel button steal keyboard focus from the game
+    panel.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
+
+    SEL_ACTIONS.forEach(a => {
+        const b = document.createElement('button');
+        b.className = 'sp-ico';
+        b.innerHTML = ICONS[a.ico];
+        b.title = a.tip + (a.key ? `  (${a.key})` : '') + (a.min > 1 ? `  \u2014 needs ${a.min}+ objects` : '');
+        b.addEventListener('click', () => { a.run(); spSig = ''; });
+        $('spBtns_' + a.grp).appendChild(b);
+        spEls.btns[a.id] = b;
+    });
+    $('spUndo').addEventListener('click', () => undo());
+    $('spRedo').addEventListener('click', () => redo());
+    $('spSnapBtn').addEventListener('click', () => spTogglePop('snap'));
+    $('spMenuBtn').addEventListener('click', () => spTogglePop('menu'));
+    $('spModeGroup').addEventListener('click', () => { spMode = 'group'; spSig = ''; });
+    $('spModeEach').addEventListener('click', () => { spMode = 'each'; spSig = ''; });
+    Object.keys(spEls.f).forEach(k => spEls.f[k].addEventListener('change', () => spApplyField(k, spEls.f[k].value)));
+    const doScale = f => { scaleSelection(f); spSig = ''; };
+    $('spScaleGo').addEventListener('click', () => doScale((parseFloat($('spScale').value) || 100) / 100));
+    $('spScale').addEventListener('keydown', e => { if (e.key === 'Enter') $('spScaleGo').click(); });
+    $('spScaleHalf').addEventListener('click', () => doScale(0.5));
+    $('spScaleDouble').addEventListener('click', () => doScale(2));
+    $('spDupGo').addEventListener('click', () => {
+        doDuplicate(parseFloat($('spDupX').value) || 0, parseFloat($('spDupY').value) || 0, parseInt($('spDupN').value) || 1);
+        spSig = '';
+    });
+
+    // snapping popover
+    spEls.snapPop.innerHTML = SNAP_OPTS.map(o =>
+        `<label title="${o.tip}"><input type="checkbox" data-k="${o.key}"> ${o.label}</label>`).join('') +
+        `<label title="Distance between grid lines">Grid size <input type="text" id="spGridSize" inputmode="numeric" style="width:54px;background:#27272a;border:1px solid #3f3f46;border-radius:6px;color:#fafafa;padding:3px 6px"> px</label>` +
+        `<div class="sp-hint">Hold <b>${ALTK}</b> while dragging to turn snapping off. Pink guides show when edges or centers line up.</div>`;
+    spEls.snapPop.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => {
+        settings[cb.dataset.k] = cb.checked; saveSettings();
+    }));
+    $('spGridSize').addEventListener('change', e => {
+        const n = Math.max(5, Math.min(400, parseInt(e.target.value) || GRID_SIZE));
+        GRID_SIZE = n; e.target.value = n; saveSettings();
+    });
+}
+function spRefreshPops() {
+    spEls.snapPop.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = !!settings[cb.dataset.k]; });
+    const gs = document.getElementById('spGridSize');
+    if (document.activeElement !== gs) gs.value = GRID_SIZE;
+    const locked = objects.filter(o => o.locked).length, hidden = objects.filter(o => o.hidden).length;
+    const has = !!selectionList().length;
+    spEls.menuPop.innerHTML = '';
+    SEL_MENU.forEach(m => {
+        if (m.sep) { const hr = document.createElement('div'); hr.style.cssText = 'height:1px;background:#3f3f46;margin:4px 0'; spEls.menuPop.appendChild(hr); return; }
+        const b = document.createElement('button');
+        b.className = 'sp-item';
+        const n = m.count === 'locked' ? locked : m.count === 'hidden' ? hidden : null;
+        b.innerHTML = `<span>${m.label}${n !== null ? ` (${n})` : ''}</span><small>${m.key || ''}</small>`;
+        if ((m.needSel && !has) || n === 0) { b.style.opacity = '.4'; b.style.pointerEvents = 'none'; }
+        b.addEventListener('click', () => { m.run(); spEls.menuPop.style.display = 'none'; spSig = ''; });
+        spEls.menuPop.appendChild(b);
+    });
+}
+function updateSelPanel() {
+    if (!spEls) return;
+    if (multiSelect.some(o => !objects.includes(o))) setSelection(multiSelect.filter(o => objects.includes(o)), primaryObject);
+    const show = !playMode && canvas.style.display === 'block' && isSelectTool();
+    if (show !== spShown) { spEls.panel.style.display = show ? 'block' : 'none'; spShown = show; spSig = ''; }
+    if (!show) return;
+    const sel = selectionList();
+    let locked = 0, hidden = 0, rot = 0;
+    sel.forEach(o => { if (o.locked) locked++; if (o.hidden) hidden++; rot += o.rotation || 0; });
+    const b = sel.length ? selBounds(sel) : { x: 0, y: 0, width: 0, height: 0 };
+    const sig = [sel.length, locked, hidden, rot, b.x, b.y, b.width, b.height, spMode, undoStack.length, redoStack.length,
+                 sel.includes(primaryObject) ? 1 : 0].join('|');
+    if (sig === spSig) return;
+    spSig = sig;
+
+    const n = sel.length;
+    spEls.title.textContent = n === 0 ? 'Nothing selected' : n === 1 ? `Selected: ${sel[0].tag}` : `${n} objects selected`;
+    spEls.empty.style.display = n ? 'none' : 'block';
+    spEls.body.style.display = n ? 'block' : 'none';
+    document.getElementById('spUndo').classList.toggle('off', undoStack.length === 0);
+    document.getElementById('spRedo').classList.toggle('off', redoStack.length === 0);
+    if (spEls.snapPop.style.display !== 'none' || spEls.menuPop.style.display !== 'none') spRefreshPops();
+    if (!n) return;
+
+    spEls.modeSec.style.display = n > 1 ? 'block' : 'none';
+    document.getElementById('spModeGroup').classList.toggle('on', spMode === 'group');
+    document.getElementById('spModeEach').classList.toggle('on', spMode === 'each');
+    spEls.modeHint.textContent = spMode === 'group'
+        ? 'Group: X / Y move the whole selection, W / H resize it, Rotation turns it by that many degrees.'
+        : 'Each: whatever you type is set on every selected object (blank = values differ).';
+    spEls.rotLbl.textContent = (n > 1 && spMode === 'group') ? 'Rotate by \u00b0' : 'Rotation \u00b0';
+    const v = spFieldValues(sel);
+    Object.keys(spEls.f).forEach(k => {
+        const el = spEls.f[k];
+        el.placeholder = v[k] === '' ? 'mixed' : '';
+        if (document.activeElement !== el) el.value = v[k];
+    });
+    SEL_ACTIONS.forEach(a => {
+        const el = spEls.btns[a.id];
+        el.classList.toggle('off', n < a.min);
+        if (a.id === 'lock') el.classList.toggle('on', locked === n);
+        if (a.id === 'hide') el.classList.toggle('on', hidden === n);
+    });
+    document.getElementById('spDupX').value = document.activeElement === document.getElementById('spDupX') ? document.getElementById('spDupX').value : lastDup.dx;
+    document.getElementById('spDupY').value = document.activeElement === document.getElementById('spDupY') ? document.getElementById('spDupY').value : lastDup.dy;
+    document.getElementById('spDupN').value = document.activeElement === document.getElementById('spDupN') ? document.getElementById('spDupN').value : lastDup.count;
+}
+
+
+/* ---------- undo / redo (one snapshot stack; every editing operation calls saveUndoState first) ---------- */
+const redoStack = [];
+function currentSnapshot() {
+    return objects.filter(o => o.tag !== 'player').map(o => JSON.parse(JSON.stringify(o)));
+}
+function saveUndoState() {
+    undoStack.push(currentSnapshot());
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    redoStack.length = 0;               // a new edit ends the redo branch
+}
+function restoreSnapshot(snapshot) {
     for (let i = objects.length - 1; i >= 0; i--) {
         if (objects[i].tag !== 'player') objects.splice(i, 1);
     }
-
     snapshot.forEach(o => objects.push(o));
-
     // Clean up any active resize/select state
     selectedObject = null;
     selectedObjectIndex = -1;
@@ -2693,9 +3644,28 @@ function undo() {
     resizeObject = null;
     resizeHandle = null;
     isMoving = false;
-
+    dragOp = null;
+    snapGuides = [];
+    setSelection([]);                   // the objects were replaced
     closePopup();
+}
+function undo() {
+    if (undoStack.length === 0) {
+        showCoinToast('Nothing to undo', '#71717a');
+        return;
+    }
+    redoStack.push(currentSnapshot());
+    restoreSnapshot(undoStack.pop());
     showCoinToast('Undone', '#71717a');
+}
+function redo() {
+    if (redoStack.length === 0) {
+        showCoinToast('Nothing to redo', '#71717a');
+        return;
+    }
+    undoStack.push(currentSnapshot());
+    restoreSnapshot(redoStack.pop());
+    showCoinToast('Redone', '#71717a');
 }
 /* ============================================================
    VISUAL FX ENGINE (NEW)
@@ -2924,7 +3894,8 @@ function addShake(amount) {
 }
 function updateSpatialGrid() {
     spatialGrid.clear();
-    objects.forEach(obj => {
+    objects.forEach((obj, _idx) => {
+        obj._ord = _idx;                      // draw order = array order
         // Calculate which grid cells this object overlaps
         const startX = Math.floor(obj.x / SPATIAL_CELL_SIZE);
         const endX = Math.floor((obj.x + obj.width) / SPATIAL_CELL_SIZE);
@@ -3926,7 +4897,7 @@ function startCreate() {
   editorPlayer.scaleY = 1;
   
   // Clear any existing custom blocks and their toolbar buttons
-  undoStack.length = 0; // ADD THIS
+  undoStack.length = 0; redoStack.length = 0; setSelection([]); // ADD THIS
   clearCustomTools();
   customBlocks = {};
 
@@ -4028,7 +4999,7 @@ function loadMapFile(ev) {
             player.scaleX = 1;
             player.scaleY = 1;
 
-            undoStack.length = 0;
+            undoStack.length = 0; redoStack.length = 0; setSelection([]);
 
             showCoinToast(`Map loaded — ${objects.length - 1} objects`, '#10b981');
             startGame();
@@ -4540,6 +5511,7 @@ if (isTextBlock) {
     document.getElementById('propTextRadius').value       = obj.textRadius       ?? 0;
     document.getElementById('propTextVarGroup').value = obj.varGroup || '';
 }
+  setupPopupMulti(obj);
   loadBindings(obj);
   document.getElementById("popup").style.display   = "block";
   document.getElementById("overlay").style.display = "block";
@@ -4672,6 +5644,7 @@ if (selectedObject.tag === 'text') {
 }// <--- VITAL: This brace closes the 'else if (monitor)' CODE BLOCK
 
   saveBindings(selectedObject);
+  applyPopupToSelection(selectedObject);
   closePopup();
 }
 
@@ -4723,43 +5696,8 @@ function handleResize() {
 // 3. Attach the debounced wrapper to the window resize event
 // 200ms is the sweet spot: invisible to the user, but saves hundreds of frames of lag
 window.addEventListener('resize', debounce(handleResize, 200));
-canvas.addEventListener("mouseup", () => {
-    isMouseDown = false;
-    lastPlacedCell = { x: -1, y: -1 };
-    isResizing = false;
-    resizeObject = null;
-    resizeHandle = null;
-    isMoving = false;   // ADD
-    if (isDragSelecting) {
-    isDragSelecting = false;
-    const minX = Math.min(dragSelectStart.x, dragSelectEnd.x);
-    const maxX = Math.max(dragSelectStart.x, dragSelectEnd.x);
-    const minY = Math.min(dragSelectStart.y, dragSelectEnd.y);
-    const maxY = Math.max(dragSelectStart.y, dragSelectEnd.y);
-
-    if (maxX - minX > 4 || maxY - minY > 4) {
-        multiSelect = objects.filter(obj =>
-            obj.tag !== 'player' &&
-            obj.x >= minX && obj.x + obj.width  <= maxX &&
-            obj.y >= minY && obj.y + obj.height <= maxY
-        );
-    }
-}
-if (isMovingMulti) {
-    isMovingMulti    = false;
-    multiMoveOrigins = [];
-}
-});
-
-canvas.addEventListener("mouseleave", () => {
-    isMouseDown = false;
-    lastPlacedCell = { x: -1, y: -1 };
-    isResizing = false;
-    resizeObject = null;
-    resizeHandle = null;
-    isMoving = false;   // ADD
-    isMovingMulti = false;
-});
+canvas.addEventListener("mouseup", () => endCanvasInteraction(false));
+canvas.addEventListener("mouseleave", () => endCanvasInteraction(true));
 // --- CANVAS MOUSELISTENER ---
 
 canvas.addEventListener("mousedown", e => {
@@ -4813,13 +5751,11 @@ canvas.addEventListener("mousedown", e => {
     let y = Math.floor(clickY / GRID_SIZE) * GRID_SIZE;
 
     // Find object under click
-    let clickedObject = objects.slice().reverse().find(obj =>
-        clickX >= obj.x && clickX <= obj.x + obj.width &&
-        clickY >= obj.y && clickY <= obj.y + obj.height
-    );
+    let clickedObject = pickObjectAt(clickX, clickY, true);   // topmost, respects draw order
 
     // --- DELETE tool ---
     if (currentTool === 'delete' && clickedObject) {
+    if (clickedObject.locked) { toast('That object is locked'); return; }
     const index = objects.indexOf(clickedObject);
     if (index !== -1) {
         saveUndoState();
@@ -4829,76 +5765,17 @@ canvas.addEventListener("mousedown", e => {
             START_POS.y = ground.y - 300;
         }
         objects.splice(index, 1);
+        setSelection(selectionList().filter(o => o !== clickedObject));
         closePopup();
     }
     return;
 }
 
-    // --- EDIT tool ---
-    if (currentTool === 'edit') {
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-
-    // If we have a multi-selection, check if clicking inside it to move
-    if (multiSelect.length > 0) {
-        const inMulti = multiSelect.some(obj =>
-            clickX >= obj.x && clickX <= obj.x + obj.width &&
-            clickY >= obj.y && clickY <= obj.y + obj.height
-        );
-        if (inMulti) {
-            isMovingMulti = true;
-            multiMoveStart   = { x: mx, y: my };
-            multiMoveOrigins = multiSelect.map(o => ({ x: o.x, y: o.y }));
-            saveUndoState();
-            return;
-        } else {
-            // Clicked outside multi-select — clear it
-            multiSelect = [];
-        }
-    }
-
-    if (selectedObject) {
-        // Check resize handles
-        const handle = getHandleAtPoint(selectedObject, mx, my);
-        if (handle) {
-            isResizing = true;
-            resizeObject = selectedObject;
-            resizeHandle = handle;
-            resizeStartMouse = { x: mx, y: my };
-            resizeStartRect = {
-                x: selectedObject.x, y: selectedObject.y,
-                width: selectedObject.width, height: selectedObject.height
-            };
-            saveUndoState();
-            return;
-        }
-
-        const insideSelected =
-            clickX >= selectedObject.x && clickX <= selectedObject.x + selectedObject.width &&
-            clickY >= selectedObject.y && clickY <= selectedObject.y + selectedObject.height;
-
-        if (insideSelected) {
-            isMoving = true;
-            moveStartMouse = { x: mx, y: my };
-            moveStartPos   = { x: selectedObject.x, y: selectedObject.y };
-            saveUndoState();
-            return;
-        }
-        selectedObject = null;
-    }
-
-    if (clickedObject) {
-        selectedObject = clickedObject;
-        selectedObjectIndex = objects.indexOf(clickedObject);
+    // --- EDIT / SELECT tool (shared selection, transform and drag code) ---
+    if (isSelectTool()) {
+        handleSelectMouseDown(e, mx, my, clickX, clickY);
         return;
     }
-
-    // Nothing clicked — start drag select
-    isDragSelecting  = true;
-    dragSelectStart  = { x: clickX, y: clickY };
-    dragSelectEnd    = { x: clickX, y: clickY };
-    return;
-}
 
     // --- COPY tool ---
     if (currentTool === 'copy' && clickedObject) {
@@ -5195,19 +6072,12 @@ case 'bush':
     }
 });
 canvas.addEventListener("dblclick", e => {
-    if (currentTool !== 'edit') return;
-    if (playMode) return;
-
+    if (!isSelectTool() || playMode) return;
     const rect = canvas.getBoundingClientRect();
-    const clickX = e.clientX - rect.left + camera.x;
-    const clickY = e.clientY - rect.top + camera.y;
-
-    const clickedObject = objects.slice().reverse().find(obj =>
-        clickX >= obj.x && clickX <= obj.x + obj.width &&
-        clickY >= obj.y && clickY <= obj.y + obj.height
-    );
-
+    const clickedObject = pickObjectAt(e.clientX - rect.left + camera.x, e.clientY - rect.top + camera.y);
     if (clickedObject) {
+        if (!selectionList().includes(clickedObject)) setSelection([clickedObject]);
+        else primaryObject = clickedObject;
         openPopup(clickedObject);
     }
 });
@@ -5217,69 +6087,16 @@ canvas.addEventListener("mousemove", e => {
     ghostX = Math.floor((e.clientX - rect.left + camera.x) / GRID_SIZE) * GRID_SIZE;
     ghostY = Math.floor((e.clientY - rect.top  + camera.y) / GRID_SIZE) * GRID_SIZE;
 
+    ghostValid = true;
+    if (!playMode && isSelectTool()) {
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        if (!isMouseDown) { updateSelectCursor(mx, my); return; }
+        if (dragOp) { updateDragOp(e, rect); return; }
+        if (isDragSelecting) dragSelectEnd = { x: mx + camera.x, y: my + camera.y };
+        return;
+    }
     if (!isMouseDown) return;
     if (playMode) return;
-
-    // Single object resize — highest priority
-    if (isResizing && resizeObject) {
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        const dx = mx - resizeStartMouse.x;
-        const dy = my - resizeStartMouse.y;
-        let newX = resizeStartRect.x, newY = resizeStartRect.y;
-        let newW = resizeStartRect.width, newH = resizeStartRect.height;
-        if (resizeHandle === 'se') {
-            newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  + dx));
-            newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height + dy));
-        } else if (resizeHandle === 'sw') {
-            newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  - dx));
-            newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height + dy));
-            newX = resizeStartRect.x + resizeStartRect.width - newW;
-        } else if (resizeHandle === 'ne') {
-            newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  + dx));
-            newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height - dy));
-            newY = resizeStartRect.y + resizeStartRect.height - newH;
-        } else if (resizeHandle === 'nw') {
-            newW = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.width  - dx));
-            newH = Math.max(MIN_BLOCK_SIZE, snap(resizeStartRect.height - dy));
-            newX = resizeStartRect.x + resizeStartRect.width  - newW;
-            newY = resizeStartRect.y + resizeStartRect.height - newH;
-        }
-        resizeObject.x = newX; resizeObject.y = newY;
-        resizeObject.width = newW; resizeObject.height = newH;
-        return;
-    }
-
-    // Single object move
-    if (isMoving && selectedObject) {
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        selectedObject.x = snap(moveStartPos.x + (mx - moveStartMouse.x));
-        selectedObject.y = snap(moveStartPos.y + (my - moveStartMouse.y));
-        return;
-    }
-
-    // Multi-select move
-    if (isMovingMulti && multiSelect.length > 0) {
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        const dx = mx - multiMoveStart.x;
-        const dy = my - multiMoveStart.y;
-        multiSelect.forEach((obj, idx) => {
-            obj.x = snap(multiMoveOrigins[idx].x + dx);
-            obj.y = snap(multiMoveOrigins[idx].y + dy);
-        });
-        return;
-    }
-
-    // Drag selection box
-    if (isDragSelecting) {
-        dragSelectEnd = {
-            x: e.clientX - rect.left + camera.x,
-            y: e.clientY - rect.top  + camera.y
-        };
-        return;
-    }
 
     // Drag-to-place blocks
     const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
@@ -9463,7 +10280,7 @@ function drawSurfaceShading() {
     ctx.globalCompositeOperation = 'source-over';
 
     visible.forEach(obj => {
-        if (!obj.solid) return;
+        if (!obj.solid || obj.rotation) return;
         if (obj.tag === 'player'  || obj.tag === 'trigger' || obj.tag === 'coin' ||
             obj.tag === 'tree'    || obj.tag === 'bush' ||
             obj.tag === 'oneway'  || obj.tag === 'goal'    || obj.tag === 'spawn' ||
@@ -9779,6 +10596,7 @@ function drawFPS() {
 }
 
 function drawSingleObject(obj) {
+    if (obj.hidden && !playMode) return;   // hidden = editor-only
     ctx.save();
     
     let opacity = obj.opacity ?? 1;
@@ -9790,6 +10608,10 @@ function drawSingleObject(obj) {
 
     ctx.translate(centerX, centerY);
     ctx.scale(obj.scaleX, obj.scaleY);
+    if (obj.tag !== 'player') {
+        if (obj.rotation) ctx.rotate(obj.rotation * Math.PI / 180);
+        if (obj.tag !== 'text' && (obj.flipX || obj.flipY)) ctx.scale(obj.flipX ? -1 : 1, obj.flipY ? -1 : 1);
+    }
     if (obj.tag === 'player') {
     // Lean forward when running
     const leanAmount = obj.vx * 0.03;
@@ -9971,57 +10793,6 @@ drawBlockGraphic(ctx, obj.tag, obj.width, obj.height, obj);
     }
     ctx.restore();
 
-    // Selection handles (drawn outside the save/restore so they aren't affected by scale)
-    if (currentTool === 'edit' && selectedObject === obj) {
-        ctx.strokeStyle = "#007aff";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 3]);
-        ctx.strokeRect(obj.x - camera.x, obj.y - camera.y, obj.width, obj.height);
-        ctx.setLineDash([]);
-
-        const handles = getResizeHandles(obj);
-        for (const key in handles) {
-            const hx = handles[key].x;
-            const hy = handles[key].y;
-            const isEdge = key.length === 1;
-
-            ctx.fillStyle = '#ffffff';
-            ctx.strokeStyle = '#007aff';
-            ctx.lineWidth = 2;
-
-            if (isEdge) {
-                const hw = key === 'n' || key === 's' ? 16 : 6;
-                const hh = key === 'n' || key === 's' ? 6 : 16;
-                ctx.beginPath();
-                ctx.roundRect(hx - hw/2, hy - hh/2, hw, hh, 3);
-                ctx.fill();
-                ctx.stroke();
-            } else {
-                ctx.beginPath();
-                ctx.rect(hx - RESIZE_HANDLE_SIZE/2, hy - RESIZE_HANDLE_SIZE/2, RESIZE_HANDLE_SIZE, RESIZE_HANDLE_SIZE);
-                ctx.fill();
-                ctx.stroke();
-            }
-        }
-
-        // Live dimension label while resizing
-        if (isResizing) {
-            const label = `${Math.round(obj.width)} × ${Math.round(obj.height)}`;
-            const lx = obj.x - camera.x + obj.width / 2;
-            const ly = obj.y - camera.y - 14;
-            ctx.font = 'bold 12px system-ui';
-            const tw = ctx.measureText(label).width;
-            ctx.fillStyle = '#007aff';
-            ctx.beginPath();
-            ctx.roundRect(lx - tw/2 - 6, ly - 11, tw + 12, 18, 4);
-            ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(label, lx, ly - 2);
-            ctx.textAlign = 'left';
-        }
-    }
 }
 
 // Draw triggers first, then other objects
@@ -10035,7 +10806,7 @@ function drawObjects() {
   };
 
   // Get ONLY the objects currently inside the camera view
-  const visibleObjects = getNearbyObjects(viewRect);
+  const visibleObjects = getNearbyObjects(viewRect).sort((a, b) => (a._ord || 0) - (b._ord || 0));
 
   // First pass: draw triggers
   visibleObjects.forEach(obj => {
@@ -10046,6 +10817,7 @@ function drawObjects() {
   visibleObjects.forEach(obj => {
     if (!isAnyTrigger(obj.tag)) drawSingleObject(obj);
   });
+  drawLockBadges(visibleObjects);
   // Draw drag selection rectangle
 if (isDragSelecting) {
     const sx = Math.min(dragSelectStart.x, dragSelectEnd.x) - camera.x;
@@ -10063,42 +10835,7 @@ if (isDragSelecting) {
     ctx.restore();
 }
 
-// Draw multi-select highlights
-if (multiSelect.length > 0) {
-    ctx.save();
-    ctx.strokeStyle = '#007aff';
-    ctx.lineWidth   = 2;
-    ctx.setLineDash([4, 3]);
-    ctx.fillStyle   = 'rgba(0,122,255,0.06)';
-
-    // Bounding box around all selected
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    multiSelect.forEach(obj => {
-        const sx = obj.x - camera.x;
-        const sy = obj.y - camera.y;
-        ctx.fillRect(sx, sy, obj.width, obj.height);
-        ctx.strokeRect(sx, sy, obj.width, obj.height);
-        minX = Math.min(minX, sx);
-        minY = Math.min(minY, sy);
-        maxX = Math.max(maxX, sx + obj.width);
-        maxY = Math.max(maxY, sy + obj.height);
-    });
-
-    // Outer bounding box
-    ctx.setLineDash([]);
-    ctx.strokeStyle = 'rgba(0,122,255,0.5)';
-    ctx.lineWidth   = 1;
-    ctx.strokeRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
-
-    // Label
-    ctx.fillStyle   = 'rgba(0,122,255,0.9)';
-    ctx.font        = 'bold 11px system-ui';
-    ctx.textAlign   = 'left';
-    ctx.textBaseline= 'bottom';
-    ctx.fillText(`${multiSelect.length} selected  •  Del to delete  •  drag to move`, minX - 2, minY - 8);
-
-    ctx.restore();
-}
+drawSelectionOverlay();
   for (const u in smoothedPlayers) {
     const op = smoothedPlayers[u];
     // rest stays the same
@@ -10259,6 +10996,7 @@ function drawDebug() {
 window.addEventListener('keydown', (e) => {
       const tag = document.activeElement?.tagName?.toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  if (handleEditorShortcut(e)) return;
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
         e.preventDefault();
         undo();
@@ -10398,10 +11136,12 @@ function gameLoop(timestamp) {
     }
 
     draw();
+    updateSelPanel();
     gameLoopId = requestAnimationFrame(gameLoop);
 }
 
 initBindingUI();
+initEditorPanel();
 </script>
 </body>
 </html>
