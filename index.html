@@ -1359,6 +1359,14 @@ let screenShake = 0;       // Current shake intensity
 let gameTime = 0;          // Used for idle animations (sine waves)
 const SPATIAL_CELL_SIZE = 200; // Size of grid buckets
 let spatialGrid = new Map();
+let dynamicSpatialGrid = new Map();
+let spatialIndexDirty = true;
+let runtimeIndexDirty = true;
+let runtimeTagIndex = new Map();
+let runtimeGroupIndex = new Map();
+const runtimeStats = { frameMs:0, updateMs:0, drawMs:0, physicsMs:0, visible:0, nearby:0, collisions:0, events:0, scripts:0 };
+let perfPanelEl = null;
+let perfPanelVisible = false;
 let currentCode = 0;
 let currentGames = [];
 let musicStarted = false;
@@ -2922,46 +2930,31 @@ function addShake(amount) {
     if (!settings.shake) return; // CHECK SETTING
     screenShake = amount;
 }
-function updateSpatialGrid() {
-    spatialGrid.clear();
-    objects.forEach(obj => {
-        // Calculate which grid cells this object overlaps
-        const startX = Math.floor(obj.x / SPATIAL_CELL_SIZE);
-        const endX = Math.floor((obj.x + obj.width) / SPATIAL_CELL_SIZE);
-        const startY = Math.floor(obj.y / SPATIAL_CELL_SIZE);
-        const endY = Math.floor((obj.y + obj.height) / SPATIAL_CELL_SIZE);
-
-        for (let x = startX; x <= endX; x++) {
-            for (let y = startY; y <= endY; y++) {
-                const key = `${x},${y}`;
-                if (!spatialGrid.has(key)) spatialGrid.set(key, []);
-                spatialGrid.get(key).push(obj);
-            }
-        }
-    });
+function _insertGrid(grid,obj){
+  const sx=Math.floor(obj.x/SPATIAL_CELL_SIZE), ex=Math.floor((obj.x+obj.width)/SPATIAL_CELL_SIZE);
+  const sy=Math.floor(obj.y/SPATIAL_CELL_SIZE), ey=Math.floor((obj.y+obj.height)/SPATIAL_CELL_SIZE);
+  for(let x=sx;x<=ex;x++) for(let y=sy;y<=ey;y++){const k=`${x},${y}`;let b=grid.get(k);if(!b)grid.set(k,b=[]);b.push(obj);}
+}
+function _staticRuntimeObject(o){return o&&o.tag!=='player'&&o.tag!=='platform'&&o.tag!=='clock'&&!o.pushable&&!o.gravity&&!o.vx&&!o.vy&&!o.platformProps;}
+function rebuildRuntimeIndexes(){
+  runtimeTagIndex.clear(); runtimeGroupIndex.clear();
+  for(const o of objects){const t=String(o.tag||'');if(!runtimeTagIndex.has(t))runtimeTagIndex.set(t,new Set());runtimeTagIndex.get(t).add(o);const gs=Array.isArray(o.group)?o.group:(o.group?String(o.group).split(','):[]);for(const g0 of gs){const g=String(g0||'').trim();if(!g)continue;if(!runtimeGroupIndex.has(g))runtimeGroupIndex.set(g,new Set());runtimeGroupIndex.get(g).add(o);}}
+  runtimeIndexDirty=false;
+}
+function markRuntimeIndexesDirty(){runtimeIndexDirty=true;spatialIndexDirty=true;}
+function getObjectsByTag(tag){if(runtimeIndexDirty)rebuildRuntimeIndexes();return runtimeTagIndex.get(String(tag||''))||new Set();}
+function getObjectsInGroup(group){if(runtimeIndexDirty)rebuildRuntimeIndexes();return runtimeGroupIndex.get(String(group||'').trim())||new Set();}
+function updateSpatialGrid(){
+  const rebuild=!playMode&&!testMode||spatialIndexDirty;
+  if(rebuild){spatialGrid.clear();dynamicSpatialGrid.clear();for(const o of objects)(_staticRuntimeObject(o)?_insertGrid(spatialGrid,o):_insertGrid(dynamicSpatialGrid,o));spatialIndexDirty=false;if(runtimeIndexDirty)rebuildRuntimeIndexes();}
+  else{dynamicSpatialGrid.clear();for(const o of objects)if(!_staticRuntimeObject(o))_insertGrid(dynamicSpatialGrid,o);}
+}
+function getNearbyObjects(rect){
+  const out=new Set(),sx=Math.floor(rect.x/SPATIAL_CELL_SIZE),ex=Math.floor((rect.x+rect.width)/SPATIAL_CELL_SIZE),sy=Math.floor(rect.y/SPATIAL_CELL_SIZE),ey=Math.floor((rect.y+rect.height)/SPATIAL_CELL_SIZE);
+  for(let x=sx;x<=ex;x++)for(let y=sy;y<=ey;y++){const k=`${x},${y}`;for(const g of [spatialGrid.get(k),dynamicSpatialGrid.get(k)])if(g)for(const o of g)out.add(o);}
+  runtimeStats.nearby=Math.max(runtimeStats.nearby,out.size);return [...out];
 }
 
-function getNearbyObjects(rect) {
-    const nearby = new Set(); // Use Set to avoid duplicates
-    const startX = Math.floor(rect.x / SPATIAL_CELL_SIZE);
-    const endX = Math.floor((rect.x + rect.width) / SPATIAL_CELL_SIZE);
-    const startY = Math.floor(rect.y / SPATIAL_CELL_SIZE);
-    const endY = Math.floor((rect.y + rect.height) / SPATIAL_CELL_SIZE);
-
-    for (let x = startX; x <= endX; x++) {
-        for (let y = startY; y <= endY; y++) {
-            const key = `${x},${y}`;
-            const cellObjects = spatialGrid.get(key);
-            if (cellObjects) {
-                for (const obj of cellObjects) {
-                    nearby.add(obj);
-                }
-            }
-        }
-    }
-    return Array.from(nearby);
-}
-// ---------------------------------
 function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -4031,6 +4024,7 @@ function loadMapFile(ev) {
             undoStack.length = 0;
 
             showCoinToast(`Map loaded — ${objects.length - 1} objects`, '#10b981');
+            rebuildSpatialAndRuntimeIndexes();
             startGame();
 
         } catch (err) {
@@ -4829,6 +4823,7 @@ canvas.addEventListener("mousedown", e => {
             START_POS.y = ground.y - 300;
         }
         objects.splice(index, 1);
+        markRuntimeIndexesDirty();
         closePopup();
     }
     return;
@@ -4887,7 +4882,7 @@ canvas.addEventListener("mousedown", e => {
         selectedObject = null;
     }
 
-    if (clickedObject) {
+    if (clickedObject && !clickedObject.locked) {
         selectedObject = clickedObject;
         selectedObjectIndex = objects.indexOf(clickedObject);
         return;
@@ -4923,6 +4918,7 @@ canvas.addEventListener("mousedown", e => {
             group: []
         };
         objects.push(newObj);
+        markRuntimeIndexesDirty();
         return;
     }
 
@@ -6163,11 +6159,11 @@ function fireTriggerGroup(groupName, sourceEvent = 'triggered') {
     groupName = resolveFxVars(groupName);
     _fireDepth++;
     try {
-        objects.forEach(target => {
-            if (!target.active || !hasGroup(target, groupName)) return;
-            if (target.tag === 'trigger')      executeTriggerLogic(target, sourceEvent);
-            else if (isEffectTag(target.tag))  executeEffectTrigger(target, sourceEvent);
-        });
+        for (const target of getObjectsInGroup(groupName)) {
+            if (!target.active) continue;
+            if (target.tag === 'trigger') executeTriggerLogic(target, sourceEvent);
+            else if (isEffectTag(target.tag)) executeEffectTrigger(target, sourceEvent);
+        }
     } finally {
         _fireDepth--;
     }
@@ -6446,9 +6442,7 @@ function initBindingUI() {
 }
 
 function forEachInGroup(groupName, fn) {
-    const g = String(groupName || '').trim();
-    if (!g) return;
-    objects.forEach(o => { if (hasGroup(o, g)) fn(o); });
+    const g=String(groupName||'').trim(); if(!g)return; for(const o of getObjectsInGroup(g)) fn(o);
 }
 
 const FX_TRISTATE = [
@@ -9779,6 +9773,7 @@ function drawFPS() {
 }
 
 function drawSingleObject(obj) {
+    if(obj.hidden===true)return;
     ctx.save();
     
     let opacity = obj.opacity ?? 1;
@@ -10035,7 +10030,8 @@ function drawObjects() {
   };
 
   // Get ONLY the objects currently inside the camera view
-  const visibleObjects = getNearbyObjects(viewRect);
+  const visibleObjects = getNearbyObjects(viewRect).filter(o => !(o.hidden === true));
+  runtimeStats.visible=visibleObjects.length;
 
   // First pass: draw triggers
   visibleObjects.forEach(obj => {
@@ -10351,20 +10347,45 @@ window.addEventListener('keyup', (e) => {
 
 
 /* ============================================================
+   SCALABLE RUNTIME / PERFORMANCE TOOLS
+============================================================ */
+const runtimeScheduler=[];let runtimeTaskId=0;
+function scheduleRuntimeTask(delay,fn,label='task'){const t={id:++runtimeTaskId,at:performance.now()+Math.max(0,delay),fn,label,cancelled:false};runtimeScheduler.push(t);return t;}
+function cancelRuntimeTask(t){if(t)t.cancelled=true;}
+function processRuntimeTasks(now=performance.now()){for(let i=runtimeScheduler.length-1;i>=0;i--){const t=runtimeScheduler[i];if(t.cancelled||t.at<=now){runtimeScheduler.splice(i,1);if(!t.cancelled){try{t.fn();runtimeStats.events++;}catch(e){console.error('Runtime task failed:',t.label,e);}}}}}
+function ensurePerformancePanel(){if(perfPanelEl)return perfPanelEl;perfPanelEl=document.createElement('div');perfPanelEl.style.cssText='position:fixed;top:12px;right:12px;z-index:99999;display:none;background:rgba(15,23,42,.94);color:#e2e8f0;border:1px solid #475569;border-radius:10px;padding:10px 12px;font:11px/1.45 ui-monospace,monospace;min-width:220px;pointer-events:none;white-space:pre;';document.body.appendChild(perfPanelEl);return perfPanelEl;}
+function togglePerformancePanel(force){perfPanelVisible=force===undefined?!perfPanelVisible:!!force;ensurePerformancePanel().style.display=perfPanelVisible?'block':'none';}
+function updatePerformancePanel(){if(!perfPanelVisible)return;const p=ensurePerformancePanel();p.textContent=`RUNTIME\nFPS ${fps}\nFrame ${runtimeStats.frameMs.toFixed(2)} ms\nUpdate ${runtimeStats.updateMs.toFixed(2)} ms\nDraw ${runtimeStats.drawMs.toFixed(2)} ms\nPhysics ${runtimeStats.physicsMs.toFixed(2)} ms\nObjects ${objects.length}\nVisible ${runtimeStats.visible}\nNearby ${runtimeStats.nearby}\nEvents ${runtimeStats.events}\nScripts ${runtimeStats.scripts}\nParticles ${particles.length}\n\nF3 = toggle`; }
+window.addEventListener('keydown',e=>{if(e.code==='F3'){e.preventDefault();togglePerformancePanel();}});
+function rebuildSpatialAndRuntimeIndexes(){markRuntimeIndexesDirty();updateSpatialGrid();}
+
+// Beginner-friendly editor utilities; callable by UI/buttons later without changing the data model.
+function getSelectionObjects(){return (multiSelect.length?multiSelect:(selectedObject?[selectedObject]:[])).filter(Boolean);}
+function alignSelection(mode){const a=getSelectionObjects();if(a.length<2)return;saveUndoState();const l=Math.min(...a.map(o=>o.x)),r=Math.max(...a.map(o=>o.x+o.width)),t=Math.min(...a.map(o=>o.y)),b=Math.max(...a.map(o=>o.y+o.height));if(mode==='left')a.forEach(o=>o.x=l);if(mode==='centerX')a.forEach(o=>o.x=(l+r)/2-o.width/2);if(mode==='right')a.forEach(o=>o.x=r-o.width);if(mode==='top')a.forEach(o=>o.y=t);if(mode==='centerY')a.forEach(o=>o.y=(t+b)/2-o.height/2);if(mode==='bottom')a.forEach(o=>o.y=b-o.height);markRuntimeIndexesDirty();}
+function distributeSelection(axis){const a=getSelectionObjects().slice().sort((x,y)=>(axis==='x'?x.x-y.x:x.y-y.y));if(a.length<3)return;saveUndoState();const first=axis==='x'?a[0].x:a[0].y,last=axis==='x'?a.at(-1).x:a.at(-1).y,step=(last-first)/(a.length-1);a.forEach((o,i)=>axis==='x'?o.x=first+step*i:o.y=first+step*i);markRuntimeIndexesDirty();}
+function duplicateSelection(offset=20){const a=getSelectionObjects();if(!a.length)return;saveUndoState();const copies=a.map(o=>{const c=JSON.parse(JSON.stringify(o));delete c.id;c.x+=offset;c.y+=offset;return c;});copies.forEach(o=>objects.push(o));multiSelect=copies;selectedObject=copies.at(-1);markRuntimeIndexesDirty();}
+function setSelectionHidden(v=true){getSelectionObjects().forEach(o=>o.hidden=v);}
+function setSelectionLocked(v=true){getSelectionObjects().forEach(o=>o.locked=v);}
+/* ============================================================
    GAME LOOP
 ============================================================ */
 let lastTime = 0;
 
 function gameLoop(timestamp) {
     if (!world) { requestAnimationFrame(gameLoop); return; }
+    const _frameStart=performance.now();
     const rawDelta = timestamp - lastTime;
     lastTime = timestamp;
     const delta = Math.min(rawDelta, 50) / (1000 / 60);
 
     if (!paused) {
+        const _updateStart=performance.now();
+        processRuntimeTasks(timestamp);
         applyBindings();
         updateSpatialGrid();
+        const _physicsStart=performance.now();
         updatePhysics(delta);
+        runtimeStats.physicsMs=performance.now()-_physicsStart;
         checkClocks();
         checkTriggers();
         checkEffectTriggerTouches();
@@ -10397,7 +10418,12 @@ function gameLoop(timestamp) {
         }
     }
 
+    const _drawStart=performance.now();
     draw();
+    runtimeStats.drawMs=performance.now()-_drawStart;
+    runtimeStats.frameMs=performance.now()-_frameStart;
+    if(!paused) runtimeStats.updateMs=performance.now()-_updateStart;
+    updatePerformancePanel();
     gameLoopId = requestAnimationFrame(gameLoop);
 }
 
