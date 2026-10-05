@@ -2656,6 +2656,7 @@ function isAnyTrigger(tag) {
 }
 function setPlayMode(enabled) {
     playMode = enabled;
+    resetBehaviorRuntime();
     const toggleBtn = document.getElementById('toolbarToggleBtn');
     const bubble    = document.getElementById('toolPreviewBubble');
     if (enabled) {
@@ -3429,7 +3430,7 @@ function spApplyField(key, raw) {
 function initEditorPanel() {
     const style = document.createElement('style');
     style.textContent = `
-#selPanel{position:fixed;left:12px;top:12px;width:248px;max-height:calc(100vh - 24px);overflow-y:auto;background:#18181b;color:#e4e4e7;border:1px solid #3f3f46;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.35);font:12px system-ui,-apple-system,sans-serif;z-index:60;display:none;padding:10px;box-sizing:border-box;user-select:none;scrollbar-width:thin}
+#selPanel{position:fixed;left:12px;top:12px;width:272px;max-height:calc(100vh - 24px);overflow-y:auto;background:#18181b;color:#e4e4e7;border:1px solid #3f3f46;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.35);font:12px system-ui,-apple-system,sans-serif;z-index:60;display:none;padding:10px;box-sizing:border-box;user-select:none;scrollbar-width:thin}
 #selPanel button{margin:0;padding:0;font:inherit;border-radius:7px;white-space:normal}
 #selPanel .sp-head{display:flex;align-items:center;gap:4px}
 #selPanel .sp-title{flex:1;font-weight:600;color:#fafafa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -3574,6 +3575,10 @@ function spRefreshPops() {
     });
 }
 function updateSelPanel() {
+    _updateSelPanelCore();
+    renderBehaviorsIfNeeded();
+}
+function _updateSelPanelCore() {
     if (!spEls) return;
     if (multiSelect.some(o => !objects.includes(o))) setSelection(multiSelect.filter(o => objects.includes(o)), primaryObject);
     const show = !playMode && canvas.style.display === 'block' && isSelectTool();
@@ -3622,6 +3627,224 @@ function updateSelPanel() {
 }
 
 
+/* ============================================================
+   BEHAVIORS (v1) — small, optional abilities any object can carry.
+   obj.behaviors = [ { id, type, enabled, ...settings } ]
+   Saved with the map like any other property. Objects without a
+   behaviors list are never touched. They only run in Play / Test /
+   Host mode, so the editor always shows the layout you built.
+============================================================ */
+const BEHAVIOR_TYPES = {
+    move:   { label: 'Move',   icon: '\u27a1\ufe0f', desc: 'Moves at a steady speed.',
+              fields: [ { key: 'vx', label: 'X speed', unit: 'px/s', def: 60 }, { key: 'vy', label: 'Y speed', unit: 'px/s', def: 0 } ] },
+    rotate: { label: 'Rotate', icon: '\ud83d\udd04', desc: 'Spins around its center (looks only \u2014 collision stays a box).',
+              fields: [ { key: 'speed', label: 'Rotation speed', unit: '\u00b0/s', def: 90 } ] },
+    bob:    { label: 'Bob',    icon: '\ud83c\udf88', desc: 'Floats up and down.',
+              fields: [ { key: 'distance', label: 'Distance', unit: 'px', def: 10 }, { key: 'speed', label: 'Speed', unit: 'bobs/s', def: 1 } ] },
+    fade:   { label: 'Fade',   icon: '\ud83d\udc7b', desc: 'Fades in and out.',
+              fields: [ { key: 'min', label: 'Min opacity', unit: '0\u20131', def: 0.2 }, { key: 'max', label: 'Max opacity', unit: '0\u20131', def: 1 }, { key: 'speed', label: 'Speed', unit: 'fades/s', def: 0.5 } ] },
+    follow: { label: 'Follow', icon: '\ud83c\udfaf', desc: 'Moves toward the player or any group.',
+              fields: [ { key: 'target', label: 'Target', type: 'text', def: 'player', hint: 'player, or a group name' }, { key: 'speed', label: 'Speed', unit: 'px/s', def: 80 } ] }
+};
+let bhIdN = 0;
+const bhNum = (v, d) => { const x = parseFloat(v); return isNaN(x) ? d : x; };
+function bhHid(o, k, init) {                     // runtime-only slot: never saved, cloned or snapshotted
+    if (!Object.prototype.hasOwnProperty.call(o, k)) Object.defineProperty(o, k, { value: init, writable: true, enumerable: false, configurable: true });
+    return o[k];
+}
+function makeBehavior(type) {
+    const b = { id: 'b' + (++bhIdN) + Math.random().toString(36).slice(2, 6), type, enabled: true };
+    BEHAVIOR_TYPES[type].fields.forEach(f => { b[f.key] = f.def; });
+    return b;
+}
+function bhState(o, b) {
+    if (!b.id) b.id = 'b' + (++bhIdN) + Math.random().toString(36).slice(2, 6);
+    const m = bhHid(o, '_bh', {});
+    return m[b.id] || (m[b.id] = { t: 0, off: 0 });
+}
+// Move an object (carries a player standing on top of it, like the Platform block)
+function bhMove(o, dx, dy) {
+    if (!dx && !dy) return;
+    const carry = o.solid && player.x + player.width > o.x + 1 && player.x < o.x + o.width - 1 &&
+                  Math.abs(player.y + player.height - o.y) < 6 && player.vy >= -1;
+    o.x += dx; o.y += dy;
+    if (carry) { player.x += dx; player.y += dy; }
+}
+function bhTarget(o, spec) {
+    const s = String(resolveFxVars(String(spec == null ? '' : spec))).trim();
+    if (!s || s.toLowerCase() === 'player') return player;
+    let best = null, bd = Infinity;
+    objects.forEach(t => {
+        if (t === o || t.tag === 'player' || !hasGroup(t, s)) return;
+        const d = (t.x - o.x) ** 2 + (t.y - o.y) ** 2;
+        if (d < bd) { bd = d; best = t; }
+    });
+    return best;
+}
+function bhRun(o, b, dt) {
+    const st = bhState(o, b);
+    switch (b.type) {
+        case 'move':
+            bhMove(o, bhNum(b.vx, 0) * dt, bhNum(b.vy, 0) * dt);
+            break;
+        case 'rotate':
+            o.rotation = (((o.rotation || 0) + bhNum(b.speed, 0) * dt + 180) % 360 + 360) % 360 - 180;
+            break;
+        case 'bob': {
+            st.t += dt;
+            const off = bhNum(b.distance, 0) * Math.sin(2 * Math.PI * bhNum(b.speed, 1) * st.t);
+            bhMove(o, 0, off - st.off);              // only the change, so it stacks with Move / Follow
+            st.off = off;
+            break;
+        }
+        case 'fade': {
+            st.t += dt;
+            const a = bhNum(b.min, 0.2), c = bhNum(b.max, 1), lo = Math.max(0, Math.min(a, c)), hi = Math.min(1, Math.max(a, c));
+            o.opacity = lo + (hi - lo) * (0.5 + 0.5 * Math.cos(2 * Math.PI * bhNum(b.speed, 0.5) * st.t));
+            break;
+        }
+        case 'follow': {
+            const t = bhTarget(o, b.target); if (!t) break;
+            const dx = (t.x + t.width / 2) - (o.x + o.width / 2), dy = (t.y + t.height / 2) - (o.y + o.height / 2);
+            const dist = Math.hypot(dx, dy); if (dist < 1) break;
+            const step = Math.min(bhNum(b.speed, 80) * dt, dist);
+            bhMove(o, dx / dist * step, dy / dist * step);
+            break;
+        }
+    }
+}
+// The one central update: only objects that have at least one enabled behavior are touched.
+function updateBehaviors(dt) {
+    for (let i = 0; i < objects.length; i++) {
+        const o = objects[i], bs = o.behaviors;
+        if (!bs || !bs.length) continue;
+        let active = false;
+        for (let k = 0; k < bs.length; k++) if (bs[k] && bs[k].enabled !== false && BEHAVIOR_TYPES[bs[k].type]) { active = true; break; }
+        if (!active) continue;
+        if (!o._home) { bhHid(o, '_home', null); o._home = { x: o.x, y: o.y, opacity: o.opacity, rotation: o.rotation }; }
+        for (let k = 0; k < bs.length; k++) {
+            const b = bs[k];
+            if (b && b.enabled !== false && BEHAVIOR_TYPES[b.type]) bhRun(o, b, dt);
+        }
+    }
+}
+// Put everything back the way it was built (play stops, or Reset is pressed)
+function resetBehaviorRuntime() {
+    objects.forEach(o => {
+        const h = o._home;
+        if (h) {
+            o.x = h.x; o.y = h.y; o.opacity = h.opacity;
+            if (h.rotation === undefined) delete o.rotation; else o.rotation = h.rotation;
+            o._home = null;
+        }
+        if (o._bh) o._bh = {};
+    });
+}
+function drawBehaviorBadges(list) {              // small purple badge on objects that have behaviors (editor only)
+    if (playMode) return;
+    ctx.save();
+    list.forEach(o => {
+        if (!o.behaviors || !o.behaviors.length || o.hidden) return;
+        const sx = o.x - camera.x + o.width - 4, sy = o.y - camera.y + 4;
+        ctx.fillStyle = '#7c3aed'; ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(o.behaviors.length), sx, sy + 0.5);
+    });
+    ctx.restore();
+}
+
+/* ---------- the "Behaviors" section of the object inspector ---------- */
+let bhEls = null, bhPickerOpen = false, bhSigPrev = '';
+const bhEl = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+function bhCommit(b, key, val) { saveUndoState(); b[key] = val; bhSigPrev = ''; }
+function bhCard(o, b, i) {
+    const def = BEHAVIOR_TYPES[b.type];
+    const card = bhEl('div', 'bh-card' + (b.enabled === false ? ' off' : '')); card.dataset.id = b.id;
+    const head = bhEl('div', 'bh-head');
+    head.appendChild(bhEl('span', 'bh-ico', def ? def.icon : '\u2753'));
+    head.appendChild(bhEl('span', 'bh-name', def ? def.label : 'Unknown (' + b.type + ')'));
+    const en = bhEl('label', 'bh-en'); en.title = 'Turn this behavior on or off';
+    const cb = bhEl('input', 'bh-on'); cb.type = 'checkbox'; cb.checked = b.enabled !== false;
+    cb.addEventListener('change', () => bhCommit(b, 'enabled', cb.checked));
+    en.appendChild(cb); en.appendChild(document.createTextNode(' Enabled')); head.appendChild(en);
+    const rm = bhEl('button', 'bh-remove', 'Remove'); rm.title = 'Remove this behavior';
+    rm.addEventListener('click', () => { saveUndoState(); o.behaviors.splice(i, 1); if (!o.behaviors.length) delete o.behaviors; bhSigPrev = ''; });
+    head.appendChild(rm); card.appendChild(head);
+    if (!def) { card.appendChild(bhEl('div', 'bh-desc', 'This behavior type is unknown here. It is kept as-is in your map.')); return card; }
+    card.appendChild(bhEl('div', 'bh-desc', def.desc));
+    def.fields.forEach(f => {
+        const row = bhEl('div', 'bh-f');
+        const lab = bhEl('label', 'bh-l', f.label); if (f.unit) lab.appendChild(bhEl('small', '', ' ' + f.unit)); if (f.hint) lab.title = f.hint;
+        const inp = bhEl('input'); inp.type = 'text'; inp.dataset.key = f.key;
+        if (f.type !== 'text') inp.setAttribute('inputmode', 'decimal'); else inp.placeholder = f.hint || '';
+        inp.value = b[f.key] !== undefined ? b[f.key] : f.def;
+        inp.addEventListener('change', () => {
+            if (f.type === 'text') bhCommit(b, f.key, inp.value.trim());
+            else { const v = parseFloat(inp.value); if (isNaN(v)) { inp.value = b[f.key]; return; } bhCommit(b, f.key, v); }
+        });
+        row.appendChild(lab); row.appendChild(inp); card.appendChild(row);
+    });
+    return card;
+}
+function renderBehaviorsIfNeeded() {
+    if (!bhEls || !spShown) return;
+    const sel = selectionList();
+    bhEls.root.style.display = sel.length ? 'block' : 'none';
+    if (!sel.length) return;
+    const p = sel.length === 1 ? sel[0] : null;
+    const sig = [sel.length, p ? bhHid(p, '_uid', 'o' + (++bhIdN)) : '', JSON.stringify(p && p.behaviors || []), bhPickerOpen].join('|');
+    if (sig === bhSigPrev) return;
+    const ae = document.activeElement;
+    if (ae && bhEls.root.contains(ae) && ae.tagName === 'INPUT' && ae.type !== 'checkbox') return;   // don't rebuild under the cursor
+    bhSigPrev = sig;
+    bhEls.list.innerHTML = '';
+    if (!p) {
+        bhEls.note.textContent = 'Select a single object to see and edit its behaviors.';
+        bhEls.add.style.display = 'none'; bhEls.picker.style.display = 'none'; return;
+    }
+    bhEls.add.style.display = 'block';
+    const bs = p.behaviors || [];
+    bhEls.note.textContent = bs.length ? '' : 'No behaviors yet. Add one to make this object move, spin, float, fade or follow \u2014 and stack as many as you like.';
+    bs.forEach((b, i) => bhEls.list.appendChild(bhCard(p, b, i)));
+    bhEls.picker.style.display = bhPickerOpen ? 'block' : 'none';
+}
+function initBehaviorUI() {
+    const css = document.createElement('style');
+    css.textContent = `
+#selPanel .bh-card{background:#202023;border:1px solid #3f3f46;border-left:3px solid #7c3aed;border-radius:9px;padding:8px;margin-bottom:8px}
+#selPanel .bh-card.off{opacity:.55}
+#selPanel .bh-head{display:flex;align-items:center;gap:6px}
+#selPanel .bh-name{flex:1;font-weight:600;color:#fafafa}
+#selPanel .bh-en{display:flex;align-items:center;gap:3px;color:#d4d4d8;font-size:11px;cursor:pointer}
+#selPanel .bh-remove{height:22px;padding:0 8px;background:#3f1d1d;border:1px solid #7f1d1d;color:#fca5a5;cursor:pointer;font-size:11px}
+#selPanel .bh-remove:hover{background:#7f1d1d;color:#fff}
+#selPanel .bh-desc{font-size:10.5px;color:#a1a1aa;margin:5px 0;line-height:1.35}
+#selPanel .bh-f{margin:5px 0}
+#selPanel .bh-l{display:block;font-size:10.5px;color:#a1a1aa;margin-bottom:2px}#selPanel .bh-l small{color:#71717a}
+#selPanel .bh-f input[type=text]{width:100%;box-sizing:border-box;background:#27272a;border:1px solid #3f3f46;border-radius:6px;color:#fafafa;font:12px system-ui;padding:4px 6px;height:26px;margin:0;user-select:text}
+#selPanel .bh-item{display:flex;gap:8px;align-items:flex-start;width:100%;background:transparent;border:none;color:#e4e4e7;padding:6px 4px;cursor:pointer;text-align:left;border-radius:6px}
+#selPanel .bh-item:hover{background:#3f3f46}#selPanel .bh-item small{display:block;color:#a1a1aa;font-size:10px;line-height:1.3}`;
+    document.head.appendChild(css);
+    const root = bhEl('div', 'sp-sec'); root.id = 'spBeh';
+    root.innerHTML = '<div class="sp-lbl">Behaviors</div><div id="spBehNote" class="sp-hint" style="margin:0 0 6px"></div><div id="spBehList"></div>' +
+        '<button class="sp-go" id="spBehAdd" style="width:100%" title="Give this object an ability: move, rotate, bob, fade or follow. You can add several.">+ Add Behavior</button>' +
+        '<div class="sp-pop" id="spBehPicker" style="display:none"></div>';
+    document.getElementById('spBody').appendChild(root);
+    const picker = document.getElementById('spBehPicker');
+    Object.keys(BEHAVIOR_TYPES).forEach(type => {
+        const d = BEHAVIOR_TYPES[type], b = bhEl('button', 'bh-item'); b.dataset.type = type; b.title = d.desc;
+        b.appendChild(bhEl('span', '', d.icon)); const t = bhEl('span'); t.appendChild(bhEl('b', '', d.label)); t.appendChild(bhEl('small', '', d.desc)); b.appendChild(t);
+        b.addEventListener('click', () => {
+            const sel = selectionList(); if (sel.length !== 1) return;
+            saveUndoState(); (sel[0].behaviors = sel[0].behaviors || []).push(makeBehavior(type)); bhPickerOpen = false; bhSigPrev = '';
+        });
+        picker.appendChild(b);
+    });
+    bhEls = { root, note: document.getElementById('spBehNote'), list: document.getElementById('spBehList'), add: document.getElementById('spBehAdd'), picker };
+    bhEls.add.addEventListener('click', () => { bhPickerOpen = !bhPickerOpen; bhSigPrev = ''; });
+}
+
 /* ---------- undo / redo (one snapshot stack; every editing operation calls saveUndoState first) ---------- */
 const redoStack = [];
 function currentSnapshot() {
@@ -3633,6 +3856,8 @@ function saveUndoState() {
     redoStack.length = 0;               // a new edit ends the redo branch
 }
 function restoreSnapshot(snapshot) {
+    const before = objects.filter(x => x.tag !== 'player');
+    const keep = selectionList().map(o => before.indexOf(o)).filter(i => i >= 0);
     for (let i = objects.length - 1; i >= 0; i--) {
         if (objects[i].tag !== 'player') objects.splice(i, 1);
     }
@@ -3646,7 +3871,8 @@ function restoreSnapshot(snapshot) {
     isMoving = false;
     dragOp = null;
     snapGuides = [];
-    setSelection([]);                   // the objects were replaced
+    const after = objects.filter(x => x.tag !== 'player');
+    setSelection(keep.map(i => after[i]).filter(Boolean));   // same objects stay selected
     closePopup();
 }
 function undo() {
@@ -5180,6 +5406,7 @@ function checkResetBreakables() {
   
 // --- Reset Triggers ---
 function resetAllTriggers() {
+    resetBehaviorRuntime();
     objects.forEach(o => {
         if (isAnyTrigger(o.tag)) { o.hasFired = false; o.active = true; }
         
@@ -10818,6 +11045,7 @@ function drawObjects() {
     if (!isAnyTrigger(obj.tag)) drawSingleObject(obj);
   });
   drawLockBadges(visibleObjects);
+  drawBehaviorBadges(visibleObjects);
   // Draw drag selection rectangle
 if (isDragSelecting) {
     const sx = Math.min(dragSelectStart.x, dragSelectEnd.x) - camera.x;
@@ -11101,6 +11329,7 @@ function gameLoop(timestamp) {
 
     if (!paused) {
         applyBindings();
+        if (playMode) updateBehaviors(Math.min(delta, 3) / 60);
         updateSpatialGrid();
         updatePhysics(delta);
         checkClocks();
@@ -11142,6 +11371,7 @@ function gameLoop(timestamp) {
 
 initBindingUI();
 initEditorPanel();
+initBehaviorUI();
 </script>
 </body>
 </html>
