@@ -3648,33 +3648,7 @@ function _updateSelPanelCore() {
    Host mode, so the editor always shows the layout you built.
 ============================================================ */
 const BEHAVIOR_TYPES = {
-    move:   { label: 'Move',   icon: '\u27a1\ufe0f', desc: 'Moves at a steady speed.',
-              fields: [ { key: 'vx', label: 'X speed', unit: 'px/s', def: 60 }, { key: 'vy', label: 'Y speed', unit: 'px/s', def: 0 } ] },
-    rotate: { label: 'Rotate', icon: '\ud83d\udd04', desc: 'Spins around its center (looks only \u2014 collision stays a box).',
-              fields: [ { key: 'speed', label: 'Rotation speed', unit: '\u00b0/s', def: 90 } ] },
-    bob:    { label: 'Bob',    icon: '\ud83c\udf88', desc: 'Floats up and down.',
-              fields: [ { key: 'distance', label: 'Distance', unit: 'px', def: 10 }, { key: 'speed', label: 'Speed', unit: 'bobs/s', def: 1 } ] },
-    fade:   { label: 'Fade',   icon: '\ud83d\udc7b', desc: 'Fades in and out.',
-              fields: [ { key: 'min', label: 'Min opacity', unit: '0\u20131', def: 0.2 }, { key: 'max', label: 'Max opacity', unit: '0\u20131', def: 1 }, { key: 'speed', label: 'Speed', unit: 'fades/s', def: 0.5 } ] },
-    follow: { label: 'Follow', icon: '\ud83c\udfaf', desc: 'Moves toward the player or any group.',
-              fields: [ { key: 'target', label: 'Target', type: 'text', def: 'player', hint: 'player, or a group name' }, { key: 'speed', label: 'Speed', unit: 'px/s', def: 80 } ] },
-
-    /* ---- Movement ---- */
-    patrol:     { label: 'Patrol', icon: '\ud83d\udeb6', desc: 'Walks back and forth along a line and pauses at each end.',
-                  fields: [ { key: 'dx', label: 'Walk distance X', unit: 'px', def: 150 }, { key: 'dy', label: 'Walk distance Y', unit: 'px', def: 0 },
-                            { key: 'speed', label: 'Speed', unit: 'px/s', def: 60 }, { key: 'wait', label: 'Wait at each end', unit: 'seconds', def: 0.5 } ] },
-    oscillate:  { label: 'Oscillate', icon: '\u3030\ufe0f', desc: 'Swings smoothly back and forth, like a pendulum or a gentle wave.',
-                  fields: [ { key: 'dx', label: 'Swing X', unit: 'px', def: 60 }, { key: 'dy', label: 'Swing Y', unit: 'px', def: 0 },
-                            { key: 'speed', label: 'Speed', unit: 'swings/s', def: 0.5 } ] },
-    moveToward: { label: 'Move Toward', icon: '\ud83d\udccd', desc: 'Moves to a spot and stops \u2014 good for doors and lifts. Untick Enabled so it waits until a trigger turns it on.',
-                  fields: [ { key: 'x', label: 'Go to X', unit: 'px', def: o => Math.round(o.x) }, { key: 'y', label: 'Go to Y', unit: 'px', def: o => Math.round(o.y - 150) },
-                            { key: 'speed', label: 'Speed', unit: 'px/s', def: 100 },
-                            { key: 'turnOff', type: 'check', label: 'Turn itself off when it arrives', def: true },
-                            { key: 'onCompleted', type: 'text', event: true, label: 'When it arrives, fire group', hint: 'a trigger group name', def: '' } ] },
-    orbit:      { label: 'Orbit', icon: '\ud83e\ude90', desc: 'Circles around a point. Leave "Around" empty to circle a spot beside where it starts.',
-                  fields: [ { key: 'around', label: 'Around', type: 'text', def: '', hint: 'empty, "player", or a group name' },
-                            { key: 'radius', label: 'Radius', unit: 'px', def: 80 }, { key: 'speed', label: 'Speed', unit: '\u00b0/s', def: 90 } ] },
-
+    
     /* ---- Interaction ---- */
     button:     { label: 'Button', icon: '\ud83d\udd18', desc: 'Pressed when the player (or a pushable crate) stands on it.',
                   fields: [ { key: 'latch', type: 'check', label: 'Stay pressed after the first press', def: false },
@@ -3698,19 +3672,15 @@ const BEHAVIOR_TYPES = {
                   fields: [ { key: 'coins', label: 'Reward coins (first time)', def: 15 },
                             { key: 'onActivated', type: 'text', event: true, label: 'When reached, fire group', hint: 'a trigger group name', def: '' } ] },
 
-    /* ---- Visual ---- */
-    pulse:      { label: 'Pulse', icon: '\ud83d\udc93', desc: 'Grows and shrinks like a heartbeat (looks only).',
-                  fields: [ { key: 'amount', label: 'Size change', unit: '%', def: 15 }, { key: 'speed', label: 'Speed', unit: 'pulses/s', def: 1 } ] },
-    flicker:    { label: 'Flicker', icon: '\ud83d\udd6f\ufe0f', desc: 'Flickers like a damaged light.',
-                  fields: [ { key: 'min', label: 'Dimmest', unit: '0\u20131', def: 0.3 }, { key: 'speed', label: 'Speed', unit: 'flickers/s', def: 8 } ] },
-    colorChange:{ label: 'Color Change', icon: '\ud83c\udfa8', desc: 'Fades a color over the object. Enable it from a trigger for feedback (a door turning green).',
-                  fields: [ { key: 'color', label: 'Color', type: 'color', def: '#22c55e' }, { key: 'strength', label: 'Strength', unit: '%', def: 50 },
-                            { key: 'fade', label: 'Fade-in time', unit: 'seconds', def: 0.5 } ] }
 };
-const BH_CAT_ORDER = ['Movement', 'Appearance', 'Interaction'];
-Object.entries({ move: 'Movement', bob: 'Movement', follow: 'Movement', patrol: 'Movement', oscillate: 'Movement', moveToward: 'Movement', orbit: 'Movement',
-                 rotate: 'Appearance', fade: 'Appearance', pulse: 'Appearance', flicker: 'Appearance', colorChange: 'Appearance',
-                 button: 'Interaction', switch: 'Interaction', collectible: 'Interaction', damage: 'Interaction', checkpoint: 'Interaction' })
+const BH_CAT_ORDER = ['Interaction'];
+Object.entries({
+    button: 'Interaction',
+    switch: 'Interaction',
+    collectible: 'Interaction',
+    damage: 'Interaction',
+    checkpoint: 'Interaction'
+})
     .forEach(([k, c]) => { BEHAVIOR_TYPES[k].cat = c; });
 let bhIdN = 0;
 const bhNum = (v, d) => { const x = parseFloat(v); return isNaN(x) ? d : x; };
@@ -3750,80 +3720,7 @@ function bhTarget(o, spec) {
 function bhRun(o, b, dt, fx) {
     const st = bhState(o, b);
     switch (b.type) {
-        case 'move':
-            bhMove(o, bhNum(b.vx, 0) * dt, bhNum(b.vy, 0) * dt);
-            break;
-        case 'rotate':
-            o.rotation = (((o.rotation || 0) + bhNum(b.speed, 0) * dt + 180) % 360 + 360) % 360 - 180;
-            break;
-        case 'bob': {
-            st.t += dt;
-            const off = bhNum(b.distance, 0) * Math.sin(2 * Math.PI * bhNum(b.speed, 1) * st.t);
-            bhMove(o, 0, off - st.off);              // only the change, so it stacks with Move / Follow
-            st.off = off;
-            break;
-        }
-        case 'fade': {
-            st.t += dt;
-            const a = bhNum(b.min, 0.2), c = bhNum(b.max, 1), lo = Math.max(0, Math.min(a, c)), hi = Math.min(1, Math.max(a, c));
-            o.opacity = lo + (hi - lo) * (0.5 + 0.5 * Math.cos(2 * Math.PI * bhNum(b.speed, 0.5) * st.t));
-            break;
-        }
-        case 'follow': {
-            const t = bhTarget(o, b.target); if (!t) break;
-            const dx = (t.x + t.width / 2) - (o.x + o.width / 2), dy = (t.y + t.height / 2) - (o.y + o.height / 2);
-            const dist = Math.hypot(dx, dy); if (dist < 1) break;
-            const step = Math.min(bhNum(b.speed, 80) * dt, dist);
-            bhMove(o, dx / dist * step, dy / dist * step);
-            break;
-        }
-        case 'patrol': {
-            const dx = bhNum(b.dx, 0), dy = bhNum(b.dy, 0), len = Math.hypot(dx, dy);
-            if (len < 1) break;
-            if (st.wait > 0) { st.wait -= dt; break; }
-            if (!st.dir) st.dir = 1;
-            st.p = (st.p || 0) + st.dir * bhNum(b.speed, 60) * dt / len;
-            if (st.p >= 1)      { st.p = 1; st.dir = -1; st.wait = bhNum(b.wait, 0.5); }
-            else if (st.p <= 0) { st.p = 0; st.dir = 1;  st.wait = bhNum(b.wait, 0.5); }
-            const ox = dx * st.p, oy = dy * st.p;
-            bhMove(o, ox - (st.ox || 0), oy - (st.oy || 0)); st.ox = ox; st.oy = oy;
-            break;
-        }
-        case 'oscillate': {
-            st.t += dt;
-            const sw = Math.sin(2 * Math.PI * bhNum(b.speed, 0.5) * st.t);
-            const ox = bhNum(b.dx, 0) * sw, oy = bhNum(b.dy, 0) * sw;
-            bhMove(o, ox - (st.ox || 0), oy - (st.oy || 0)); st.ox = ox; st.oy = oy;
-            break;
-        }
-        case 'moveToward': {
-            if (st.done) break;
-            const dx = bhNum(b.x, o.x) - o.x, dy = bhNum(b.y, o.y) - o.y, dist = Math.hypot(dx, dy);
-            const step = bhNum(b.speed, 100) * dt;
-            if (dist <= step || dist < 0.01) {
-                bhMove(o, dx, dy); st.done = true;
-                if (b.turnOff !== false) bhSetEnabled(o, b, 'off');
-                bhEvent(b, 'onCompleted');
-            } else bhMove(o, dx / dist * step, dy / dist * step);
-            break;
-        }
-        case 'orbit': {
-            const spec = String(b.around == null ? '' : b.around).trim();
-            const tgt = spec ? bhTarget(o, spec) : null;
-            if (spec && !tgt) break;
-            const r = bhNum(b.radius, 80), oc = { x: o.x + o.width / 2, y: o.y + o.height / 2 };
-            if (!st.init) {
-                st.init = true;
-                if (tgt) { const tx = tgt.x + tgt.width / 2, ty = tgt.y + tgt.height / 2; st.a = Math.hypot(oc.x - tx, oc.y - ty) < 1 ? 0 : Math.atan2(oc.y - ty, oc.x - tx); }
-                else { st.a = Math.PI; st.cx = oc.x + r; st.cy = oc.y; }
-                st.prev = { x: oc.x, y: oc.y };
-            }
-            st.a += bhNum(b.speed, 90) * Math.PI / 180 * dt;
-            const cx = tgt ? tgt.x + tgt.width / 2 : st.cx, cy = tgt ? tgt.y + tgt.height / 2 : st.cy;
-            const vx = cx + r * Math.cos(st.a), vy = cy + r * Math.sin(st.a);
-            bhMove(o, vx - st.prev.x, vy - st.prev.y); st.prev.x = vx; st.prev.y = vy;
-            break;
-        }
+       
         case 'button': {
             const zone = { x: o.x, y: o.y - 6, width: o.width, height: o.height + 6 };
             let down = false;
@@ -3894,26 +3791,7 @@ function bhRun(o, b, dt, fx) {
             }
             break;
         }
-        case 'pulse': {
-            st.t += dt;
-            const k = 1 + bhNum(b.amount, 15) / 100 * Math.sin(2 * Math.PI * bhNum(b.speed, 1) * st.t);
-            fx.sx *= k; fx.sy *= k;
-            break;
-        }
-        case 'flicker': {
-            if ((st.t -= dt) <= 0) {
-                st.t = (0.5 + Math.random()) / Math.max(0.1, bhNum(b.speed, 8));
-                const lo = Math.max(0, Math.min(1, bhNum(b.min, 0.3)));
-                st.v = lo + (1 - lo) * Math.random();
-            }
-            fx.alpha *= st.v;
-            break;
-        }
-        case 'colorChange': {
-            st.k = Math.min(1, (st.k || 0) + dt / Math.max(0.05, bhNum(b.fade, 0.5)));
-            fx.tint = b.color || '#22c55e'; fx.tintA = Math.max(fx.tintA, st.k * Math.max(0, Math.min(1, bhNum(b.strength, 50) / 100)));
-            break;
-        }
+        
     }
 }
 let interactPressed = false;                     // set by the E key while playing (Switch: "Player presses E")
@@ -4099,7 +3977,7 @@ function renderBehaviorsIfNeeded() {
     }
     bhEls.add.style.display = 'block';
     const bs = p.behaviors || [];
-    bhEls.note.textContent = bs.length ? '' : 'No behaviors yet. Add one to make this object move, spin, float, fade or follow \u2014 and stack as many as you like.';
+    bhEls.note.textContent = bs.length ? '' : 'No behaviors yet. Add an interaction behavior.';
     bs.forEach((b, i) => bhEls.list.appendChild(bhCard(p, b, i)));
     bhEls.picker.style.display = bhPickerOpen ? 'block' : 'none';
 }
@@ -4127,7 +4005,7 @@ function initBehaviorUI() {
     document.head.appendChild(css);
     const root = bhEl('div', 'sp-sec'); root.id = 'spBeh';
     root.innerHTML = '<div class="sp-lbl">Behaviors</div><div id="spBehNote" class="sp-hint" style="margin:0 0 6px"></div><div id="spBehList"></div>' +
-        '<button class="sp-go" id="spBehAdd" style="width:100%" title="Give this object an ability: move, rotate, bob, fade or follow. You can add several.">+ Add Behavior</button>' +
+        '<button class="sp-go" id="spBehAdd" style="width:100%" title="Give this object an interaction ability. You can add several.">+ Add Behavior</button>' +
         '<div class="sp-pop" id="spBehPicker" style="display:none"></div>';
     document.getElementById('spBody').appendChild(root);
     const picker = document.getElementById('spBehPicker');
