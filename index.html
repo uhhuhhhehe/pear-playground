@@ -1354,7 +1354,7 @@ let ghostY = 0;
 let currentTool = null;
 let GRID_SIZE = 50;
 let START_POS = { x: 200, y: 0 };
-let camera = { x: 0, y: 0 };
+let camera = { x: 0, y: 0, zoom: 1 };
 const keys = { left: false, right: false, jump: false, down: false };
 let gameLoopId = null; // For starting/stopping the game loop
 let fps = 60;              // The value we display
@@ -1910,6 +1910,7 @@ function applyLevelData(data) {
         for (let o of data.objects) {
             try {
                 const restored = Object.assign({}, SAVE_DEFAULTS, o);
+            if (LEGACY_EFFECT_TRIGGER_TAGS.has(restored.tag)) continue;
                 if (typeof restored.group === 'string') {
                     restored.group = restored.group.split(',').map(g => g.trim()).filter(g => g.length > 0);
                 }
@@ -2111,25 +2112,17 @@ const TOOLBAR_CATEGORIES = [
         id: 'logic', label: 'Logic', icon: '⚡',
         color: '#8b5cf6',
         tools: [
-            { tool: 'trigger',  name: 'Main Trigger' },
-            { tool: 'monitor',  name: 'Monitor'  },
-            { tool: 'counter',  name: 'Counter'  },
-            { tool: 'comparer', name: 'Comparer' },
-            { tool: 'clock',    name: 'Clock'    },
-            { tool: 'boolean',  name: 'Boolean'  },
-        ]
-    },
-    {
-        id: 'effects', label: 'Effects', icon: '✨',
-        color: '#0ea5e9',
-        tools: [
-            { tool: 'trigger_move',     name: 'Move'     },
-            { tool: 'trigger_modify',   name: 'Modify'   },
+            { tool: 'trigger',          name: 'Main Trigger' },
+            { tool: 'trigger_camera',   name: 'Camera' },
+            { tool: 'trigger_move',     name: 'Move' },
             { tool: 'trigger_lighting', name: 'Lighting' },
-            { tool: 'trigger_variable', name: 'Variable' },
-            { tool: 'trigger_behavior', name: 'Behavior' },
-            { tool: 'trigger_effect',   name: 'Misc'     },
-            { tool: 'trigger_sequence', name: 'Sequence' },
+            { tool: 'trigger_modify',   name: 'Modify' },
+            { tool: 'trigger_particle', name: 'Particle' },
+            { tool: 'monitor',          name: 'Monitor' },
+            { tool: 'counter',          name: 'Counter' },
+            { tool: 'comparer',         name: 'Comparer' },
+            { tool: 'clock',            name: 'Clock' },
+            { tool: 'boolean',          name: 'Boolean' },
         ]
     },
     {
@@ -2669,6 +2662,7 @@ function getGroups(obj) {
 function hasGroup(obj, groupName) {
     return getGroups(obj).includes(resolveFxVars(groupName));
 }
+const LEGACY_EFFECT_TRIGGER_TAGS = new Set(['trigger_effect','trigger_variable','trigger_behavior','trigger_sequence']);
 function isEffectTag(tag) {
     return Object.prototype.hasOwnProperty.call(EFFECT_TRIGGER_DEFS, tag);
 }
@@ -2676,13 +2670,10 @@ function isAnyTrigger(tag) {
     return tag === 'trigger' || isEffectTag(tag);
 }
 function fireLevelStartScripts() {
-    objects.filter(trigger => trigger.tag === 'trigger' || trigger.tag === 'trigger_sequence').forEach(trigger => {
+    objects.filter(trigger => trigger.tag === 'trigger').forEach(trigger => {
         if (trigger.active === false) return;
         const sc = trigger.script;
-        if (sc && sc.event === 'level_start') {
-            if (trigger.tag === 'trigger_sequence') executeEffectTrigger(trigger, 'level_start');
-            else runTriggerScript(trigger, 'level_start');
-        }
+        if (sc && sc.event === 'level_start') runTriggerScript(trigger, 'level_start');
     });
 }
 function setPlayMode(enabled) {
@@ -4098,35 +4089,75 @@ function redo() {
 ============================================================ */
 // 1. Particle System
 class Particle {
-  constructor(x, y, color, speed, life) {
-    this.x = x;
-    this.y = y;
-    this.vx = (Math.random() - 0.5) * speed;
-    this.vy = (Math.random() - 0.5) * speed;
-    this.life = life;
-    this.maxLife = life;
-    this.color = color;
-    this.size = Math.random() * 4 + 2;
+  constructor(x, y, opts = {}) {
+    this.x = x; this.y = y;
+    this.color = opts.color || '#6366f1';
+    this.shape = opts.shape || 'square';
+    this.life = opts.life ?? 45;
+    this.maxLife = this.life;
+    this.size = Math.max(1, opts.size ?? 4) * (0.75 + Math.random() * 0.5);
+    this.gravity = opts.gravity ?? 0;
+    this.drag = opts.drag ?? 0.98;
+    const spread = Math.max(0, Math.min(360, opts.spread ?? 360));
+    const baseVX = opts.vx ?? 0, baseVY = opts.vy ?? 0;
+    const baseAngle = Math.atan2(baseVY, baseVX);
+    const baseSpeed = Math.hypot(baseVX, baseVY);
+    let angle, speed;
+    if (baseSpeed > 0.001) {
+      const half = (spread * Math.PI / 180) / 2;
+      angle = baseAngle + (Math.random() - 0.5) * 2 * half;
+      speed = baseSpeed + (Math.random() - 0.5) * (opts.speed ?? 0);
+    } else {
+      angle = Math.random() * Math.PI * 2;
+      if (spread < 360) angle = -Math.PI/2 + (Math.random() - 0.5) * (spread * Math.PI / 180);
+      speed = Math.random() * (opts.speed ?? 0);
+    }
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
   }
   update() {
     this.x += this.vx;
     this.y += this.vy;
+    this.vy += this.gravity;
+    this.vx *= this.drag;
+    this.vy *= this.drag;
     this.life--;
-    this.size *= 0.95; // Shrink over time
+    this.size *= 0.992;
   }
   draw(ctx) {
-    ctx.globalAlpha = this.life / this.maxLife;
+    const alpha = Math.max(0, this.life / this.maxLife);
+    ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.fillStyle = this.color;
-    ctx.fillRect(this.x - camera.x, this.y - camera.y, this.size, this.size);
-    ctx.globalAlpha = 1.0;
+    const x = this.x - camera.x, y = this.y - camera.y, s = this.size;
+    ctx.translate(x, y);
+    if (this.shape === 'circle') {
+      ctx.beginPath(); ctx.arc(0, 0, s/2, 0, Math.PI*2); ctx.fill();
+    } else if (this.shape === 'triangle') {
+      ctx.beginPath(); ctx.moveTo(0,-s/2); ctx.lineTo(s/2,s/2); ctx.lineTo(-s/2,s/2); ctx.closePath(); ctx.fill();
+    } else if (this.shape === 'diamond') {
+      ctx.beginPath(); ctx.moveTo(0,-s/2); ctx.lineTo(s/2,0); ctx.lineTo(0,s/2); ctx.lineTo(-s/2,0); ctx.closePath(); ctx.fill();
+    } else if (this.shape === 'star') {
+      ctx.beginPath();
+      for (let i=0;i<10;i++) {
+        const r = i%2===0 ? s/2 : s/4;
+        const a = -Math.PI/2 + i*Math.PI/5;
+        const px = Math.cos(a)*r, py = Math.sin(a)*r;
+        if (i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      }
+      ctx.closePath(); ctx.fill();
+    } else {
+      ctx.fillRect(-s/2, -s/2, s, s);
+    }
+    ctx.restore();
   }
 }
-
+function spawnAdvancedParticles(x, y, count, opts = {}) {
+  if (!settings.particles) return;
+  for (let i = 0; i < count; i++) particles.push(new Particle(x, y, opts));
+}
 function spawnParticles(x, y, count, color, speed = 5) {
-  if (!settings.particles) return; // CHECK SETTING
-  for (let i = 0; i < count; i++) {
-    particles.push(new Particle(x, y, color, speed, 30 + Math.random() * 20));
-  }
+  spawnAdvancedParticles(x, y, count, { color, speed, life: 45, size: 4, shape: 'square', spread: 360 });
 }
 
 function drawBackground() {
@@ -5314,6 +5345,7 @@ async function joinCurrentGame() {
   if (data.objects) {
     for (let o of Object.values(data.objects)) {
         const restored = Object.assign({}, SAVE_DEFAULTS, o);
+            if (LEGACY_EFFECT_TRIGGER_TAGS.has(restored.tag)) continue;
         if (typeof restored.group === 'string') {
     restored.group = restored.group
         .split(',')
@@ -5433,6 +5465,7 @@ function loadMapFile(ev) {
                 for (let o of data.objects) {
                     try {
                         const restored = Object.assign({}, SAVE_DEFAULTS, o);
+            if (LEGACY_EFFECT_TRIGGER_TAGS.has(restored.tag)) continue;
 
                         // Normalize group
                         if (typeof restored.group === 'string') {
@@ -5659,6 +5692,11 @@ function confirmCopyBlock() {
 // (breakables are scheduled — see startBreak())
 // --- Reset Triggers ---
 function resetAllTriggers() {
+    cameraController.tween = null;
+    cameraController.mode = 'player';
+    cameraController.targetGroup = '';
+    camera.zoom = 1;
+
     visualTweens.length = 0;
     visualScriptSeq++;
     objects.forEach(o => { delete o._visualScriptToken; });
@@ -6409,13 +6447,11 @@ case 'marble':
             newObj.mods = {};
             newObj.id = Date.now() + Math.random();
             break;
+        case 'trigger_camera':
         case 'trigger_move':
-        case 'trigger_modify':
         case 'trigger_lighting':
-        case 'trigger_effect':
-        case 'trigger_variable':
-        case 'trigger_behavior':
-        case 'trigger_sequence':
+        case 'trigger_modify':
+        case 'trigger_particle':
             newObj.tag = currentTool;
             newObj.solid = false;
             newObj.gravity = 0;
@@ -6560,7 +6596,7 @@ case 'bush':
 canvas.addEventListener("dblclick", e => {
     if (!isSelectTool() || playMode) return;
     const rect = canvas.getBoundingClientRect();
-    const clickedObject = pickObjectAt(e.clientX - rect.left + camera.x, e.clientY - rect.top + camera.y);
+    const clickedObject = pickObjectAt((e.clientX - rect.left - canvas.width/2) / (camera.zoom || 1) + canvas.width/2 + camera.x, (e.clientY - rect.top - canvas.height/2) / (camera.zoom || 1) + canvas.height/2 + camera.y);
     if (clickedObject) {
         if (!selectionList().includes(clickedObject)) setSelection([clickedObject]);
         else primaryObject = clickedObject;
@@ -6570,8 +6606,8 @@ canvas.addEventListener("dblclick", e => {
 canvas.addEventListener("mousemove", e => {
     if (!currentTool) return;
     const rect = canvas.getBoundingClientRect();
-    ghostX = Math.floor((e.clientX - rect.left + camera.x) / GRID_SIZE) * GRID_SIZE;
-    ghostY = Math.floor((e.clientY - rect.top  + camera.y) / GRID_SIZE) * GRID_SIZE;
+    ghostX = Math.floor(((e.clientX - rect.left - canvas.width/2) / (camera.zoom || 1) + canvas.width/2 + camera.x) / GRID_SIZE) * GRID_SIZE;
+    ghostY = Math.floor(((e.clientY - rect.top - canvas.height/2) / (camera.zoom || 1) + canvas.height/2 + camera.y) / GRID_SIZE) * GRID_SIZE;
 
     ghostValid = true;
     if (!playMode && isSelectTool()) {
@@ -6588,7 +6624,7 @@ canvas.addEventListener("mousemove", e => {
     const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
         'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform',
         'coin', 'tree', 'bush', 'wind', 'light',
-        'trigger_move', 'trigger_modify', 'trigger_lighting', 'trigger_effect', 'trigger_variable', 'trigger_behavior', 'trigger_sequence', 'boolean'];
+        'trigger_camera', 'trigger_move', 'trigger_lighting', 'trigger_modify', 'trigger_particle', 'boolean'];
     if (dragBlacklist.includes(currentTool)) return;
 
     if (ghostX === lastPlacedCell.x && ghostY === lastPlacedCell.y) return;
@@ -7764,97 +7800,69 @@ function forEachFxTarget(targetName, fn) {
     objects.filter(o => o.tag !== 'player' && o.tag === raw).forEach(fn);
 }
 
+
 const EFFECT_TRIGGER_DEFS = {
-    trigger_move: {
-        label: 'Move', title: 'Move Trigger', color: '#0ea5e9', glyph: '\u279c',
-        hint: 'Moves or launches every block in the target group. Leave a box blank to ignore it.',
+    trigger_camera: {
+        label: 'Camera', title: 'Camera Trigger', color: '#6366f1', glyph: '⌖',
+        hint: 'Snap the camera to a group, release it back to the player, change zoom, or reset the camera.',
         fields: [
-            { key: 'targetGroup', label: 'Object or Group', type: 'text', placeholder: "group name or object ID" },
-            { key: 'x',  label: 'X Position', type: 'number', placeholder: 'e.g., 500' },
-            { key: 'y',  label: 'Y Position', type: 'number', placeholder: 'e.g., 300' },
-            { key: 'relative', label: 'X / Y are offsets from where the block is now', type: 'checkbox' },
-            { key: 'rotation', label: 'Rotation (degrees)', type: 'number', placeholder: 'e.g., 90' },
-            { key: 'rotationRelative', label: 'Rotation is an offset', type: 'checkbox' },
-            { key: 'vx', label: 'Velocity X', type: 'number', placeholder: 'e.g., 5' },
-            { key: 'vy', label: 'Velocity Y', type: 'number', placeholder: 'e.g., -10' }
+            { key: 'action', label: 'Camera Action', type: 'select', default: 'snap', options: [
+                { value: 'snap',   label: 'Snap / Follow Group' },
+                { value: 'unsnap', label: 'Unsnap → Player' },
+                { value: 'zoom',   label: 'Change Zoom' },
+                { value: 'reset',  label: 'Reset Camera' }
+            ] },
+            { key: 'targetGroup', label: 'Camera Group', type: 'text', placeholder: "e.g., 'boss_room'" },
+            { key: 'zoom', label: 'Zoom', type: 'number', step: '0.05', min: '0.5', max: '3', default: '1' },
+            { key: 'duration', label: 'Transition Time (seconds)', type: 'number', step: '0.05', min: '0', default: '0' },
+            { key: 'easing', label: 'Transition', type: 'select', default: 'easeInOut', options: FX_EASING_OPTIONS }
         ],
         run(fx) {
-            const x = parseFxNum(fx.x), y = parseFxNum(fx.y), r = parseFxNum(fx.rotation);
-            const vx = parseFxNum(fx.vx), vy = parseFxNum(fx.vy);
-            forEachFxTarget(fx.targetGroup, o => {
-                if (x !== null) o.x = fx.relative ? o.x + x : x;
-                if (y !== null) o.y = fx.relative ? o.y + y : y;
-                if (r !== null) o.rotation = fx.rotationRelative ? (o.rotation || 0) + r : r;
-                if (vx !== null) o.vx = vx;
-                if (vy !== null) o.vy = vy;
-            });
+            cameraTriggerAction(fx);
         }
     },
 
-    trigger_modify: {
-        label: 'Modify', title: 'Modify Trigger', color: '#f59e0b', glyph: '\u270e',
-        hint: 'Changes the properties of every block in the target group. Leave a box on (Ignore) / blank to leave it alone.',
+    trigger_move: {
+        label: 'Move', title: 'Move Trigger', color: '#0ea5e9', glyph: '➜',
+        hint: 'Move an object or group to coordinates, by an offset, or to another group. Transitions are optional.',
         fields: [
-            { key: 'targetGroup', label: 'Object or Group', type: 'text', placeholder: "group name or object ID" },
-            { key: 'opacity', label: 'Opacity (0–1)', type: 'number', step: '0.1', min: '0', max: '1' },
-            { key: 'color', label: 'Color (#RRGGBB)', type: 'text', placeholder: '#ffffff' },
-            { key: 'scaleX', label: 'Scale X', type: 'number', step: '0.1', min: '0.01' },
-            { key: 'scaleY', label: 'Scale Y', type: 'number', step: '0.1', min: '0.01' },
-            { key: 'visible', label: 'Visibility', type: 'select', options: [
-                { value: '', label: '(Ignore)' }, { value: 'show', label: 'Show' }, { value: 'hide', label: 'Hide' }
+            { key: 'targetGroup', label: 'Object or Group', type: 'text', placeholder: "group name, object ID, or object tag" },
+            { key: 'mode', label: 'Move Mode', type: 'select', default: 'position', options: [
+                { value: 'position', label: 'Move to Coordinates' },
+                { value: 'relative', label: 'Move by Amount' },
+                { value: 'group', label: 'Move to Group Position' }
             ] },
-            { key: 'width',   label: 'Width',  type: 'number' },
-            { key: 'height',  label: 'Height', type: 'number' },
-            { key: 'solid',  label: 'Solid',      type: 'select', options: FX_TRISTATE },
-            { key: 'kill',   label: 'Kill block', type: 'select', options: FX_TRISTATE },
-            { key: 'slime',  label: 'Sticky / slime', type: 'select', options: FX_TRISTATE },
-            { key: 'bounce', label: 'Bounce', type: 'select', options: FX_TRISTATE },
-            { key: 'ice',    label: 'Ice',    type: 'select', options: FX_TRISTATE },
-            { key: 'text',   label: 'Set text (for Text blocks)', type: 'text', placeholder: 'New text...' }
+            { key: 'x', label: 'X / X Amount', type: 'number', placeholder: 'e.g., 500' },
+            { key: 'y', label: 'Y / Y Amount', type: 'number', placeholder: 'e.g., 300' },
+            { key: 'destinationGroup', label: 'Destination Group', type: 'text', placeholder: "used by Move to Group Position" },
+            { key: 'duration', label: 'Transition Time (seconds)', type: 'number', step: '0.05', min: '0', default: '0' },
+            { key: 'easing', label: 'Transition', type: 'select', default: 'easeInOut', options: FX_EASING_OPTIONS }
         ],
         run(fx) {
-            const op = parseFxNum(fx.opacity), w = parseFxNum(fx.width), h = parseFxNum(fx.height);
-            const sx = parseFxNum(fx.scaleX), sy = parseFxNum(fx.scaleY);
-            const solid = parseFxBool(fx.solid), kill = parseFxBool(fx.kill), slime = parseFxBool(fx.slime);
-            const bounce = parseFxBool(fx.bounce), ice = parseFxBool(fx.ice);
-            const hasText = fx.text !== undefined && fx.text !== '';
-            const color = String(fx.color || '').trim();
-            forEachFxTarget(fx.targetGroup, o => {
-                if (op !== null) o.opacity = Math.max(0, Math.min(1, op));
-                if (/^#[0-9a-f]{6}$/i.test(color)) { o.color = color; if (o.tag === 'text') o.textColor = color; }
-                if (sx !== null) o.scaleX = Math.max(0.01, sx);
-                if (sy !== null) o.scaleY = Math.max(0.01, sy);
-                if (fx.visible === 'show') o.opacity = 1;
-                if (fx.visible === 'hide') o.opacity = 0;
-                if (w  !== null) o.width  = w;
-                if (h  !== null) o.height = h;
-                if (solid  !== null) o.solid  = solid;
-                if (kill   !== null) o.kill   = kill;
-                if (slime  !== null) o.slime  = slime;
-                if (bounce !== null) o.bounce = bounce;
-                if (ice    !== null) o.ice    = ice;
-                if (hasText) o.text = String(fx.text);
-            });
+            moveTriggerAction(fx);
         }
     },
 
     trigger_lighting: {
-        label: 'Lighting', title: 'Lighting Trigger', color: '#eab308', glyph: '\u2600',
-        hint: 'Changes the world lighting theme and/or edits Light blocks in a group. Blank = ignore.',
+        label: 'Lighting', title: 'Lighting Trigger', color: '#eab308', glyph: '☀',
+        hint: 'Changes the world lighting theme and/or edits Light blocks in a group.',
         fields: [
-            { key: 'theme', label: 'Lighting theme', type: 'select',
+            { key: 'theme', label: 'Lighting Theme', type: 'select',
               options: () => [{ value: '', label: '(Ignore)' }]
                   .concat(Object.keys(LIGHTING_THEMES).map(k => ({ value: k, label: k }))) },
-            { key: 'lightGroup', label: 'Light Group (Light blocks to edit)', type: 'text', placeholder: "e.g., 'torches'" },
-            { key: 'lightR', label: 'Red (0\u2013255)',   type: 'number', min: '0', max: '255' },
-            { key: 'lightG', label: 'Green (0\u2013255)', type: 'number', min: '0', max: '255' },
-            { key: 'lightB', label: 'Blue (0\u2013255)',  type: 'number', min: '0', max: '255' },
-            { key: 'lightRadius',    label: 'Radius',          type: 'number', min: '10' },
-            { key: 'lightIntensity', label: 'Intensity (0\u20131)', type: 'number', step: '0.05', min: '0', max: '1' }
+            { key: 'lightGroup', label: 'Light Group', type: 'text', placeholder: "e.g., 'torches'" },
+            { key: 'lightR', label: 'Red (0–255)', type: 'number', min: '0', max: '255' },
+            { key: 'lightG', label: 'Green (0–255)', type: 'number', min: '0', max: '255' },
+            { key: 'lightB', label: 'Blue (0–255)', type: 'number', min: '0', max: '255' },
+            { key: 'lightRadius', label: 'Radius', type: 'number', min: '10' },
+            { key: 'lightIntensity', label: 'Intensity (0–1)', type: 'number', step: '0.05', min: '0', max: '1' }
         ],
         run(fx) {
             if (fx.theme) setLightingTheme(fx.theme);
-            const c = v => { const n = parseFxNum(v); return n === null ? null : Math.round(Math.max(0, Math.min(255, n))); };
+            const c = v => {
+                const n = parseFxNum(v);
+                return n === null ? null : Math.round(Math.max(0, Math.min(255, n)));
+            };
             const r = c(fx.lightR), g = c(fx.lightG), b = c(fx.lightB);
             const rad = parseFxNum(fx.lightRadius), inten = parseFxNum(fx.lightIntensity);
             forEachInGroup(fx.lightGroup, o => {
@@ -7862,128 +7870,398 @@ const EFFECT_TRIGGER_DEFS = {
                 if (r !== null) o.lightR = r;
                 if (g !== null) o.lightG = g;
                 if (b !== null) o.lightB = b;
-                if (rad   !== null) o.lightRadius = rad;
+                if (rad !== null) o.lightRadius = rad;
                 if (inten !== null) o.lightIntensity = Math.max(0, Math.min(1, inten));
             });
         }
     },
 
-    trigger_variable: {
-        label: 'Variable', title: 'Variable Trigger', color: '#14b8a6', glyph: '=',
-        hint: 'Changes Counter, Text and Boolean variables by their Variable ID (a counter\'s Count Group). Any box can contain {placeholders}.',
+    trigger_modify: {
+        label: 'Modify', title: 'Modify Trigger', color: '#f59e0b', glyph: '✎',
+        hint: 'Change object properties. Opacity, scale, width and height can use the same optional transition system.',
         fields: [
-            { key: 'varId', label: 'Variable ID', type: 'text', placeholder: "e.g., 'coins' or 'playerName'" },
-            { key: 'counterOp', label: 'Counter operation', type: 'select', options: [
-                { value: '',      label: '(Ignore)' },
-                { value: 'set',   label: 'Set to amount' },
-                { value: 'add',   label: 'Add amount' },
-                { value: 'sub',   label: 'Subtract amount' },
-                { value: 'inc',   label: 'Increment (+1)' },
-                { value: 'dec',   label: 'Decrement (\u22121)' },
-                { value: 'reset', label: 'Reset to 0' }
+            { key: 'targetGroup', label: 'Object or Group', type: 'text', placeholder: "group name, object ID, or object tag" },
+            { key: 'opacity', label: 'Opacity (0–1)', type: 'number', step: '0.05', min: '0', max: '1' },
+            { key: 'color', label: 'Color (#RRGGBB)', type: 'text', placeholder: '#ffffff' },
+            { key: 'scaleX', label: 'Scale X', type: 'number', step: '0.05', min: '0.01' },
+            { key: 'scaleY', label: 'Scale Y', type: 'number', step: '0.05', min: '0.01' },
+            { key: 'visible', label: 'Visibility', type: 'select', options: [
+                { value: '', label: '(Ignore)' }, { value: 'show', label: 'Show' }, { value: 'hide', label: 'Hide' }
             ] },
-            { key: 'counterAmount', label: 'Amount (number or {variable})', type: 'number', placeholder: 'e.g., 5 or {counter2}' },
-            { key: 'textValue', label: 'Set text to (Text variables)', type: 'text', placeholder: 'New text...' },
-            { key: 'boolValue', label: 'Boolean value', type: 'select', options: [
-                { value: '',       label: '(Ignore)' },
-                { value: 'true',   label: 'True' },
-                { value: 'false',  label: 'False' },
-                { value: 'toggle', label: 'Toggle' }
-            ] },
-            { key: 'boolFrom', label: 'Or copy a Boolean from', type: 'text', placeholder: '{otherFlag} or !{otherFlag}' }
+            { key: 'width', label: 'Width', type: 'number', min: '1' },
+            { key: 'height', label: 'Height', type: 'number', min: '1' },
+            { key: 'solid', label: 'Solid', type: 'select', options: FX_TRISTATE },
+            { key: 'kill', label: 'Kill Block', type: 'select', options: FX_TRISTATE },
+            { key: 'slime', label: 'Sticky / Slime', type: 'select', options: FX_TRISTATE },
+            { key: 'bounce', label: 'Bounce', type: 'select', options: FX_TRISTATE },
+            { key: 'ice', label: 'Ice', type: 'select', options: FX_TRISTATE },
+            { key: 'text', label: 'Set Text (Text blocks)', type: 'text', placeholder: 'New text...' },
+            { key: 'duration', label: 'Transition Time (seconds)', type: 'number', step: '0.05', min: '0', default: '0' },
+            { key: 'easing', label: 'Transition', type: 'select', default: 'easeInOut', options: FX_EASING_OPTIONS }
         ],
         run(fx) {
-            const id = String(fx.varId || '').trim();
-            if (!id) return;
-            const op  = fx.counterOp || '';
-            const amt = parseFxNum(fx.counterAmount);
-            const hasText = fx.textValue !== undefined && fx.textValue !== '';
-            const copied = String(fx.boolFrom || '').trim() !== '' ? parseVarBool(fx.boolFrom) : null;
-            objects.forEach(o => {
-                if (o.tag === 'counter' && o.countGroup === id && op) {
-                    const cur = o.count || 0;
-                    if (op === 'set' && amt !== null) setCounterValue(o, amt);
-                    else if (op === 'add' && amt !== null) setCounterValue(o, cur + amt);
-                    else if (op === 'sub' && amt !== null) setCounterValue(o, cur - amt);
-                    else if (op === 'inc') setCounterValue(o, cur + 1);
-                    else if (op === 'dec') setCounterValue(o, cur - 1);
-                    else if (op === 'reset') o.count = 0;
-                }
-                if (o.varGroup !== id) return;
-                if (o.tag === 'text' && hasText) o.text = String(fx.textValue);
-                if (o.tag === 'boolean') {
-                    if (copied !== null)                o.value = copied;
-                    else if (fx.boolValue === 'true')   o.value = true;
-                    else if (fx.boolValue === 'false')  o.value = false;
-                    else if (fx.boolValue === 'toggle') o.value = !o.value;
-                }
-            });
+            modifyTriggerAction(fx);
         }
     },
 
-    trigger_effect: {
-        label: 'Misc', title: 'Misc Effect Trigger', color: '#ec4899', glyph: '\u2726',
-        hint: 'Screen shake, respawning the player, or particles on a group.',
+    trigger_particle: {
+        label: 'Particle', title: 'Particle Trigger', color: '#ec4899', glyph: '✦',
+        hint: 'Spawn customizable particles from an object or group, with color, shape, velocity, spread, size, gravity, drag and lifetime.',
         fields: [
-            { key: 'effect', label: 'Effect', type: 'select', default: 'shake', options: [
-                { value: 'shake',     label: 'Shake screen' },
-                { value: 'respawn',   label: 'Respawn player' },
-                { value: 'particles', label: 'Particles at group' }
+            { key: 'targetGroup', label: 'Spawn At Object / Group', type: 'text', placeholder: "e.g., 'gem' or 'explosion_point'" },
+            { key: 'count', label: 'Particle Count', type: 'number', min: '1', default: '12' },
+            { key: 'color', label: 'Color', type: 'color', default: '#6366f1' },
+            { key: 'shape', label: 'Shape', type: 'select', default: 'square', options: [
+                { value: 'square', label: 'Square' },
+                { value: 'circle', label: 'Circle' },
+                { value: 'triangle', label: 'Triangle' },
+                { value: 'diamond', label: 'Diamond' },
+                { value: 'star', label: 'Star' }
             ] },
-            { key: 'amount', label: 'Shake intensity (blank = 10)', type: 'number', min: '0' },
-            { key: 'targetGroup', label: 'Particle Group', type: 'text', placeholder: "e.g., 'gems'" },
-            { key: 'color', label: 'Particle color', type: 'color', default: '#6366f1' }
+            { key: 'speed', label: 'Random Speed', type: 'number', step: '0.1', min: '0', default: '6' },
+            { key: 'velocityX', label: 'Velocity X', type: 'number', step: '0.1', default: '0' },
+            { key: 'velocityY', label: 'Velocity Y', type: 'number', step: '0.1', default: '0' },
+            { key: 'spread', label: 'Spread (degrees)', type: 'number', min: '0', max: '360', default: '360' },
+            { key: 'size', label: 'Size', type: 'number', step: '0.5', min: '1', default: '4' },
+            { key: 'life', label: 'Lifetime (seconds)', type: 'number', step: '0.05', min: '0.05', default: '0.75' },
+            { key: 'gravity', label: 'Gravity', type: 'number', step: '0.05', default: '0' },
+            { key: 'drag', label: 'Drag', type: 'number', step: '0.01', min: '0', max: '1', default: '0.98' }
         ],
         run(fx) {
-            const effect = fx.effect || 'shake';
-            if (effect === 'shake')   { addShake(parseFxNum(fx.amount) ?? 10); return; }
-            if (effect === 'respawn') { resetPlayer(player); return; }
-            if (effect === 'particles') {
-                forEachInGroup(fx.targetGroup, o =>
-                    spawnParticles(o.x + o.width / 2, o.y + o.height / 2, 12, fx.color || '#6366f1', 6));
-            }
+            particleTriggerAction(fx);
         }
     }
 };
 
-EFFECT_TRIGGER_DEFS.trigger_sequence = {
-    label: 'Sequence', title: 'Sequence Trigger', color: '#8b5cf6', glyph: '⟳',
-    hint: 'Combine Move, Visual, and Timing actions in one simple sequence. Use the editor below to build chains like Move → Wait → Move back → Wait.',
-    fields: []
-};
+const FX_EASING_OPTIONS = [
+    { value: 'linear', label: 'Linear' },
+    { value: 'easeIn', label: 'Ease In' },
+    { value: 'easeOut', label: 'Ease Out' },
+    { value: 'easeInOut', label: 'Ease In Out' },
+    { value: 'sineIn', label: 'Sine In' },
+    { value: 'sineOut', label: 'Sine Out' },
+    { value: 'sineInOut', label: 'Sine In Out' },
+    { value: 'quadIn', label: 'Quad In' },
+    { value: 'quadOut', label: 'Quad Out' },
+    { value: 'quadInOut', label: 'Quad In Out' },
+    { value: 'cubicIn', label: 'Cubic In' },
+    { value: 'cubicOut', label: 'Cubic Out' },
+    { value: 'cubicInOut', label: 'Cubic In Out' },
+    { value: 'bounceIn', label: 'Bounce In' },
+    { value: 'bounceOut', label: 'Bounce Out' },
+    { value: 'bounceInOut', label: 'Bounce In Out' },
+    { value: 'elasticOut', label: 'Elastic Out' }
+];
 
-EFFECT_TRIGGER_DEFS.trigger_behavior = {
-    label: 'Behavior', title: 'Behavior Trigger', color: '#7c3aed', glyph: '\u25b6',
-    hint: 'Turns a behavior ON, OFF or flips it, on every object in the target group. Example: a Move Toward behavior named "open" on a door.',
-    fields: [
-        { key: 'targetGroup', label: 'Target Group', type: 'text', placeholder: "e.g., 'door'" },
-        { key: 'which', label: 'Which behavior (name or type, blank = all)', type: 'text', placeholder: "e.g., 'open' or 'Move Toward'" },
-        { key: 'action', label: 'Action', type: 'select', default: 'enable', options: [
-            { value: 'enable',  label: 'Enable (turn on)' },
-            { value: 'disable', label: 'Disable (turn off)' },
-            { value: 'toggle',  label: 'Toggle (flip)' }
-        ] }
-    ],
-    run(fx) {
-        const mode = fx.action === 'disable' ? 'off' : fx.action === 'toggle' ? 'toggle' : 'on';
-        bhSetByGroup(fx.targetGroup, fx.which, mode);
+function fxEase(t, type = 'linear') {
+    t = Math.max(0, Math.min(1, t));
+    switch (type) {
+        case 'easeIn': return t * t;
+        case 'easeOut': return 1 - (1 - t) * (1 - t);
+        case 'easeInOut': return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2)/2;
+        case 'sineIn': return 1 - Math.cos((t * Math.PI) / 2);
+        case 'sineOut': return Math.sin((t * Math.PI) / 2);
+        case 'sineInOut': return -(Math.cos(Math.PI * t) - 1) / 2;
+        case 'quadIn': return t*t;
+        case 'quadOut': return 1 - (1-t)*(1-t);
+        case 'quadInOut': return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
+        case 'cubicIn': return t*t*t;
+        case 'cubicOut': return 1 - Math.pow(1-t,3);
+        case 'cubicInOut': return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+        case 'bounceOut': {
+            const n1 = 7.5625, d1 = 2.75;
+            if (t < 1/d1) return n1*t*t;
+            if (t < 2/d1) { t -= 1.5/d1; return n1*t*t + 0.75; }
+            if (t < 2.5/d1) { t -= 2.25/d1; return n1*t*t + 0.9375; }
+            t -= 2.625/d1; return n1*t*t + 0.984375;
+        }
+        case 'bounceIn': return 1 - fxEase(1-t, 'bounceOut');
+        case 'bounceInOut': return t < 0.5
+            ? (1 - fxEase(1 - 2*t, 'bounceOut')) / 2
+            : (1 + fxEase(2*t - 1, 'bounceOut')) / 2;
+        case 'elasticOut':
+            if (t === 0 || t === 1) return t;
+            return Math.pow(2, -10*t) * Math.sin((t*10 - 0.75) * (2*Math.PI/3)) + 1;
+        default: return t;
     }
-};
-Object.values(EFFECT_TRIGGER_DEFS).forEach(d => d.fields.forEach(f => { if (f.options === FX_TRISTATE) f.bindBool = true; }));
+}
 
-function executeEffectTrigger(trigger, sourceEvent = 'triggered') {
-    if (trigger.tag === 'trigger_sequence') {
-        const sc = trigger.script;
-        if (!sc || !sc.steps || !sc.steps.length || sc.event !== sourceEvent) return;
-        if (trigger.scriptOneTime && trigger.hasFired) return;
-        const vars = {};
-        if (trigger._runtimeVars) Object.assign(vars, trigger._runtimeVars);
-        const token = ++visualScriptSeq;
-        trigger._visualScriptToken = token;
-        trigger.hasFired = true;
-        runAsyncScriptSegment(trigger, sc.steps, 0, sc.steps.length, vars, token, () => {});
+function fxLerpColor(a, b, t) {
+    const ca = parseColor(a), cb = parseColor(b);
+    const r = Math.round(ca[0] + (cb[0] - ca[0]) * t);
+    const g = Math.round(ca[1] + (cb[1] - ca[1]) * t);
+    const bl = Math.round(ca[2] + (cb[2] - ca[2]) * t);
+    return `#${[r,g,bl].map(v => v.toString(16).padStart(2,'0')).join('')}`;
+}
+
+let fxTweens = [];
+
+function addFxTween(targets, props, durationMs, easing, done) {
+    const start = targets.map(o => {
+        const copy = { o };
+        Object.keys(props).forEach(k => {
+            if (o[k] !== undefined) copy[k] = o[k];
+            else if (k === 'opacity') copy[k] = 1;
+            else if (k === 'scaleX' || k === 'scaleY') copy[k] = 1;
+            else if (k === 'color') copy[k] = o.textColor || '#ffffff';
+            else copy[k] = 0;
+        });
+        return copy;
+    });
+    const d = Math.max(0, durationMs);
+    if (!start.length || d <= 0) {
+        start.forEach(item => Object.keys(props).forEach(k => item.o[k] = props[k]));
+        if (done) done();
         return;
     }
+    fxTweens.push({ start, props, started: gameClock, duration:d, easing:easing || 'linear', done });
+}
+
+function updateFxTweens() {
+    for (let i = fxTweens.length - 1; i >= 0; i--) {
+        const tw = fxTweens[i];
+        const p = Math.max(0, Math.min(1, (gameClock - tw.started) / tw.duration));
+        const e = fxEase(p, tw.easing);
+        tw.start.forEach(item => {
+            if (!item.o) return;
+            Object.keys(tw.props).forEach(k => {
+                const target = tw.props[k];
+                const begin = item[k];
+                if (k === 'color') {
+                    item.o[k] = fxLerpColor(begin || '#ffffff', target || '#ffffff', e);
+                    if (item.o.tag === 'text') item.o.textColor = item.o[k];
+                } else {
+                    item.o[k] = begin + (target - begin) * e;
+                }
+            });
+        });
+        if (p >= 1) {
+            tw.start.forEach(item => Object.keys(tw.props).forEach(k => {
+                item.o[k] = tw.props[k];
+                if (k === 'color' && item.o.tag === 'text') item.o.textColor = tw.props[k];
+            }));
+            fxTweens.splice(i, 1);
+            if (tw.done) tw.done();
+        }
+    }
+}
+
+function getGroupCenter(groupName) {
+    const raw = String(resolveFxVars(groupName || '')).trim();
+    if (!raw) return null;
+    const members = getGroupMembers(raw);
+    if (!members.length) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    members.forEach(o => {
+        minX = Math.min(minX, o.x); minY = Math.min(minY, o.y);
+        maxX = Math.max(maxX, o.x + o.width); maxY = Math.max(maxY, o.y + o.height);
+    });
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+}
+
+function getCameraDestinationForGroup(groupName) {
+    const c = getGroupCenter(groupName);
+    if (!c) return null;
+    return { x: c.x, y: c.y };
+}
+
+function clampCamera() {
+    const maxX = Math.max(0, world.width - canvas.width / Math.max(0.01, camera.zoom || 1));
+    const maxY = Math.max(0, world.height - canvas.height / Math.max(0.01, camera.zoom || 1));
+    camera.x = Math.max(0, Math.min(camera.x, maxX));
+    camera.y = Math.max(0, Math.min(camera.y, maxY));
+}
+
+let cameraController = {
+    mode: 'player',
+    targetGroup: '',
+    zoom: 1,
+    tween: null
+};
+
+function startCameraTween(destX, destY, destZoom, durationMs, easing, finalMode, finalGroup) {
+    const z = Math.max(0.5, Math.min(3, destZoom || 1));
+    const d = Math.max(0, durationMs || 0);
+    if (d <= 0) {
+        camera.x = destX; camera.y = destY; camera.zoom = z;
+        cameraController.mode = finalMode;
+        cameraController.targetGroup = finalGroup || '';
+        cameraController.tween = null;
+        clampCamera();
+        return;
+    }
+    cameraController.tween = {
+        startX: camera.x, startY: camera.y, startZoom: camera.zoom,
+        endX: destX, endY: destY, endZoom: z,
+        started: gameClock, duration: d, easing: easing || 'linear',
+        finalMode, finalGroup: finalGroup || ''
+    };
+}
+
+function cameraTriggerAction(fx) {
+    const action = fx.action || 'snap';
+    const durationMs = Math.max(0, (parseFxNum(fx.duration) || 0) * 1000);
+    const easing = fx.easing || 'easeInOut';
+    if (action === 'reset') {
+        cameraController.tween = null;
+        cameraController.mode = 'player';
+        cameraController.targetGroup = '';
+        camera.zoom = 1;
+        camera.x = player.x - canvas.width / 2;
+        camera.y = player.y - canvas.height / 2;
+        clampCamera();
+        return;
+    }
+    if (action === 'unsnap') {
+        cameraController.mode = 'transition';
+        cameraController.targetGroup = '';
+        const tx = player.x + player.width / 2 - canvas.width / (2 * camera.zoom);
+        const ty = player.y + player.height / 2 - canvas.height / (2 * camera.zoom);
+        startCameraTween(tx, ty, camera.zoom, durationMs, easing, 'player', '');
+        return;
+    }
+    if (action === 'zoom') {
+        const z = Math.max(0.5, Math.min(3, parseFxNum(fx.zoom) ?? 1));
+        const centerX = camera.x + canvas.width / (2 * camera.zoom);
+        const centerY = camera.y + canvas.height / (2 * camera.zoom);
+        const tx = centerX - canvas.width / (2 * z);
+        const ty = centerY - canvas.height / (2 * z);
+        startCameraTween(tx, ty, z, durationMs, easing, cameraController.mode === 'transition' ? 'player' : cameraController.mode, cameraController.targetGroup);
+        return;
+    }
+    const dest = getCameraDestinationForGroup(fx.targetGroup);
+    if (!dest) return;
+    const z = Math.max(0.5, Math.min(3, parseFxNum(fx.zoom) ?? camera.zoom ?? 1));
+    const tx = dest.x - canvas.width / (2 * z);
+    const ty = dest.y - canvas.height / (2 * z);
+    startCameraTween(tx, ty, z, durationMs, easing, 'group', String(resolveFxVars(fx.targetGroup || '')).trim());
+}
+
+function updateCameraSystem() {
+    const tw = cameraController.tween;
+    if (tw) {
+        const p = Math.max(0, Math.min(1, (gameClock - tw.started) / tw.duration));
+        const e = fxEase(p, tw.easing);
+        camera.x = tw.startX + (tw.endX - tw.startX) * e;
+        camera.y = tw.startY + (tw.endY - tw.startY) * e;
+        camera.zoom = tw.startZoom + (tw.endZoom - tw.startZoom) * e;
+        if (p >= 1) {
+            cameraController.mode = tw.finalMode;
+            cameraController.targetGroup = tw.finalGroup || '';
+            cameraController.tween = null;
+        }
+    }
+    if (cameraController.mode === 'group' && cameraController.targetGroup) {
+        const dest = getCameraDestinationForGroup(cameraController.targetGroup);
+        if (dest) {
+            camera.x = dest.x - canvas.width / (2 * camera.zoom);
+            camera.y = dest.y - canvas.height / (2 * camera.zoom);
+        }
+    } else if (cameraController.mode === 'player') {
+        camera.x = player.x + player.width/2 - canvas.width / (2 * camera.zoom);
+        camera.y = player.y + player.height/2 - canvas.height / (2 * camera.zoom);
+    }
+    clampCamera();
+}
+
+function moveTriggerAction(fx) {
+    const targets = [];
+    forEachFxTarget(fx.targetGroup, o => targets.push(o));
+    if (!targets.length) return;
+    const mode = fx.mode || 'position';
+    const durationMs = Math.max(0, (parseFxNum(fx.duration) || 0) * 1000);
+    const easing = fx.easing || 'easeInOut';
+    const props = {};
+    const x = parseFxNum(fx.x), y = parseFxNum(fx.y);
+    if (mode === 'relative') {
+        targets.forEach(o => {
+            const dest = {};
+            if (x !== null) dest.x = o.x + x;
+            if (y !== null) dest.y = o.y + y;
+            const d = Math.max(0, durationMs);
+            if (d <= 0) { if (dest.x !== undefined) o.x = dest.x; if (dest.y !== undefined) o.y = dest.y; }
+            else {
+                addFxTween([o], dest, d, easing);
+            }
+        });
+        return;
+    }
+    if (mode === 'group') {
+        const c = getGroupCenter(fx.destinationGroup);
+        if (!c) return;
+        targets.forEach(o => {
+            const dest = { x: c.x - o.width / 2, y: c.y - o.height / 2 };
+            if (durationMs > 0) addFxTween([o], dest, durationMs, easing);
+            else { o.x = dest.x; o.y = dest.y; }
+        });
+        return;
+    }
+    if (x === null && y === null) return;
+    targets.forEach(o => {
+        const dest = {};
+        if (x !== null) dest.x = x;
+        if (y !== null) dest.y = y;
+        if (durationMs > 0) addFxTween([o], dest, durationMs, easing);
+        else { if (dest.x !== undefined) o.x = dest.x; if (dest.y !== undefined) o.y = dest.y; }
+    });
+}
+
+function modifyTriggerAction(fx) {
+    const targets = [];
+    forEachFxTarget(fx.targetGroup, o => targets.push(o));
+    if (!targets.length) return;
+    const durationMs = Math.max(0, (parseFxNum(fx.duration) || 0) * 1000);
+    const easing = fx.easing || 'easeInOut';
+    const props = {};
+    const op = parseFxNum(fx.opacity), sx = parseFxNum(fx.scaleX), sy = parseFxNum(fx.scaleY);
+    const w = parseFxNum(fx.width), h = parseFxNum(fx.height);
+    if (op !== null) props.opacity = Math.max(0, Math.min(1, op));
+    if (sx !== null) props.scaleX = Math.max(0.01, sx);
+    if (sy !== null) props.scaleY = Math.max(0.01, sy);
+    if (w !== null) props.width = Math.max(1, w);
+    if (h !== null) props.height = Math.max(1, h);
+    const color = String(fx.color || '').trim();
+    if (/^#[0-9a-f]{6}$/i.test(color)) props.color = color;
+
+    if (durationMs > 0 && Object.keys(props).length) addFxTween(targets, props, durationMs, easing);
+    else Object.keys(props).forEach(k => targets.forEach(o => {
+        o[k] = props[k];
+        if (k === 'color' && o.tag === 'text') o.textColor = props[k];
+    }));
+
+    if (fx.visible === 'show') targets.forEach(o => o.opacity = 1);
+    if (fx.visible === 'hide') targets.forEach(o => o.opacity = 0);
+
+    const solid = parseFxBool(fx.solid), kill = parseFxBool(fx.kill), slime = parseFxBool(fx.slime);
+    const bounce = parseFxBool(fx.bounce), ice = parseFxBool(fx.ice);
+    if (solid !== null) targets.forEach(o => o.solid = solid);
+    if (kill !== null) targets.forEach(o => o.kill = kill);
+    if (slime !== null) targets.forEach(o => o.slime = slime);
+    if (bounce !== null) targets.forEach(o => o.bounce = bounce);
+    if (ice !== null) targets.forEach(o => o.ice = ice);
+    if (fx.text !== undefined && fx.text !== '') targets.forEach(o => o.text = String(fx.text));
+}
+
+function particleTriggerAction(fx) {
+    const count = Math.max(1, Math.floor(parseFxNum(fx.count) ?? 12));
+    const color = fx.color || '#6366f1';
+    const speed = Math.max(0, parseFxNum(fx.speed) ?? 6);
+    const vx = parseFxNum(fx.velocityX) ?? 0;
+    const vy = parseFxNum(fx.velocityY) ?? 0;
+    const spread = Math.max(0, Math.min(360, parseFxNum(fx.spread) ?? 360));
+    const size = Math.max(1, parseFxNum(fx.size) ?? 4);
+    const life = Math.max(0.05, parseFxNum(fx.life) ?? 0.75);
+    const gravity = parseFxNum(fx.gravity) ?? 0;
+    const drag = Math.max(0, Math.min(1, parseFxNum(fx.drag) ?? 0.98));
+    forEachFxTarget(fx.targetGroup, o => {
+        spawnAdvancedParticles(o.x + o.width/2, o.y + o.height/2, count, {
+            color, shape: fx.shape || 'square', speed, vx, vy, spread,
+            size, life: life * 60, gravity, drag
+        });
+    });
+}
+
+function executeEffectTrigger(trigger, sourceEvent = 'triggered') {
     const def = EFFECT_TRIGGER_DEFS[trigger.tag];
     if (!def) return;
     const fx = getEffectFx(trigger);
@@ -7992,17 +8270,15 @@ function executeEffectTrigger(trigger, sourceEvent = 'triggered') {
     if (fx.oneTime) trigger.hasFired = true;
 }
 
-// Effect triggers that have "fire when the player touches it" ticked
 let activeEffectTouches = new Set();
 function checkEffectTriggerTouches(near) {
-    near = near || getNearbyObjects(player);                  // only blocks next to the player can be touched
+    near = near || getNearbyObjects(player);
     const now = new Set();
     for (let i = 0; i < near.length; i++) {
         const t = near[i];
-        if (t.active === false) continue;
-        if (t.tag === 'trigger_sequence') { if (!t.scriptOnTouch) continue; }
-        else if (!t.fx || (!t.fx.onTouch && !t.fx.onTouchVar)) continue;
-        if (t.tag !== 'trigger_sequence' && !getEffectFx(t).onTouch) continue;
+        if (t.active === false || !isEffectTag(t.tag)) continue;
+        const fx = getEffectFx(t);
+        if (!fx.onTouch) continue;
         if (checkCollision(player, t)) {
             now.add(t);
             if (!activeEffectTouches.has(t)) executeEffectTrigger(t, 'touched');
@@ -8011,39 +8287,16 @@ function checkEffectTriggerTouches(near) {
     activeEffectTouches = now;
 }
 
-/* ----- edit-popup form for effect triggers (built from the defs above) ----- */
 function getEffectFields(def) {
     return def.fields.concat(EFFECT_COMMON_FIELDS);
 }
+
 function renderEffectTriggerFields(obj) {
     const def = EFFECT_TRIGGER_DEFS[obj.tag];
     if (!def) return;
     document.getElementById('effectTriggerTitle').textContent = def.title;
     const box = document.getElementById('effectTriggerFields');
     box.innerHTML = '';
-
-    if (obj.tag === 'trigger_sequence') {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.textContent = 'Open Sequence Editor';
-        btn.style.cssText = 'width:100%;padding:10px;background:#8b5cf6;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;margin-bottom:10px;';
-        btn.onclick = () => { closePopup(); selectedObject = obj; openScriptEditor(); };
-        box.appendChild(btn);
-        const common = document.createElement('div');
-        common.style.cssText = 'display:flex;gap:12px;align-items:center;margin:8px 0 10px;font-size:11px;color:#52525b;';
-        const one = document.createElement('label');
-        one.innerHTML = `<input id="fx_oneTime" type="checkbox" ${obj.scriptOneTime ? 'checked' : ''}> One-time`;
-        common.appendChild(one);
-        const touch = document.createElement('label');
-        touch.innerHTML = `<input id="fx_onTouch" type="checkbox" ${obj.scriptOnTouch ? 'checked' : ''}> Player touches`;
-        common.appendChild(touch);
-        box.appendChild(common);
-        const info = document.createElement('div');
-        info.style.cssText = 'font-size:11px;color:#71717a;line-height:1.45;';
-        info.textContent = 'Build a chain of Move, Visual, Wait, Repeat, and Loop actions. Fire this trigger from a Main Trigger using its group.';
-        box.appendChild(info);
-        return;
-    }
 
     if (def.hint) {
         const hint = document.createElement('div');
@@ -8054,9 +8307,8 @@ function renderEffectTriggerFields(obj) {
 
     const fx = obj.fx || {};
     getEffectFields(def).forEach(f => {
-        const id  = 'fx_' + f.key;
+        const id = 'fx_' + f.key;
         const val = fx[f.key] !== undefined ? fx[f.key] : f.default;
-
         if (f.type === 'checkbox') {
             const wrap = document.createElement('div');
             wrap.className = 'checkbox-group';
@@ -8082,7 +8334,6 @@ function renderEffectTriggerFields(obj) {
         const lab = document.createElement('label');
         lab.htmlFor = id; lab.textContent = f.label + ':';
         wrap.appendChild(lab);
-
         let inp;
         if (f.type === 'select') {
             inp = document.createElement('select');
@@ -8103,28 +8354,13 @@ function renderEffectTriggerFields(obj) {
         inp.id = id;
         inp.value = val !== undefined && val !== null ? val : '';
         wrap.appendChild(inp);
-        if (f.bindBool) {
-            const bi = document.createElement('input');
-            bi.type = 'text'; bi.id = id + 'Var'; bi.className = 'bindInput';
-            bi.placeholder = 'or Boolean variable: {flag} / !{flag}';
-            bi.value = fx[f.key + 'Var'] || '';
-            inp.disabled = bi.value.trim() !== '';
-            bi.addEventListener('input', () => { inp.disabled = bi.value.trim() !== ''; });
-            wrap.appendChild(bi);
-        }
         box.appendChild(wrap);
     });
 }
+
 function saveEffectTriggerFields(obj) {
     const def = EFFECT_TRIGGER_DEFS[obj.tag];
     if (!def) return;
-    if (obj.tag === 'trigger_sequence') {
-        obj.scriptOneTime = !!document.getElementById('fx_oneTime')?.checked;
-        obj.scriptOnTouch = !!document.getElementById('fx_onTouch')?.checked;
-        if (obj.hasFired === undefined) obj.hasFired = false;
-        if (obj.active === undefined) obj.active = true;
-        return;
-    }
     const fx = {};
     getEffectFields(def).forEach(f => {
         const el = document.getElementById('fx_' + f.key);
@@ -8139,6 +8375,8 @@ function saveEffectTriggerFields(obj) {
     if (obj.hasFired === undefined) obj.hasFired = false;
     if (obj.active === undefined) obj.active = true;
 }
+
+
 /* ============================================================
    TRIGGER SCRIPT EDITOR — full data processing edition
 ============================================================ */
@@ -10462,13 +10700,11 @@ case 'goal': {
     ctx.strokeRect(x, y, w, h);
     break;
 }
+        case 'trigger_camera':
         case 'trigger_move':
-        case 'trigger_modify':
         case 'trigger_lighting':
-        case 'trigger_effect':
-        case 'trigger_variable':
-        case 'trigger_behavior':
-        case 'trigger_sequence': {
+        case 'trigger_modify':
+        case 'trigger_particle': {
             const d = EFFECT_TRIGGER_DEFS[tag];
             ctx.fillStyle = d.color + '22';
             ctx.fillRect(x, y, w, h);
@@ -11141,9 +11377,9 @@ function drawLighting() {
         if (obj.tag === 'light') {
             const pulse = Math.sin(performance.now() / 400 + obj.x) * 0.04 + 0.96;
             lights.push({
-                x:         obj.x - camera.x + obj.width  / 2,
-                y:         obj.y - camera.y + obj.height / 2,
-                radius:    (obj.lightRadius ?? 220) * pulse,
+                x:         (obj.x + obj.width/2 - camera.x) * (camera.zoom || 1) + canvas.width * (1 - (camera.zoom || 1)) / 2,
+                y:         (obj.y + obj.height/2 - camera.y) * (camera.zoom || 1) + canvas.height * (1 - (camera.zoom || 1)) / 2,
+                radius:    (obj.lightRadius ?? 220) * pulse * (camera.zoom || 1),
                 r:         obj.lightR  ?? 255,
                 g:         obj.lightG  ?? 220,
                 b:         obj.lightB  ?? 100,
@@ -11223,12 +11459,17 @@ function draw() {
     ctx.save();
     ctx.translate(shakeX, shakeY);
 
+    // World-space camera zoom. Camera coordinates are the top-left of the zoomed view.
+    const z = Math.max(0.5, camera.zoom || 1);
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.scale(z, z);
+    ctx.translate(-canvas.width / 2, -canvas.height / 2);
+
     drawBackground();
     drawDecorations();
     if (settings.grid) drawGrid();
     drawObjects();
     drawSurfaceShading();
-    //drawPlayerTrail();
     particles.forEach(p => p.draw(ctx));
     drawGround();
     drawGhost();
@@ -11596,13 +11837,14 @@ function drawObjects() {
   const viewRect = {
       x: camera.x,
       y: camera.y,
-      width: canvas.width,
-      height: canvas.height
+      width: canvas.width / Math.max(0.01, camera.zoom || 1),
+      height: canvas.height / Math.max(0.01, camera.zoom || 1)
   };
 
   // Get ONLY the objects currently inside the camera view
   // exact on-screen test on top of the grid's coarse cells; rotated blocks get extra room
-  const vx0 = camera.x - 64, vy0 = camera.y - 64, vx1 = camera.x + canvas.width + 64, vy1 = camera.y + canvas.height + 64;
+  const viewW = canvas.width / Math.max(0.01, camera.zoom || 1), viewH = canvas.height / Math.max(0.01, camera.zoom || 1);
+  const vx0 = camera.x - 64, vy0 = camera.y - 64, vx1 = camera.x + viewW + 64, vy1 = camera.y + viewH + 64;
   const visibleObjects = getNearbyObjects(viewRect).filter(o => {
       const pad = o.rotation ? Math.max(o.width, o.height) : 0;
       return o.x + o.width + pad >= vx0 && o.x - pad <= vx1 && o.y + o.height + pad >= vy0 && o.y - pad <= vy1;
@@ -11925,6 +12167,8 @@ function gameLoop(timestamp) {
         checkComparers();
         updatePlatforms(delta);
         updateVisualTweens();
+        updateFxTweens();
+        updateCameraSystem();
         runScheduled();
         checkGoal();
         updatePlayerTrail();
@@ -11935,13 +12179,6 @@ function gameLoop(timestamp) {
             particles[i].update();
             if (particles[i].life <= 0) particles.splice(i, 1);
         }
-
-        const targetX = player.x - canvas.width / 2;
-        const targetY = player.y - canvas.height / 2;
-        camera.x += (targetX - camera.x) * CAM_SMOOTH;
-        camera.y += (targetY - camera.y) * CAM_SMOOTH;
-        camera.x = Math.max(0, Math.min(camera.x, world.width - canvas.width));
-        camera.y = Math.max(0, Math.min(camera.y, world.height - canvas.height));
 
         for (const u in smoothedPlayers) {
             if (!otherPlayers[u]) continue;
