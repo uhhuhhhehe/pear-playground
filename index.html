@@ -1247,8 +1247,8 @@
 ">
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #e4e4e7;">
     <div>
-      <div style="font-size:15px; font-weight:600; color:#18181b;">Main Trigger — Logic Editor</div>
-      <div style="font-size:12px; color:#71717a; margin-top:2px;">Calculate, decide, and fire other triggers. Use Move / Modify / Lighting / Misc effect triggers to change the world.</div>
+      <div id="scriptEditorHeading" style="font-size:15px; font-weight:600; color:#18181b;">Main Trigger — Logic Editor</div>
+      <div id="scriptEditorSubheading" style="font-size:12px; color:#71717a; margin-top:2px;">Calculate, decide, and fire other triggers. World-changing actions belong to effect/sequence triggers.</div>
     </div>
     <button onclick="closeScriptEditor()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#71717a;padding:4px 8px;">✕</button>
   </div>
@@ -1279,14 +1279,14 @@
            background:#fff;border:1px solid #e4e4e7;border-radius:6px;color:#27272a;">
 
   <!-- Add step buttons -->
-  <div style="display:flex;gap:6px;flex-wrap:wrap;">
-    <button onclick="addScriptStep('var')"
+  <div id="scriptAddControls" style="display:flex;gap:6px;flex-wrap:wrap;">
+    <button data-script-add="var" onclick="addScriptStep('var')"
       style="font-size:11px;padding:4px 10px;background:#d1fae5;color:#065f46;
              border:1px solid #6ee7b7;border-radius:6px;cursor:pointer;">+ Var</button>
-    <button onclick="addScriptStep('compute')"
+    <button data-script-add="compute" onclick="addScriptStep('compute')"
       style="font-size:11px;padding:4px 10px;background:#fef3c7;color:#92400e;
              border:1px solid #fcd34d;border-radius:6px;cursor:pointer;">+ Compute</button>
-    <button onclick="addScriptStep('condition')"
+    <button data-script-add="condition" onclick="addScriptStep('condition')"
   style="font-size:11px;padding:4px 10px;background:#dbeafe;color:#1e3a8a;
          border:1px solid #93c5fd;border-radius:6px;cursor:pointer;">+ If / Else</button>
     <button onclick="addScriptStep('action')"
@@ -2129,6 +2129,7 @@ const TOOLBAR_CATEGORIES = [
             { tool: 'trigger_variable', name: 'Variable' },
             { tool: 'trigger_behavior', name: 'Behavior' },
             { tool: 'trigger_effect',   name: 'Misc'     },
+            { tool: 'trigger_sequence', name: 'Sequence' },
         ]
     },
     {
@@ -2675,10 +2676,13 @@ function isAnyTrigger(tag) {
     return tag === 'trigger' || isEffectTag(tag);
 }
 function fireLevelStartScripts() {
-    getByTag('trigger').forEach(trigger => {
+    objects.filter(trigger => trigger.tag === 'trigger' || trigger.tag === 'trigger_sequence').forEach(trigger => {
         if (trigger.active === false) return;
         const sc = trigger.script;
-        if (sc && sc.event === 'level_start') runTriggerScript(trigger, 'level_start');
+        if (sc && sc.event === 'level_start') {
+            if (trigger.tag === 'trigger_sequence') executeEffectTrigger(trigger, 'level_start');
+            else runTriggerScript(trigger, 'level_start');
+        }
     });
 }
 function setPlayMode(enabled) {
@@ -5660,7 +5664,7 @@ function resetAllTriggers() {
     objects.forEach(o => { delete o._visualScriptToken; });
     resetBehaviorRuntime();
     objects.forEach(o => {
-        if (isAnyTrigger(o.tag)) { o.hasFired = false; o.active = true; }
+        if (isAnyTrigger(o.tag)) { o.hasFired = false; o.active = true; if (o._visualScriptToken !== undefined) o._visualScriptToken = 0; }
         
         // Reset Breakables
         if (o.tag === 'breakable') { 
@@ -6411,6 +6415,7 @@ case 'marble':
         case 'trigger_effect':
         case 'trigger_variable':
         case 'trigger_behavior':
+        case 'trigger_sequence':
             newObj.tag = currentTool;
             newObj.solid = false;
             newObj.gravity = 0;
@@ -6583,7 +6588,7 @@ canvas.addEventListener("mousemove", e => {
     const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
         'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform',
         'coin', 'tree', 'bush', 'wind', 'light',
-        'trigger_move', 'trigger_modify', 'trigger_lighting', 'trigger_effect', 'trigger_variable', 'trigger_behavior', 'boolean'];
+        'trigger_move', 'trigger_modify', 'trigger_lighting', 'trigger_effect', 'trigger_variable', 'trigger_behavior', 'trigger_sequence', 'boolean'];
     if (dragBlacklist.includes(currentTool)) return;
 
     if (ghostX === lastPlacedCell.x && ghostY === lastPlacedCell.y) return;
@@ -7748,24 +7753,38 @@ const EFFECT_COMMON_FIELDS = [
     { key: 'oneTime', label: "One-time (won't fire again until reset)", type: 'checkbox' }
 ];
 
+function forEachFxTarget(targetName, fn) {
+    const raw = String(resolveFxVars(targetName || '')).trim();
+    if (!raw) return;
+    ensureVisualIds();
+    const group = getGroupMembers(raw);
+    if (group.length) { group.forEach(fn); return; }
+    const byId = objects.find(o => o.tag !== 'player' && o.visualId === raw);
+    if (byId) { fn(byId); return; }
+    objects.filter(o => o.tag !== 'player' && o.tag === raw).forEach(fn);
+}
+
 const EFFECT_TRIGGER_DEFS = {
     trigger_move: {
         label: 'Move', title: 'Move Trigger', color: '#0ea5e9', glyph: '\u279c',
         hint: 'Moves or launches every block in the target group. Leave a box blank to ignore it.',
         fields: [
-            { key: 'targetGroup', label: 'Target Group', type: 'text', placeholder: "e.g., 'door_level1'" },
+            { key: 'targetGroup', label: 'Object or Group', type: 'text', placeholder: "group name or object ID" },
             { key: 'x',  label: 'X Position', type: 'number', placeholder: 'e.g., 500' },
             { key: 'y',  label: 'Y Position', type: 'number', placeholder: 'e.g., 300' },
             { key: 'relative', label: 'X / Y are offsets from where the block is now', type: 'checkbox' },
+            { key: 'rotation', label: 'Rotation (degrees)', type: 'number', placeholder: 'e.g., 90' },
+            { key: 'rotationRelative', label: 'Rotation is an offset', type: 'checkbox' },
             { key: 'vx', label: 'Velocity X', type: 'number', placeholder: 'e.g., 5' },
             { key: 'vy', label: 'Velocity Y', type: 'number', placeholder: 'e.g., -10' }
         ],
         run(fx) {
-            const x = parseFxNum(fx.x),  y = parseFxNum(fx.y);
+            const x = parseFxNum(fx.x), y = parseFxNum(fx.y), r = parseFxNum(fx.rotation);
             const vx = parseFxNum(fx.vx), vy = parseFxNum(fx.vy);
-            forEachInGroup(fx.targetGroup, o => {
+            forEachFxTarget(fx.targetGroup, o => {
                 if (x !== null) o.x = fx.relative ? o.x + x : x;
                 if (y !== null) o.y = fx.relative ? o.y + y : y;
+                if (r !== null) o.rotation = fx.rotationRelative ? (o.rotation || 0) + r : r;
                 if (vx !== null) o.vx = vx;
                 if (vy !== null) o.vy = vy;
             });
@@ -7776,8 +7795,14 @@ const EFFECT_TRIGGER_DEFS = {
         label: 'Modify', title: 'Modify Trigger', color: '#f59e0b', glyph: '\u270e',
         hint: 'Changes the properties of every block in the target group. Leave a box on (Ignore) / blank to leave it alone.',
         fields: [
-            { key: 'targetGroup', label: 'Target Group', type: 'text', placeholder: "e.g., 'door_level1'" },
-            { key: 'opacity', label: 'Opacity (0\u20131)', type: 'number', step: '0.1', min: '0', max: '1' },
+            { key: 'targetGroup', label: 'Object or Group', type: 'text', placeholder: "group name or object ID" },
+            { key: 'opacity', label: 'Opacity (0–1)', type: 'number', step: '0.1', min: '0', max: '1' },
+            { key: 'color', label: 'Color (#RRGGBB)', type: 'text', placeholder: '#ffffff' },
+            { key: 'scaleX', label: 'Scale X', type: 'number', step: '0.1', min: '0.01' },
+            { key: 'scaleY', label: 'Scale Y', type: 'number', step: '0.1', min: '0.01' },
+            { key: 'visible', label: 'Visibility', type: 'select', options: [
+                { value: '', label: '(Ignore)' }, { value: 'show', label: 'Show' }, { value: 'hide', label: 'Hide' }
+            ] },
             { key: 'width',   label: 'Width',  type: 'number' },
             { key: 'height',  label: 'Height', type: 'number' },
             { key: 'solid',  label: 'Solid',      type: 'select', options: FX_TRISTATE },
@@ -7789,11 +7814,18 @@ const EFFECT_TRIGGER_DEFS = {
         ],
         run(fx) {
             const op = parseFxNum(fx.opacity), w = parseFxNum(fx.width), h = parseFxNum(fx.height);
+            const sx = parseFxNum(fx.scaleX), sy = parseFxNum(fx.scaleY);
             const solid = parseFxBool(fx.solid), kill = parseFxBool(fx.kill), slime = parseFxBool(fx.slime);
             const bounce = parseFxBool(fx.bounce), ice = parseFxBool(fx.ice);
             const hasText = fx.text !== undefined && fx.text !== '';
-            forEachInGroup(fx.targetGroup, o => {
-                if (op !== null) o.opacity = op;
+            const color = String(fx.color || '').trim();
+            forEachFxTarget(fx.targetGroup, o => {
+                if (op !== null) o.opacity = Math.max(0, Math.min(1, op));
+                if (/^#[0-9a-f]{6}$/i.test(color)) { o.color = color; if (o.tag === 'text') o.textColor = color; }
+                if (sx !== null) o.scaleX = Math.max(0.01, sx);
+                if (sy !== null) o.scaleY = Math.max(0.01, sy);
+                if (fx.visible === 'show') o.opacity = 1;
+                if (fx.visible === 'hide') o.opacity = 0;
                 if (w  !== null) o.width  = w;
                 if (h  !== null) o.height = h;
                 if (solid  !== null) o.solid  = solid;
@@ -7914,6 +7946,12 @@ const EFFECT_TRIGGER_DEFS = {
     }
 };
 
+EFFECT_TRIGGER_DEFS.trigger_sequence = {
+    label: 'Sequence', title: 'Sequence Trigger', color: '#8b5cf6', glyph: '⟳',
+    hint: 'Combine Move, Visual, and Timing actions in one simple sequence. Use the editor below to build chains like Move → Wait → Move back → Wait.',
+    fields: []
+};
+
 EFFECT_TRIGGER_DEFS.trigger_behavior = {
     label: 'Behavior', title: 'Behavior Trigger', color: '#7c3aed', glyph: '\u25b6',
     hint: 'Turns a behavior ON, OFF or flips it, on every object in the target group. Example: a Move Toward behavior named "open" on a door.',
@@ -7934,6 +7972,18 @@ EFFECT_TRIGGER_DEFS.trigger_behavior = {
 Object.values(EFFECT_TRIGGER_DEFS).forEach(d => d.fields.forEach(f => { if (f.options === FX_TRISTATE) f.bindBool = true; }));
 
 function executeEffectTrigger(trigger, sourceEvent = 'triggered') {
+    if (trigger.tag === 'trigger_sequence') {
+        const sc = trigger.script;
+        if (!sc || !sc.steps || !sc.steps.length || sc.event !== sourceEvent) return;
+        if (trigger.scriptOneTime && trigger.hasFired) return;
+        const vars = {};
+        if (trigger._runtimeVars) Object.assign(vars, trigger._runtimeVars);
+        const token = ++visualScriptSeq;
+        trigger._visualScriptToken = token;
+        trigger.hasFired = true;
+        runAsyncScriptSegment(trigger, sc.steps, 0, sc.steps.length, vars, token, () => {});
+        return;
+    }
     const def = EFFECT_TRIGGER_DEFS[trigger.tag];
     if (!def) return;
     const fx = getEffectFx(trigger);
@@ -7949,8 +7999,10 @@ function checkEffectTriggerTouches(near) {
     const now = new Set();
     for (let i = 0; i < near.length; i++) {
         const t = near[i];
-        if (!t.fx || !isEffectTag(t.tag) || (!t.fx.onTouch && !t.fx.onTouchVar) || t.active === false) continue;
-        if (!getEffectFx(t).onTouch) continue;
+        if (t.active === false) continue;
+        if (t.tag === 'trigger_sequence') { if (!t.scriptOnTouch) continue; }
+        else if (!t.fx || (!t.fx.onTouch && !t.fx.onTouchVar)) continue;
+        if (t.tag !== 'trigger_sequence' && !getEffectFx(t).onTouch) continue;
         if (checkCollision(player, t)) {
             now.add(t);
             if (!activeEffectTouches.has(t)) executeEffectTrigger(t, 'touched');
@@ -7969,6 +8021,29 @@ function renderEffectTriggerFields(obj) {
     document.getElementById('effectTriggerTitle').textContent = def.title;
     const box = document.getElementById('effectTriggerFields');
     box.innerHTML = '';
+
+    if (obj.tag === 'trigger_sequence') {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'Open Sequence Editor';
+        btn.style.cssText = 'width:100%;padding:10px;background:#8b5cf6;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;margin-bottom:10px;';
+        btn.onclick = () => { closePopup(); selectedObject = obj; openScriptEditor(); };
+        box.appendChild(btn);
+        const common = document.createElement('div');
+        common.style.cssText = 'display:flex;gap:12px;align-items:center;margin:8px 0 10px;font-size:11px;color:#52525b;';
+        const one = document.createElement('label');
+        one.innerHTML = `<input id="fx_oneTime" type="checkbox" ${obj.scriptOneTime ? 'checked' : ''}> One-time`;
+        common.appendChild(one);
+        const touch = document.createElement('label');
+        touch.innerHTML = `<input id="fx_onTouch" type="checkbox" ${obj.scriptOnTouch ? 'checked' : ''}> Player touches`;
+        common.appendChild(touch);
+        box.appendChild(common);
+        const info = document.createElement('div');
+        info.style.cssText = 'font-size:11px;color:#71717a;line-height:1.45;';
+        info.textContent = 'Build a chain of Move, Visual, Wait, Repeat, and Loop actions. Fire this trigger from a Main Trigger using its group.';
+        box.appendChild(info);
+        return;
+    }
 
     if (def.hint) {
         const hint = document.createElement('div');
@@ -8043,6 +8118,13 @@ function renderEffectTriggerFields(obj) {
 function saveEffectTriggerFields(obj) {
     const def = EFFECT_TRIGGER_DEFS[obj.tag];
     if (!def) return;
+    if (obj.tag === 'trigger_sequence') {
+        obj.scriptOneTime = !!document.getElementById('fx_oneTime')?.checked;
+        obj.scriptOnTouch = !!document.getElementById('fx_onTouch')?.checked;
+        if (obj.hasFired === undefined) obj.hasFired = false;
+        if (obj.active === undefined) obj.active = true;
+        return;
+    }
     const fx = {};
     getEffectFields(def).forEach(f => {
         const el = document.getElementById('fx_' + f.key);
@@ -8181,18 +8263,23 @@ const ACTION_TYPES = [
    (move, modify, lighting, effects) lives on an effect trigger instead. */
 const MAIN_ACTION_TYPES = [
   'fire_group', 'activate_group', 'deactivate_group',
-  'move_object', 'move_by', 'move_to_position', 'rotate_object', 'rotate_by',
-  'set_opacity', 'set_color', 'set_scale', 'show_object', 'hide_object',
-  'wait', 'repeat', 'loop',
   'move_group', 'set_velocity', 'set_solid', 'set_kill', 'set_text',
   'reset_counter', 'increment_counter', 'set_counter',
   'toggle_clock', 'activate_clock', 'deactivate_clock',
   'set_var', 'log',
   'behavior_on', 'behavior_off', 'behavior_toggle'
 ];
+const SEQUENCE_ACTION_TYPES = [
+  'fire_group',
+  'move_object', 'move_by', 'move_to_position', 'rotate_object', 'rotate_by',
+  'set_opacity', 'set_color', 'set_scale', 'show_object', 'hide_object',
+  'wait', 'repeat', 'loop'
+];
 let scriptActionSearch = '';
 function getActionOptions(current) {
-  const all = ACTION_TYPES.filter(a => MAIN_ACTION_TYPES.includes(a.value));
+  const isSequence = scriptEditorTarget && scriptEditorTarget.tag === 'trigger_sequence';
+  const allowed = isSequence ? SEQUENCE_ACTION_TYPES : MAIN_ACTION_TYPES;
+  const all = ACTION_TYPES.filter(a => allowed.includes(a.value));
   const q = String(scriptActionSearch || '').trim().toLowerCase();
   let opts = q ? all.filter(a => a.label.toLowerCase().includes(q) || a.value.toLowerCase().includes(q)) : all;
   if (current && !opts.some(a => a.value === current)) {
@@ -8204,10 +8291,17 @@ function getActionOptions(current) {
 
 /* ===== open / close ===== */
 function openScriptEditor() {
-  if (!selectedObject || selectedObject.tag !== 'trigger') return;
+  if (!selectedObject || (selectedObject.tag !== 'trigger' && selectedObject.tag !== 'trigger_sequence')) return;
   scriptEditorTarget = selectedObject;
   const sc = scriptEditorTarget.script || {};
-  scriptEvent = sc.event || 'touched';
+  scriptEvent = sc.event || (scriptEditorTarget.tag === 'trigger_sequence' ? 'level_start' : 'touched');
+  const heading = document.getElementById('scriptEditorHeading');
+  const subheading = document.getElementById('scriptEditorSubheading');
+  const isSequence = scriptEditorTarget.tag === 'trigger_sequence';
+  if (heading) heading.textContent = isSequence ? 'Sequence Trigger — Action Editor' : 'Main Trigger — Logic Editor';
+  if (subheading) subheading.textContent = isSequence
+    ? 'Combine Move, Visual, and Timing actions. Main Trigger stays focused on logic and can fire this sequence by group.'
+    : 'Calculate, decide, and fire other triggers. World-changing actions belong to effect/sequence triggers.';
 
   // Migration: if saved in old format, convert
   if (sc.steps) {
@@ -8223,6 +8317,16 @@ function openScriptEditor() {
   document.getElementById('scriptEditorPopup').style.display = 'block';
   document.getElementById('overlay').style.display = 'block';
   refreshScriptTargetList();
+  const addControls = document.getElementById('scriptAddControls');
+  if (addControls) {
+    addControls.style.display = 'flex';
+    const seqOnly = [
+      addControls.querySelector('[data-script-add="var"]'),
+      addControls.querySelector('[data-script-add="compute"]'),
+      addControls.querySelector('[data-script-add="condition"]')
+    ];
+    seqOnly.forEach(el => { if (el) el.style.display = isSequence ? 'none' : ''; });
+  }
   renderScriptEditor();
 }
 
@@ -8547,11 +8651,12 @@ function appendActionInputsForStep(row, step, i) {
   appendActionInputsFlat(row, step, i); // <-- this now exists
 }
 function addScriptStep(kind) {
+    const sequenceDefault = scriptEditorTarget && scriptEditorTarget.tag === 'trigger_sequence';
     const defaults = {
         var:       { kind: 'var',       name: 'myVar', source: 'literal_num', value: '0', value2: '0', group: '' },
         compute:   { kind: 'compute',   op: 'add', a: '', b: '', out: 'result', extra: '', extra2: '' },
         condition: { kind: 'condition', type: 'var_gt', a: '', b: '' },
-        action:    { kind: 'action',    type: 'fire_group', group: '', value: '', value2: '', extra: '', duration: '1', count: '2', steps: '2' },
+        action:    { kind: 'action',    type: sequenceDefault ? 'move_to_position' : 'fire_group', group: '', value: '', value2: '', extra: '', duration: '1', count: '2', steps: '2' },
         else:      { kind: 'else' },
         end_if:    { kind: 'end_if' },
     };
@@ -10362,7 +10467,8 @@ case 'goal': {
         case 'trigger_lighting':
         case 'trigger_effect':
         case 'trigger_variable':
-        case 'trigger_behavior': {
+        case 'trigger_behavior':
+        case 'trigger_sequence': {
             const d = EFFECT_TRIGGER_DEFS[tag];
             ctx.fillStyle = d.color + '22';
             ctx.fillRect(x, y, w, h);
