@@ -1257,6 +1257,7 @@
   <div style="margin-bottom:16px;">
     <div style="font-size:11px; font-weight:600; color:#52525b; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;">Fire when</div>
     <div style="display:flex; gap:6px; flex-wrap:wrap;" id="scriptEventBtns">
+      <button onclick="setScriptEvent('level_start')" class="script-event-btn" data-event="level_start">Level Starts</button>
       <button onclick="setScriptEvent('triggered')" class="script-event-btn" data-event="triggered">When triggered</button>
       <button onclick="setScriptEvent('touched')"     class="script-event-btn" data-event="touched">Player touches</button>
       <button onclick="setScriptEvent('activated')"   class="script-event-btn" data-event="activated">Activated</button>
@@ -1271,6 +1272,11 @@
               letter-spacing:.04em;margin-bottom:8px;">Steps (run top to bottom)</div>
   <div id="scriptStepsList" style="display:flex;flex-direction:column;gap:6px;
        margin-bottom:10px;"></div>
+
+  <input id="scriptActionSearch" type="search" placeholder="Search actions…"
+    oninput="scriptActionSearch=this.value; renderScriptEditor();"
+    style="width:100%;box-sizing:border-box;padding:7px 9px;margin:0 0 8px;font-size:12px;
+           background:#fff;border:1px solid #e4e4e7;border-radius:6px;color:#27272a;">
 
   <!-- Add step buttons -->
   <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -1385,6 +1391,8 @@ const undoStack = [];
 const MAX_UNDO = 50;
 let testMode = false;
 let testModeSnapshot = []; // stores object state before testing
+let visualTweens = []; // runtime-only smooth visual movements
+let visualScriptSeq = 0; // cancels stale async trigger scripts
 // Global Settings
 let isResizing = false;
 let resizeObject = null;
@@ -2666,7 +2674,15 @@ function isEffectTag(tag) {
 function isAnyTrigger(tag) {
     return tag === 'trigger' || isEffectTag(tag);
 }
+function fireLevelStartScripts() {
+    getByTag('trigger').forEach(trigger => {
+        if (trigger.active === false) return;
+        const sc = trigger.script;
+        if (sc && sc.event === 'level_start') runTriggerScript(trigger, 'level_start');
+    });
+}
 function setPlayMode(enabled) {
+    const wasPlaying = playMode;
     playMode = enabled;
     bumpIndex();
     resetBehaviorRuntime();
@@ -2681,6 +2697,7 @@ function setPlayMode(enabled) {
         selectTool(null);
         closePopup();
         closeBlockCreator();
+        if (!wasPlaying) fireLevelStartScripts();
     } else {
       updateToolPreviewBubble();
         if (toggleBtn) toggleBtn.style.display = 'block';
@@ -5638,6 +5655,9 @@ function confirmCopyBlock() {
 // (breakables are scheduled — see startBreak())
 // --- Reset Triggers ---
 function resetAllTriggers() {
+    visualTweens.length = 0;
+    visualScriptSeq++;
+    objects.forEach(o => { delete o._visualScriptToken; });
     resetBehaviorRuntime();
     objects.forEach(o => {
         if (isAnyTrigger(o.tag)) { o.hasFired = false; o.active = true; }
@@ -8112,12 +8132,31 @@ const ACTION_TYPES = [
   { value:'fire_group',        label:'Fire trigger group' },
   { value:'activate_group',    label:'Activate group' },
   { value:'deactivate_group',  label:'Deactivate group' },
+
+  // Movement
+  { value:'move_object',       label:'Move object' },
+  { value:'move_by',           label:'Move by amount' },
+  { value:'move_to_position',  label:'Move to position' },
+  { value:'rotate_object',     label:'Rotate object' },
+  { value:'rotate_by',         label:'Rotate by amount' },
+
+  // Visual
+  { value:'set_opacity',       label:'Change opacity' },
+  { value:'set_color',         label:'Change color' },
+  { value:'set_scale',         label:'Change scale' },
+  { value:'show_object',       label:'Show' },
+  { value:'hide_object',       label:'Hide' },
+  { value:'set_text',          label:'Set text of group' },
+
+  // Timing / flow
+  { value:'wait',              label:'Wait' },
+  { value:'repeat',            label:'Repeat next actions' },
+  { value:'loop',              label:'Loop next actions' },
+
   { value:'move_group',        label:'Set position of group' },
   { value:'set_velocity',      label:'Set velocity of group' },
-  { value:'set_opacity',       label:'Set opacity of group' },
   { value:'set_solid',         label:'Set solid of group' },
   { value:'set_kill',          label:'Set kill of group' },
-  { value:'set_text',          label:'Set text of group' },
   { value:'reset_counter',     label:'Reset counter' },
   { value:'increment_counter', label:'Increment counter' },
   { value:'set_counter',       label:'Set counter to value' },
@@ -8132,9 +8171,9 @@ const ACTION_TYPES = [
   { value:'behavior_on',       label:'Enable behavior' },
   { value:'behavior_off',      label:'Disable behavior' },
   { value:'behavior_toggle',   label:'Toggle behavior' },
-  { value:'set_theme', label:'Set lighting theme' },
-  { value:'set_light_color',     label:'Set light color (RGB)' },
-  { value:'set_light_radius',    label:'Set light radius' },
+  { value:'set_theme',         label:'Set lighting theme' },
+  { value:'set_light_color',   label:'Set light color (RGB)' },
+  { value:'set_light_radius',  label:'Set light radius' },
   { value:'set_light_intensity', label:'Set light intensity' }
 ];
 
@@ -8142,16 +8181,23 @@ const ACTION_TYPES = [
    (move, modify, lighting, effects) lives on an effect trigger instead. */
 const MAIN_ACTION_TYPES = [
   'fire_group', 'activate_group', 'deactivate_group',
+  'move_object', 'move_by', 'move_to_position', 'rotate_object', 'rotate_by',
+  'set_opacity', 'set_color', 'set_scale', 'show_object', 'hide_object',
+  'wait', 'repeat', 'loop',
+  'move_group', 'set_velocity', 'set_solid', 'set_kill', 'set_text',
   'reset_counter', 'increment_counter', 'set_counter',
   'toggle_clock', 'activate_clock', 'deactivate_clock',
   'set_var', 'log',
   'behavior_on', 'behavior_off', 'behavior_toggle'
 ];
+let scriptActionSearch = '';
 function getActionOptions(current) {
-  const opts = ACTION_TYPES.filter(a => MAIN_ACTION_TYPES.includes(a.value));
-  if (current && !MAIN_ACTION_TYPES.includes(current)) {
-    const old = ACTION_TYPES.find(a => a.value === current);
-    if (old) opts.push({ value: old.value, label: '⚠ ' + old.label + ' (old — use an effect trigger)' });
+  const all = ACTION_TYPES.filter(a => MAIN_ACTION_TYPES.includes(a.value));
+  const q = String(scriptActionSearch || '').trim().toLowerCase();
+  let opts = q ? all.filter(a => a.label.toLowerCase().includes(q) || a.value.toLowerCase().includes(q)) : all;
+  if (current && !opts.some(a => a.value === current)) {
+    const cur = ACTION_TYPES.find(a => a.value === current);
+    if (cur) opts = [cur, ...opts];
   }
   return opts;
 }
@@ -8176,6 +8222,7 @@ function openScriptEditor() {
 
   document.getElementById('scriptEditorPopup').style.display = 'block';
   document.getElementById('overlay').style.display = 'block';
+  refreshScriptTargetList();
   renderScriptEditor();
 }
 
@@ -8194,6 +8241,7 @@ function setScriptEvent(ev) {
 }
 
 function renderScriptEditor() {
+    refreshScriptTargetList();
     setScriptEvent(scriptEvent);
 
     const container = document.getElementById('scriptStepsList');
@@ -8503,7 +8551,7 @@ function addScriptStep(kind) {
         var:       { kind: 'var',       name: 'myVar', source: 'literal_num', value: '0', value2: '0', group: '' },
         compute:   { kind: 'compute',   op: 'add', a: '', b: '', out: 'result', extra: '', extra2: '' },
         condition: { kind: 'condition', type: 'var_gt', a: '', b: '' },
-        action:    { kind: 'action',    type: 'fire_group', group: '', value: '', value2: '' },
+        action:    { kind: 'action',    type: 'fire_group', group: '', value: '', value2: '', extra: '', duration: '1', count: '2', steps: '2' },
         else:      { kind: 'else' },
         end_if:    { kind: 'end_if' },
     };
@@ -8808,6 +8856,25 @@ function executeScriptActions(actions, vars) {
     const val    = resolveVal(action.value,  vars);
     const val2   = resolveVal(action.value2, vars);
 
+    const visualTargets = () => resolveVisualTargets(group);
+    if (['move_object','move_by','move_to_position','rotate_object','rotate_by','set_opacity','set_color','set_scale','show_object','hide_object'].includes(t)) {
+      const targets = visualTargets();
+      if (t === 'move_object') targets.forEach(o => { const x=parseFloat(val), y=parseFloat(val2); if (!isNaN(x)) o.x=x; if (!isNaN(y)) o.y=y; });
+      if (t === 'move_by') targets.forEach(o => { const x=parseFloat(val), y=parseFloat(val2); if (!isNaN(x)) o.x+=x; if (!isNaN(y)) o.y+=y; });
+      if (t === 'rotate_object') targets.forEach(o => { const r=parseFloat(val); if (!isNaN(r)) o.rotation=r; });
+      if (t === 'rotate_by') targets.forEach(o => { const r=parseFloat(val); if (!isNaN(r)) o.rotation=(o.rotation||0)+r; });
+      if (t === 'set_opacity') targets.forEach(o => { const n=parseFloat(val); if (!isNaN(n)) o.opacity=Math.max(0,Math.min(1,n)); });
+      if (t === 'set_color') targets.forEach(o => { const c=String(val||'').trim(); if (/^#[0-9a-f]{6}$/i.test(c)) { o.color=c; if (o.tag==='text') o.textColor=c; } });
+      if (t === 'set_scale') targets.forEach(o => { const sx=parseFloat(val), sy=String(action.value2||'').trim()==='' ? sx : parseFloat(val2); if (!isNaN(sx)) o.scaleX=Math.max(0.01,sx); if (!isNaN(sy)) o.scaleY=Math.max(0.01,sy); });
+      if (t === 'show_object') targets.forEach(o => { o.opacity=1; });
+      if (t === 'hide_object') targets.forEach(o => { o.opacity=0; });
+      return;
+    }
+    if (t === 'move_to_position') {
+      // Async handling lives in runAsyncScriptSegment so this branch is intentionally skipped here.
+      return;
+    }
+
     if (t === 'fire_group')       { fireTriggerGroup(group); return; }
     if (t === 'respawn_player')   { resetPlayer(player); return; }
     if (t === 'shake_screen')     { addShake(parseFloat(val) || 10); return; }
@@ -8937,10 +9004,83 @@ if (t === 'set_light_intensity') {
     });
   });
 }
+function actionTargetInput(row, action, i, placeholder = 'object or group') {
+  const g = makeInput(action.group, placeholder, 150);
+  g.setAttribute('list', 'scriptTargetList');
+  g.oninput = () => { scriptSteps[i].group = g.value; };
+  row.appendChild(g);
+  return g;
+}
+function refreshScriptTargetList() {
+  let dl = document.getElementById('scriptTargetList');
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = 'scriptTargetList';
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = '';
+  objects.filter(o => o.tag !== 'player').slice(0, 250).forEach(o => {
+    if (!o.visualId) o.visualId = 'obj_' + Math.random().toString(36).slice(2, 9);
+    const opt = document.createElement('option');
+    opt.value = o.visualId;
+    opt.label = `${o.tag} @ ${Math.round(o.x)},${Math.round(o.y)}${getGroups(o).length ? ' [' + getGroups(o).join(', ') + ']' : ''}`;
+    dl.appendChild(opt);
+  });
+}
+
 function appendActionInputsFlat(row, action, i) {
   const t = action.type;
   const simpleGroup = ['fire_group','activate_group','deactivate_group',
     'reset_counter','toggle_clock','activate_clock','deactivate_clock','spawn_particles'];
+
+  if (['move_object','move_by','rotate_object','rotate_by','set_opacity','set_color','set_scale','show_object','hide_object','move_to_position'].includes(t)) {
+    actionTargetInput(row, action, i, 'object or group');
+    if (t === 'move_object' || t === 'move_by' || t === 'move_to_position') {
+      const x = makeInput(action.value, t === 'move_by' ? 'X amount' : 'X', 70, 'number');
+      const y = makeInput(action.value2, t === 'move_by' ? 'Y amount' : 'Y', 70, 'number');
+      x.oninput = () => { scriptSteps[i].value = x.value; };
+      y.oninput = () => { scriptSteps[i].value2 = y.value; };
+      row.appendChild(x); row.appendChild(y);
+      if (t === 'move_to_position') {
+        const d = makeInput(action.duration || '0.5', 'seconds', 65, 'number');
+        d.oninput = () => { scriptSteps[i].duration = d.value; };
+        row.appendChild(d);
+      }
+    } else if (t === 'rotate_object' || t === 'rotate_by') {
+      const v = makeInput(action.value, t === 'rotate_by' ? 'degrees' : 'degrees', 75, 'number');
+      v.oninput = () => { scriptSteps[i].value = v.value; };
+      row.appendChild(v);
+    } else if (t === 'set_opacity') {
+      const v = makeInput(action.value, '0–1', 65, 'number');
+      v.oninput = () => { scriptSteps[i].value = v.value; };
+      row.appendChild(v);
+    } else if (t === 'set_color') {
+      const v = makeInput(action.value || '#ffffff', '#RRGGBB', 90);
+      v.type = 'text';
+      v.oninput = () => { scriptSteps[i].value = v.value; };
+      row.appendChild(v);
+    } else if (t === 'set_scale') {
+      const sx = makeInput(action.value || '1', 'X scale', 65, 'number');
+      const sy = makeInput(action.value2 || '', 'Y scale', 65, 'number');
+      sx.oninput = () => { scriptSteps[i].value = sx.value; };
+      sy.oninput = () => { scriptSteps[i].value2 = sy.value; };
+      row.appendChild(sx); row.appendChild(sy);
+    }
+    return;
+  }
+
+  if (t === 'wait') {
+    const v = makeInput(action.value || '1', 'seconds', 75, 'number');
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(v); return;
+  }
+  if (t === 'repeat' || t === 'loop') {
+    const c = makeInput(action.count || (t === 'loop' ? '0' : '2'), t === 'loop' ? 'repeat forever' : 'count', 70, 'number');
+    const n = makeInput(action.steps || '2', 'next actions', 85, 'number');
+    c.oninput = () => { scriptSteps[i].count = c.value; };
+    n.oninput = () => { scriptSteps[i].steps = n.value; };
+    row.appendChild(c); row.appendChild(n); return;
+  }
 
   if (simpleGroup.includes(t)) {
     const g = makeInput(action.group, 'target group', 160);
@@ -8961,46 +9101,39 @@ function appendActionInputsFlat(row, action, i) {
     row.appendChild(g); row.appendChild(v); return;
   }
   if (t === 'move_group') {
-    const g = makeInput(action.group,  'group',     90);
-    const x = makeInput(action.value,  'X or $var', 80);
+    const g = makeInput(action.group, 'group', 90);
+    const x = makeInput(action.value, 'X or $var', 80);
     const y = makeInput(action.value2, 'Y or $var', 80);
-    g.oninput = () => { scriptSteps[i].group  = g.value; };
-    x.oninput = () => { scriptSteps[i].value  = x.value; };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    x.oninput = () => { scriptSteps[i].value = x.value; };
     y.oninput = () => { scriptSteps[i].value2 = y.value; };
     row.appendChild(g); row.appendChild(x); row.appendChild(y); return;
   }
   if (t === 'set_velocity') {
-    const g  = makeInput(action.group,  'group',      90);
-    const vx = makeInput(action.value,  'VX or $var', 75);
+    const g = makeInput(action.group, 'group', 90);
+    const vx = makeInput(action.value, 'VX or $var', 75);
     const vy = makeInput(action.value2, 'VY or $var', 75);
-    g.oninput  = () => { scriptSteps[i].group  = g.value;  };
-    vx.oninput = () => { scriptSteps[i].value  = vx.value; };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    vx.oninput = () => { scriptSteps[i].value = vx.value; };
     vy.oninput = () => { scriptSteps[i].value2 = vy.value; };
     row.appendChild(g); row.appendChild(vx); row.appendChild(vy); return;
   }
-  if (t === 'set_opacity') {
-    const g = makeInput(action.group, 'group',       110);
-    const v = makeInput(action.value, '0-1 or $var',  90);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    v.oninput = () => { scriptSteps[i].value = v.value; };
-    row.appendChild(g); row.appendChild(v); return;
-  }
   if (t === 'set_text') {
-    const g = makeInput(action.group, 'group',         100);
-    const v = makeInput(action.value, 'text or $var',  130);
+    const g = makeInput(action.group, 'group', 100);
+    const v = makeInput(action.value, 'text or $var', 130);
     g.oninput = () => { scriptSteps[i].group = g.value; };
     v.oninput = () => { scriptSteps[i].value = v.value; };
     row.appendChild(g); row.appendChild(v); return;
   }
   if (t === 'set_solid' || t === 'set_kill') {
-    const g   = makeInput(action.group, 'group', 120);
+    const g = makeInput(action.group, 'group', 120);
     const sel = makeSelect([{value:'true',label:'Yes'},{value:'false',label:'No'}], action.value);
-    g.oninput    = () => { scriptSteps[i].group = g.value;   };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
     sel.onchange = () => { scriptSteps[i].value = sel.value; };
     row.appendChild(g); row.appendChild(sel); return;
   }
   if (t === 'set_var') {
-    const n = makeInput(action.group, '$varName',      90);
+    const n = makeInput(action.group, '$varName', 90);
     const v = makeInput(action.value, 'value or $var', 120);
     n.style.fontFamily = 'monospace';
     n.oninput = () => { scriptSteps[i].group = n.value; };
@@ -9018,49 +9151,135 @@ function appendActionInputsFlat(row, action, i) {
     row.appendChild(v); return;
   }
   if (t === 'set_theme') {
-    const sel = makeSelect(
-        Object.keys(LIGHTING_THEMES).map(k => ({ value: k, label: k.replace('_', ' ') })),
-        action.value || 'normal'
-    );
+    const sel = makeSelect(Object.keys(LIGHTING_THEMES).map(k => ({ value:k, label:k.replace('_',' ') })), action.value || 'normal');
     sel.onchange = () => { scriptSteps[i].value = sel.value; };
-    row.appendChild(sel);
-    return;
-}
-if (t === 'behavior_on' || t === 'behavior_off' || t === 'behavior_toggle') {
+    row.appendChild(sel); return;
+  }
+  if (t === 'behavior_on' || t === 'behavior_off' || t === 'behavior_toggle') {
     const g = makeInput(action.group, 'object group', 110);
     const v = makeInput(action.value, 'behavior name/type (blank = all)', 190);
     g.oninput = () => { scriptSteps[i].group = g.value; };
     v.oninput = () => { scriptSteps[i].value = v.value; };
     row.appendChild(g); row.appendChild(v); return;
-}
-if (t === 'set_light_color') {
-    const g  = makeInput(action.group,  'group',      90);
-    const r  = makeInput(action.value,  'R or $var',  60);
-    const gr = makeInput(action.value2, 'G or $var',  60);
-    const b  = makeInput(action.extra,  'B or $var',  60);
-    g.oninput  = () => { scriptSteps[i].group  = g.value;  };
-    r.oninput  = () => { scriptSteps[i].value  = r.value;  };
+  }
+  if (t === 'set_light_color') {
+    const g = makeInput(action.group, 'group', 90);
+    const r = makeInput(action.value, 'R or $var', 60);
+    const gr = makeInput(action.value2, 'G or $var', 60);
+    const b = makeInput(action.extra, 'B or $var', 60);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    r.oninput = () => { scriptSteps[i].value = r.value; };
     gr.oninput = () => { scriptSteps[i].value2 = gr.value; };
-    b.oninput  = () => { scriptSteps[i].extra  = b.value;  };
-    row.appendChild(g); row.appendChild(r);
-    row.appendChild(gr); row.appendChild(b);
+    b.oninput = () => { scriptSteps[i].extra = b.value; };
+    row.appendChild(g); row.appendChild(r); row.appendChild(gr); row.appendChild(b); return;
+  }
+  if (t === 'set_light_radius' || t === 'set_light_intensity') {
+    const g = makeInput(action.group, 'group', 110);
+    const v = makeInput(action.value, t === 'set_light_radius' ? 'radius or $var' : '0–1 or $var', 90);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v); return;
+  }
+}
+
+function ensureVisualIds() {
+  objects.forEach(o => { if (o.tag !== 'player' && !o.visualId) o.visualId = 'obj_' + Math.random().toString(36).slice(2, 9); });
+}
+function resolveVisualTargets(target) {
+  ensureVisualIds();
+  const raw = String(resolveFxVars(target || '')).trim();
+  if (!raw) return [];
+  const group = getGroupMembers(raw);
+  if (group.length) return group;
+  const byId = objects.filter(o => o.tag !== 'player' && o.visualId === raw);
+  if (byId.length) return byId;
+  return objects.filter(o => o.tag !== 'player' && o.tag === raw);
+}
+function addVisualTween(targets, x, y, durationMs, done) {
+  const start = targets.map(o => ({ o, x:o.x, y:o.y }));
+  const endX = parseFloat(x), endY = parseFloat(y);
+  const d = Math.max(0, durationMs);
+  if (!start.length || d <= 0) {
+    start.forEach(({o}) => { if (!isNaN(endX)) o.x=endX; if (!isNaN(endY)) o.y=endY; });
+    if (done) done();
     return;
+  }
+  visualTweens.push({ start, endX, endY, started:gameClock, duration:d, done });
 }
-if (t === 'set_light_radius') {
-    const g = makeInput(action.group, 'group',         110);
-    const v = makeInput(action.value, 'radius or $var', 90);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    v.oninput = () => { scriptSteps[i].value = v.value; };
-    row.appendChild(g); row.appendChild(v); return;
+function updateVisualTweens() {
+  if (!visualTweens.length) return;
+  for (let i=visualTweens.length-1; i>=0; i--) {
+    const tw=visualTweens[i];
+    const p=Math.max(0,Math.min(1,(gameClock-tw.started)/tw.duration));
+    tw.start.forEach(s => { if (!s.o) return; if (!isNaN(tw.endX)) s.o.x=s.x+(tw.endX-s.x)*p; if (!isNaN(tw.endY)) s.o.y=s.y+(tw.endY-s.y)*p; });
+    if (p>=1) { visualTweens.splice(i,1); if (tw.done) tw.done(); }
+  }
 }
-if (t === 'set_light_intensity') {
-    const g = makeInput(action.group, 'group',            110);
-    const v = makeInput(action.value, '0–1 or $var',       80);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    v.oninput = () => { scriptSteps[i].value = v.value; };
-    row.appendChild(g); row.appendChild(v); return;
+function scriptHasAsyncSteps(steps) {
+  return steps.some(s => s.kind === 'action' && ['wait','repeat','loop','move_to_position'].includes(s.type));
 }
+function runAsyncScriptSegment(trigger, steps, start, end, vars, token, done) {
+  if (trigger._visualScriptToken !== token) return;
+  let i=start;
+  const next=()=>runAsyncScriptSegment(trigger,steps,i,end,vars,token,done);
+  while (i<end) {
+    if (trigger._visualScriptToken !== token) return;
+    const step=steps[i], rs=resolveStepFields(step);
+    if (step.kind==='var') { Object.assign(vars,buildScriptVars([rs])); i++; continue; }
+    if (step.kind==='compute') { applyScriptComputes([rs],vars); i++; continue; }
+    if (step.kind==='condition') {
+      let elseIdx=-1,endIdx=-1,depth=0;
+      for(let j=i+1;j<end;j++){
+        if(steps[j].kind==='condition') depth++;
+        else if(steps[j].kind==='else'&&depth===0) elseIdx=j;
+        else if(steps[j].kind==='end_if'){ if(depth===0){endIdx=j;break;} depth--; }
+      }
+      if(endIdx===-1) endIdx=end;
+      const pass=evaluateScriptConditions([rs],vars);
+      const bs=pass?i+1:(elseIdx!==-1?elseIdx+1:endIdx);
+      const be=pass?(elseIdx!==-1?elseIdx:endIdx):endIdx;
+      const resume=()=>{ i=endIdx+1; runAsyncScriptSegment(trigger,steps,i,end,vars,token,done); };
+      runAsyncScriptSegment(trigger,steps,bs,be,vars,token,resume);
+      return;
+    }
+    if (step.kind==='action') {
+      const t=rs.type;
+      if(t==='wait'){
+        const ms=Math.max(0,(parseFloat(resolveVal(rs.value,vars))||0)*1000);
+        scheduleAfter(ms,()=>{ if(trigger._visualScriptToken===token) runAsyncScriptSegment(trigger,steps,i+1,end,vars,token,done); });
+        return;
+      }
+      if(t==='move_to_position'){
+        const targets=resolveVisualTargets(rs.group), x=resolveVal(rs.value,vars), y=resolveVal(rs.value2,vars);
+        const ms=Math.max(0,(parseFloat(resolveVal(rs.duration||'0.5',vars))||0)*1000);
+        addVisualTween(targets,x,y,ms,()=>{ if(trigger._visualScriptToken===token) runAsyncScriptSegment(trigger,steps,i+1,end,vars,token,done); });
+        return;
+      }
+      if(t==='repeat'||t==='loop'){
+        const count=t==='loop'?Infinity:Math.max(0,Math.floor(parseFloat(resolveVal(rs.count,vars))||0));
+        const n=Math.max(0,Math.floor(parseFloat(resolveVal(rs.steps,vars))||0));
+        const bs=i+1, be=Math.min(end,bs+n);
+        if(be<=bs){ i++; continue; }
+        const runBlock=(remaining)=>{
+          if(trigger._visualScriptToken!==token) return;
+          if(remaining===0){ runAsyncScriptSegment(trigger,steps,be,end,vars,token,done); return; }
+          if(remaining===Infinity){
+            scheduleAfter(17,()=>{ if(trigger._visualScriptToken===token) runAsyncScriptSegment(trigger,steps,bs,be,vars,token,()=>runBlock(Infinity)); });
+            return;
+          }
+          runAsyncScriptSegment(trigger,steps,bs,be,vars,token,()=>runBlock(remaining-1));
+        };
+        runBlock(count);
+        return;
+      }
+      executeScriptActions([rs],vars);
+      i++; continue;
+    }
+    i++;
+  }
+  if(done) done();
 }
+
 function runTriggerScript(trigger, event = 'touched') {
     const sc = trigger.script;
     if (!sc || !sc.steps || sc.steps.length === 0) return;
@@ -9068,8 +9287,13 @@ function runTriggerScript(trigger, event = 'touched') {
 
     const vars = {};
     if (trigger._runtimeVars) Object.assign(vars, trigger._runtimeVars);
-
-    executeScriptSteps(sc.steps, 0, sc.steps.length, vars);
+    if (scriptHasAsyncSteps(sc.steps)) {
+      const token = ++visualScriptSeq;
+      trigger._visualScriptToken = token;
+      runAsyncScriptSegment(trigger, sc.steps, 0, sc.steps.length, vars, token, () => {});
+    } else {
+      executeScriptSteps(sc.steps, 0, sc.steps.length, vars);
+    }
 }
 
 function resolveStepFields(step) {
@@ -11243,6 +11467,14 @@ drawBlockGraphic(ctx, obj.tag, obj.width, obj.height, obj);
         const operatorSymbol = {"==":"=","!=":"≠",">":">","<":"<",">=":"≥","<=":"≤"}[cmpProps.operator] || "?";
         ctx.fillText(operatorSymbol, 0, 0);
     }
+    if (obj.color && /^#[0-9a-f]{6}$/i.test(obj.color) && obj.tag !== 'text') {
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = obj.color;
+        ctx.globalAlpha = 1;
+        ctx.fillRect(-obj.width / 2, -obj.height / 2, obj.width, obj.height);
+        ctx.restore();
+    }
     if (bfx && bfx.tint && bfx.tintA > 0 && !BH_NO_TINT.has(obj.tag)) {
         ctx.globalAlpha = opacity * bfx.tintA;
         ctx.fillStyle = bfx.tint;
@@ -11586,6 +11818,7 @@ function gameLoop(timestamp) {
         checkMonitors();
         checkComparers();
         updatePlatforms(delta);
+        updateVisualTweens();
         runScheduled();
         checkGoal();
         updatePlayerTrail();
