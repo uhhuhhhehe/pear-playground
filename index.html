@@ -2108,6 +2108,7 @@ const TOOLBAR_CATEGORIES = [
             { tool: 'trigger_modify',   name: 'Modify'   },
             { tool: 'trigger_lighting', name: 'Lighting' },
             { tool: 'trigger_variable', name: 'Variable' },
+            { tool: 'trigger_behavior', name: 'Behavior' },
             { tool: 'trigger_effect',   name: 'Misc'     },
         ]
     },
@@ -3644,17 +3645,70 @@ const BEHAVIOR_TYPES = {
     fade:   { label: 'Fade',   icon: '\ud83d\udc7b', desc: 'Fades in and out.',
               fields: [ { key: 'min', label: 'Min opacity', unit: '0\u20131', def: 0.2 }, { key: 'max', label: 'Max opacity', unit: '0\u20131', def: 1 }, { key: 'speed', label: 'Speed', unit: 'fades/s', def: 0.5 } ] },
     follow: { label: 'Follow', icon: '\ud83c\udfaf', desc: 'Moves toward the player or any group.',
-              fields: [ { key: 'target', label: 'Target', type: 'text', def: 'player', hint: 'player, or a group name' }, { key: 'speed', label: 'Speed', unit: 'px/s', def: 80 } ] }
+              fields: [ { key: 'target', label: 'Target', type: 'text', def: 'player', hint: 'player, or a group name' }, { key: 'speed', label: 'Speed', unit: 'px/s', def: 80 } ] },
+
+    /* ---- Movement ---- */
+    patrol:     { label: 'Patrol', icon: '\ud83d\udeb6', desc: 'Walks back and forth along a line and pauses at each end.',
+                  fields: [ { key: 'dx', label: 'Walk distance X', unit: 'px', def: 150 }, { key: 'dy', label: 'Walk distance Y', unit: 'px', def: 0 },
+                            { key: 'speed', label: 'Speed', unit: 'px/s', def: 60 }, { key: 'wait', label: 'Wait at each end', unit: 'seconds', def: 0.5 } ] },
+    oscillate:  { label: 'Oscillate', icon: '\u3030\ufe0f', desc: 'Swings smoothly back and forth, like a pendulum or a gentle wave.',
+                  fields: [ { key: 'dx', label: 'Swing X', unit: 'px', def: 60 }, { key: 'dy', label: 'Swing Y', unit: 'px', def: 0 },
+                            { key: 'speed', label: 'Speed', unit: 'swings/s', def: 0.5 } ] },
+    moveToward: { label: 'Move Toward', icon: '\ud83d\udccd', desc: 'Moves to a spot and stops \u2014 good for doors and lifts. Untick Enabled so it waits until a trigger turns it on.',
+                  fields: [ { key: 'x', label: 'Go to X', unit: 'px', def: o => Math.round(o.x) }, { key: 'y', label: 'Go to Y', unit: 'px', def: o => Math.round(o.y - 150) },
+                            { key: 'speed', label: 'Speed', unit: 'px/s', def: 100 },
+                            { key: 'turnOff', type: 'check', label: 'Turn itself off when it arrives', def: true },
+                            { key: 'onCompleted', type: 'text', event: true, label: 'When it arrives, fire group', hint: 'a trigger group name', def: '' } ] },
+    orbit:      { label: 'Orbit', icon: '\ud83e\ude90', desc: 'Circles around a point. Leave "Around" empty to circle a spot beside where it starts.',
+                  fields: [ { key: 'around', label: 'Around', type: 'text', def: '', hint: 'empty, "player", or a group name' },
+                            { key: 'radius', label: 'Radius', unit: 'px', def: 80 }, { key: 'speed', label: 'Speed', unit: '\u00b0/s', def: 90 } ] },
+
+    /* ---- Interaction ---- */
+    button:     { label: 'Button', icon: '\ud83d\udd18', desc: 'Pressed when the player (or a pushable crate) stands on it.',
+                  fields: [ { key: 'latch', type: 'check', label: 'Stay pressed after the first press', def: false },
+                            { key: 'onActivated', type: 'text', event: true, label: 'When pressed, fire group', hint: 'a trigger group name', def: '' },
+                            { key: 'onReleased', type: 'text', event: true, label: 'When released, fire group', hint: 'a trigger group name', def: '' } ] },
+    switch:     { label: 'Switch', icon: '\ud83c\udf9a\ufe0f', desc: 'A lever that flips ON and OFF each time the player uses it.',
+                  fields: [ { key: 'how', label: 'How it flips', type: 'select', def: 'touch', options: [ { value: 'touch', label: 'Player touches it' }, { value: 'key', label: 'Player presses E nearby' } ] },
+                            { key: 'startOn', type: 'check', label: 'Starts turned ON', def: false },
+                            { key: 'onActivated', type: 'text', event: true, label: 'When turned ON, fire group', hint: 'a trigger group name', def: '' },
+                            { key: 'onDeactivated', type: 'text', event: true, label: 'When turned OFF, fire group', hint: 'a trigger group name', def: '' } ] },
+    collectible:{ label: 'Collectible', icon: '\ud83d\udc8e', desc: 'Disappears when the player touches it. Can count up a Counter and give coins.',
+                  fields: [ { key: 'counter', label: 'Add to counter', type: 'text', def: '', hint: 'the Count Group of a Counter block' },
+                            { key: 'amount', label: 'Amount to add', def: 1 }, { key: 'coins', label: 'Coins', def: 0 },
+                            { key: 'respawn', label: 'Comes back after', unit: 'seconds, 0 = never', def: 0 },
+                            { key: 'onCollected', type: 'text', event: true, label: 'When collected, fire group', hint: 'a trigger group name', def: '' } ] },
+    damage:     { label: 'Damage', icon: '\u26a0\ufe0f', desc: 'Hurts the player on touch \u2014 turn any object into a hazard or an enemy.',
+                  fields: [ { key: 'effect', label: 'What it does', type: 'select', def: 'respawn', options: [ { value: 'respawn', label: 'Send player back to checkpoint' }, { value: 'knock', label: 'Knock the player back' } ] },
+                            { key: 'strength', label: 'Knockback strength', def: 6 },
+                            { key: 'onHit', type: 'text', event: true, label: 'When it hurts, fire group', hint: 'a trigger group name', def: '' } ] },
+    checkpoint: { label: 'Checkpoint', icon: '\ud83d\udea9', desc: 'Touch it and you respawn here from now on.',
+                  fields: [ { key: 'coins', label: 'Reward coins (first time)', def: 15 },
+                            { key: 'onActivated', type: 'text', event: true, label: 'When reached, fire group', hint: 'a trigger group name', def: '' } ] },
+
+    /* ---- Visual ---- */
+    pulse:      { label: 'Pulse', icon: '\ud83d\udc93', desc: 'Grows and shrinks like a heartbeat (looks only).',
+                  fields: [ { key: 'amount', label: 'Size change', unit: '%', def: 15 }, { key: 'speed', label: 'Speed', unit: 'pulses/s', def: 1 } ] },
+    flicker:    { label: 'Flicker', icon: '\ud83d\udd6f\ufe0f', desc: 'Flickers like a damaged light.',
+                  fields: [ { key: 'min', label: 'Dimmest', unit: '0\u20131', def: 0.3 }, { key: 'speed', label: 'Speed', unit: 'flickers/s', def: 8 } ] },
+    colorChange:{ label: 'Color Change', icon: '\ud83c\udfa8', desc: 'Fades a color over the object. Enable it from a trigger for feedback (a door turning green).',
+                  fields: [ { key: 'color', label: 'Color', type: 'color', def: '#22c55e' }, { key: 'strength', label: 'Strength', unit: '%', def: 50 },
+                            { key: 'fade', label: 'Fade-in time', unit: 'seconds', def: 0.5 } ] }
 };
+const BH_CAT_ORDER = ['Movement', 'Appearance', 'Interaction'];
+Object.entries({ move: 'Movement', bob: 'Movement', follow: 'Movement', patrol: 'Movement', oscillate: 'Movement', moveToward: 'Movement', orbit: 'Movement',
+                 rotate: 'Appearance', fade: 'Appearance', pulse: 'Appearance', flicker: 'Appearance', colorChange: 'Appearance',
+                 button: 'Interaction', switch: 'Interaction', collectible: 'Interaction', damage: 'Interaction', checkpoint: 'Interaction' })
+    .forEach(([k, c]) => { BEHAVIOR_TYPES[k].cat = c; });
 let bhIdN = 0;
 const bhNum = (v, d) => { const x = parseFloat(v); return isNaN(x) ? d : x; };
 function bhHid(o, k, init) {                     // runtime-only slot: never saved, cloned or snapshotted
     if (!Object.prototype.hasOwnProperty.call(o, k)) Object.defineProperty(o, k, { value: init, writable: true, enumerable: false, configurable: true });
     return o[k];
 }
-function makeBehavior(type) {
+function makeBehavior(type, o) {
     const b = { id: 'b' + (++bhIdN) + Math.random().toString(36).slice(2, 6), type, enabled: true };
-    BEHAVIOR_TYPES[type].fields.forEach(f => { b[f.key] = f.def; });
+    BEHAVIOR_TYPES[type].fields.forEach(f => { b[f.key] = typeof f.def === 'function' ? f.def(o || { x: 0, y: 0 }) : f.def; });
     return b;
 }
 function bhState(o, b) {
@@ -3681,7 +3735,7 @@ function bhTarget(o, spec) {
     });
     return best;
 }
-function bhRun(o, b, dt) {
+function bhRun(o, b, dt, fx) {
     const st = bhState(o, b);
     switch (b.type) {
         case 'move':
@@ -3711,22 +3765,202 @@ function bhRun(o, b, dt) {
             bhMove(o, dx / dist * step, dy / dist * step);
             break;
         }
+        case 'patrol': {
+            const dx = bhNum(b.dx, 0), dy = bhNum(b.dy, 0), len = Math.hypot(dx, dy);
+            if (len < 1) break;
+            if (st.wait > 0) { st.wait -= dt; break; }
+            if (!st.dir) st.dir = 1;
+            st.p = (st.p || 0) + st.dir * bhNum(b.speed, 60) * dt / len;
+            if (st.p >= 1)      { st.p = 1; st.dir = -1; st.wait = bhNum(b.wait, 0.5); }
+            else if (st.p <= 0) { st.p = 0; st.dir = 1;  st.wait = bhNum(b.wait, 0.5); }
+            const ox = dx * st.p, oy = dy * st.p;
+            bhMove(o, ox - (st.ox || 0), oy - (st.oy || 0)); st.ox = ox; st.oy = oy;
+            break;
+        }
+        case 'oscillate': {
+            st.t += dt;
+            const sw = Math.sin(2 * Math.PI * bhNum(b.speed, 0.5) * st.t);
+            const ox = bhNum(b.dx, 0) * sw, oy = bhNum(b.dy, 0) * sw;
+            bhMove(o, ox - (st.ox || 0), oy - (st.oy || 0)); st.ox = ox; st.oy = oy;
+            break;
+        }
+        case 'moveToward': {
+            if (st.done) break;
+            const dx = bhNum(b.x, o.x) - o.x, dy = bhNum(b.y, o.y) - o.y, dist = Math.hypot(dx, dy);
+            const step = bhNum(b.speed, 100) * dt;
+            if (dist <= step || dist < 0.01) {
+                bhMove(o, dx, dy); st.done = true;
+                if (b.turnOff !== false) bhSetEnabled(o, b, 'off');
+                bhEvent(b, 'onCompleted');
+            } else bhMove(o, dx / dist * step, dy / dist * step);
+            break;
+        }
+        case 'orbit': {
+            const spec = String(b.around == null ? '' : b.around).trim();
+            const tgt = spec ? bhTarget(o, spec) : null;
+            if (spec && !tgt) break;
+            const r = bhNum(b.radius, 80), oc = { x: o.x + o.width / 2, y: o.y + o.height / 2 };
+            if (!st.init) {
+                st.init = true;
+                if (tgt) { const tx = tgt.x + tgt.width / 2, ty = tgt.y + tgt.height / 2; st.a = Math.hypot(oc.x - tx, oc.y - ty) < 1 ? 0 : Math.atan2(oc.y - ty, oc.x - tx); }
+                else { st.a = Math.PI; st.cx = oc.x + r; st.cy = oc.y; }
+                st.prev = { x: oc.x, y: oc.y };
+            }
+            st.a += bhNum(b.speed, 90) * Math.PI / 180 * dt;
+            const cx = tgt ? tgt.x + tgt.width / 2 : st.cx, cy = tgt ? tgt.y + tgt.height / 2 : st.cy;
+            const vx = cx + r * Math.cos(st.a), vy = cy + r * Math.sin(st.a);
+            bhMove(o, vx - st.prev.x, vy - st.prev.y); st.prev.x = vx; st.prev.y = vy;
+            break;
+        }
+        case 'button': {
+            const zone = { x: o.x, y: o.y - 6, width: o.width, height: o.height + 6 };
+            let down = false;
+            const near = getNearbyObjects(zone);
+            for (let i = 0; i < near.length; i++) {
+                const t = near[i];
+                if (t !== o && (t.tag === 'player' || t.pushable) && rectsCollide(t, zone)) { down = true; break; }
+            }
+            if (b.latch && st.on) down = true;
+            if (down && !st.on)      { st.on = true;  bhEvent(b, 'onActivated'); }
+            else if (!down && st.on) { st.on = false; bhEvent(b, 'onReleased'); }
+            if (st.on) { fx.tint = '#22c55e'; fx.tintA = Math.max(fx.tintA, 0.4); }
+            break;
+        }
+        case 'switch': {
+            if (st.on === undefined) st.on = !!b.startOn;
+            const key = b.how === 'key', pad = key ? 24 : 0;
+            const nearIt = player.x + player.width > o.x - pad && player.x < o.x + o.width + pad &&
+                           player.y + player.height > o.y - pad && player.y < o.y + o.height + pad;
+            const flip = key ? (nearIt && interactPressed) : (nearIt && !st.near);
+            st.near = nearIt;
+            if (flip) { st.on = !st.on; bhEvent(b, st.on ? 'onActivated' : 'onDeactivated'); }
+            fx.tint = st.on ? '#22c55e' : '#ef4444'; fx.tintA = Math.max(fx.tintA, st.on ? 0.35 : 0.25);
+            break;
+        }
+        case 'collectible': {
+            if (st.done) {
+                fx.alpha = 0;
+                if (bhNum(b.respawn, 0) > 0 && (st.rt -= dt) <= 0) {
+                    st.done = false; fx.alpha = 1;
+                    if (o._home && o._home.solid !== undefined) o.solid = o._home.solid;
+                }
+                break;
+            }
+            if (!rectsCollide(player, o)) break;
+            st.done = true; st.rt = bhNum(b.respawn, 0); o.solid = false; fx.alpha = 0;
+            const cname = String(b.counter == null ? '' : b.counter).trim(), amt = bhNum(b.amount, 1);
+            if (cname) objects.forEach(c => { if (c.tag === 'counter' && c.countGroup === cname) setCounterValue(c, (c.count || 0) + amt); });
+            const coins = bhNum(b.coins, 0);
+            if (coins > 0) addCoins(coins);
+            spawnParticles(o.x + o.width / 2, o.y + o.height / 2, 10, '#fbbf24', 5);
+            spawnFloatingText(o.x + o.width / 2, o.y, coins > 0 ? '+' + coins : 'Collected');
+            playSFX('coin');
+            bhEvent(b, 'onCollected');
+            break;
+        }
+        case 'damage': {
+            st.cool = Math.max(0, (st.cool || 0) - dt);
+            if (st.cool > 0 || !rectsCollide(player, o)) break;
+            st.cool = 0.8;
+            spawnParticles(player.x + player.width / 2, player.y + player.height / 2, 14, 'red', 6);
+            if (b.effect === 'knock') {
+                const dir = (player.x + player.width / 2) < (o.x + o.width / 2) ? -1 : 1;
+                player.vx = dir * bhNum(b.strength, 6); player.vy = -8; addShake(6);
+            } else { addShake(10); resetPlayer(player); }
+            bhEvent(b, 'onHit');
+            break;
+        }
+        case 'checkpoint': {
+            if (!rectsCollide(player, o)) break;
+            START_POS.x = o.x + o.width / 2 - player.width / 2;
+            START_POS.y = o.y - player.height;
+            if (!st.done) {
+                st.done = true;
+                const coins = bhNum(b.coins, 0);
+                if (coins > 0) addCoins(coins, 'checkpoint');
+                bhEvent(b, 'onActivated');
+            }
+            break;
+        }
+        case 'pulse': {
+            st.t += dt;
+            const k = 1 + bhNum(b.amount, 15) / 100 * Math.sin(2 * Math.PI * bhNum(b.speed, 1) * st.t);
+            fx.sx *= k; fx.sy *= k;
+            break;
+        }
+        case 'flicker': {
+            if ((st.t -= dt) <= 0) {
+                st.t = (0.5 + Math.random()) / Math.max(0.1, bhNum(b.speed, 8));
+                const lo = Math.max(0, Math.min(1, bhNum(b.min, 0.3)));
+                st.v = lo + (1 - lo) * Math.random();
+            }
+            fx.alpha *= st.v;
+            break;
+        }
+        case 'colorChange': {
+            st.k = Math.min(1, (st.k || 0) + dt / Math.max(0.05, bhNum(b.fade, 0.5)));
+            fx.tint = b.color || '#22c55e'; fx.tintA = Math.max(fx.tintA, st.k * Math.max(0, Math.min(1, bhNum(b.strength, 50) / 100)));
+            break;
+        }
     }
+}
+let interactPressed = false;                     // set by the E key while playing (Switch: "Player presses E")
+const BH_NO_TINT = new Set(['player', 'text', 'coin', 'light', 'clock', 'tree', 'bush']);
+function bhEnsureId(b) { if (!b.id) b.id = 'b' + (++bhIdN) + Math.random().toString(36).slice(2, 6); return b.id; }
+// Effective on/off state: a trigger's choice wins while playing, otherwise the saved Enabled box.
+function bhIsOn(o, b) {
+    const m = o._bho;
+    if (m && b.id !== undefined && Object.prototype.hasOwnProperty.call(m, b.id)) return m[b.id];
+    return b.enabled !== false;
+}
+// mode: 'on' | 'off' | 'toggle'. Only a runtime override \u2014 the saved Enabled box is never changed by play.
+function bhSetEnabled(o, b, mode) {
+    bhEnsureId(b);
+    const cur = bhIsOn(o, b), next = mode === 'toggle' ? !cur : mode === 'on';
+    bhHid(o, '_bho', {})[b.id] = next;
+    if (next && !cur && b.type === 'moveToward') bhState(o, b).done = false;     // may travel again
+}
+const bhNorm = s => String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]/g, '');
+// "which" is a behavior's Name, or its type ("Move Toward", "patrol"); empty = every behavior on the object
+function bhMatches(b, which) {
+    const w = bhNorm(which);
+    if (!w) return true;
+    const def = BEHAVIOR_TYPES[b.type];
+    return bhNorm(b.name) === w || bhNorm(b.type) === w || (def && bhNorm(def.label) === w);
+}
+function bhSetByGroup(group, which, mode) {
+    let n = 0;
+    forEachInGroup(group, o => {
+        if (!o.behaviors) return;
+        o.behaviors.forEach(b => { if (b && BEHAVIOR_TYPES[b.type] && bhMatches(b, which)) { bhSetEnabled(o, b, mode); n++; } });
+    });
+    return n;
+}
+// A behavior event = fire a trigger group, using the existing trigger system
+function bhEvent(b, key) {
+    const g = String(b[key] == null ? '' : b[key]).trim();
+    if (g) fireTriggerGroup(g);
 }
 // The one central update: only objects that have at least one enabled behavior are touched.
 function updateBehaviors(dt) {
     for (let i = 0; i < objects.length; i++) {
         const o = objects[i], bs = o.behaviors;
         if (!bs || !bs.length) continue;
-        let active = false;
-        for (let k = 0; k < bs.length; k++) if (bs[k] && bs[k].enabled !== false && BEHAVIOR_TYPES[bs[k].type]) { active = true; break; }
-        if (!active) continue;
-        if (!o._home) { bhHid(o, '_home', null); o._home = { x: o.x, y: o.y, opacity: o.opacity, rotation: o.rotation }; }
+        let active = o.active !== false;             // "Deactivate group" pauses an object's behaviors too
+        if (active) {
+            active = false;
+            for (let k = 0; k < bs.length; k++) { const b = bs[k]; if (b && BEHAVIOR_TYPES[b.type] && bhIsOn(o, b)) { bhEnsureId(b); active = true; break; } }
+        }
+        if (!active) { if (o._fx) o._fx.on = false; continue; }
+        if (!o._home) { bhHid(o, '_home', null); o._home = { x: o.x, y: o.y, opacity: o.opacity, rotation: o.rotation, solid: o.solid }; }
+        const fx = o._fx || bhHid(o, '_fx', {});
+        fx.on = true; fx.sx = 1; fx.sy = 1; fx.alpha = 1; fx.tint = null; fx.tintA = 0;
         for (let k = 0; k < bs.length; k++) {
             const b = bs[k];
-            if (b && b.enabled !== false && BEHAVIOR_TYPES[b.type]) bhRun(o, b, dt);
+            if (b && BEHAVIOR_TYPES[b.type] && bhIsOn(o, b)) bhRun(o, b, dt, fx);
         }
     }
+    interactPressed = false;
 }
 // Put everything back the way it was built (play stops, or Reset is pressed)
 function resetBehaviorRuntime() {
@@ -3735,10 +3969,34 @@ function resetBehaviorRuntime() {
         if (h) {
             o.x = h.x; o.y = h.y; o.opacity = h.opacity;
             if (h.rotation === undefined) delete o.rotation; else o.rotation = h.rotation;
+            if (h.solid !== undefined) o.solid = h.solid;
             o._home = null;
         }
         if (o._bh) o._bh = {};
+        if (o._bho) o._bho = {};
+        if (o._fx) o._fx.on = false;
     });
+}
+// Dashed guides for the selected object's movement behaviors (editor only)
+function drawBehaviorPreviews() {
+    if (playMode || !isSelectTool()) return;
+    const sel = selectionList();
+    if (sel.length !== 1 || !sel[0].behaviors) return;
+    const o = sel[0], cx = o.x + o.width / 2 - camera.x, cy = o.y + o.height / 2 - camera.y;
+    ctx.save(); ctx.strokeStyle = '#a78bfa'; ctx.fillStyle = 'rgba(167,139,250,0.12)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+    o.behaviors.forEach(b => {
+        if (!b || b.enabled === false) return;
+        const dx = bhNum(b.dx, 0), dy = bhNum(b.dy, 0);
+        if (b.type === 'patrol')   { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke(); ctx.strokeRect(o.x - camera.x + dx, o.y - camera.y + dy, o.width, o.height); }
+        if (b.type === 'oscillate'){ ctx.beginPath(); ctx.moveTo(cx - dx, cy - dy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke(); }
+        if (b.type === 'moveToward') {
+            const gx = bhNum(b.x, o.x) - camera.x, gy = bhNum(b.y, o.y) - camera.y;
+            ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(gx + o.width / 2, gy + o.height / 2); ctx.stroke();
+            ctx.fillRect(gx, gy, o.width, o.height); ctx.strokeRect(gx, gy, o.width, o.height);
+        }
+        if (b.type === 'orbit' && !String(b.around || '').trim()) { const r = bhNum(b.radius, 80); ctx.beginPath(); ctx.arc(cx + r, cy, r, 0, Math.PI * 2); ctx.stroke(); }
+    });
+    ctx.restore();
 }
 function drawBehaviorBadges(list) {              // small purple badge on objects that have behaviors (editor only)
     if (playMode) return;
@@ -3773,17 +4031,37 @@ function bhCard(o, b, i) {
     head.appendChild(rm); card.appendChild(head);
     if (!def) { card.appendChild(bhEl('div', 'bh-desc', 'This behavior type is unknown here. It is kept as-is in your map.')); return card; }
     card.appendChild(bhEl('div', 'bh-desc', def.desc));
+    const nameRow = bhEl('div', 'bh-f'), nameLab = bhEl('label', 'bh-l', 'Name'); nameLab.appendChild(bhEl('small', '', ' optional \u2014 lets triggers find this behavior'));
+    const nameInp = bhEl('input'); nameInp.type = 'text'; nameInp.dataset.key = 'name'; nameInp.placeholder = 'e.g. open'; nameInp.value = b.name || '';
+    nameInp.addEventListener('change', () => bhCommit(b, 'name', nameInp.value.trim()));
+    nameRow.appendChild(nameLab); nameRow.appendChild(nameInp); card.appendChild(nameRow);
+    let evtShown = false;
     def.fields.forEach(f => {
-        const row = bhEl('div', 'bh-f');
-        const lab = bhEl('label', 'bh-l', f.label); if (f.unit) lab.appendChild(bhEl('small', '', ' ' + f.unit)); if (f.hint) lab.title = f.hint;
-        const inp = bhEl('input'); inp.type = 'text'; inp.dataset.key = f.key;
-        if (f.type !== 'text') inp.setAttribute('inputmode', 'decimal'); else inp.placeholder = f.hint || '';
-        inp.value = b[f.key] !== undefined ? b[f.key] : f.def;
-        inp.addEventListener('change', () => {
-            if (f.type === 'text') bhCommit(b, f.key, inp.value.trim());
-            else { const v = parseFloat(inp.value); if (isNaN(v)) { inp.value = b[f.key]; return; } bhCommit(b, f.key, v); }
-        });
-        row.appendChild(lab); row.appendChild(inp); card.appendChild(row);
+        if (f.event && !evtShown) { card.appendChild(bhEl('div', 'bh-evt', 'When it happens \u2014 fire a trigger group')); evtShown = true; }
+        const type = f.type || 'number', row = bhEl('div', 'bh-f');
+        const cur = b[f.key] !== undefined ? b[f.key] : (typeof f.def === 'function' ? '' : f.def);
+        if (type === 'check') {
+            const lab = bhEl('label', 'bh-en'); lab.style.margin = '6px 0';
+            const c = bhEl('input'); c.type = 'checkbox'; c.dataset.key = f.key; c.checked = !!cur;
+            c.addEventListener('change', () => bhCommit(b, f.key, c.checked));
+            lab.appendChild(c); lab.appendChild(document.createTextNode(' ' + f.label)); row.appendChild(lab);
+        } else {
+            const lab = bhEl('label', 'bh-l', f.label); if (f.unit) lab.appendChild(bhEl('small', '', ' ' + f.unit)); if (f.hint) lab.title = f.hint;
+            let inp;
+            if (type === 'select') {
+                inp = bhEl('select');
+                f.options.forEach(op => { const e = bhEl('option', '', op.label); e.value = op.value; inp.appendChild(e); });
+                inp.value = cur;
+            } else if (type === 'color') { inp = bhEl('input'); inp.type = 'color'; inp.value = cur || '#ffffff'; }
+            else { inp = bhEl('input'); inp.type = 'text'; if (type === 'text') inp.placeholder = f.hint || ''; else inp.setAttribute('inputmode', 'decimal'); inp.value = cur; }
+            inp.dataset.key = f.key;
+            inp.addEventListener('change', () => {
+                if (type === 'number') { const v = parseFloat(inp.value); if (isNaN(v)) { inp.value = b[f.key]; return; } bhCommit(b, f.key, v); }
+                else bhCommit(b, f.key, type === 'text' ? inp.value.trim() : inp.value);
+            });
+            row.appendChild(lab); row.appendChild(inp);
+        }
+        card.appendChild(row);
     });
     return card;
 }
@@ -3824,7 +4102,12 @@ function initBehaviorUI() {
 #selPanel .bh-l{display:block;font-size:10.5px;color:#a1a1aa;margin-bottom:2px}#selPanel .bh-l small{color:#71717a}
 #selPanel .bh-f input[type=text]{width:100%;box-sizing:border-box;background:#27272a;border:1px solid #3f3f46;border-radius:6px;color:#fafafa;font:12px system-ui;padding:4px 6px;height:26px;margin:0;user-select:text}
 #selPanel .bh-item{display:flex;gap:8px;align-items:flex-start;width:100%;background:transparent;border:none;color:#e4e4e7;padding:6px 4px;cursor:pointer;text-align:left;border-radius:6px}
-#selPanel .bh-item:hover{background:#3f3f46}#selPanel .bh-item small{display:block;color:#a1a1aa;font-size:10px;line-height:1.3}`;
+#selPanel .bh-item:hover{background:#3f3f46}#selPanel .bh-item small{display:block;color:#a1a1aa;font-size:10px;line-height:1.3}
+#selPanel #spBehPicker{max-height:300px;overflow-y:auto}
+#selPanel .bh-cat{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#a78bfa;margin:6px 4px 2px}
+#selPanel .bh-evt{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#a78bfa;margin:8px 0 2px}
+#selPanel .bh-f select{width:100%;box-sizing:border-box;background:#27272a;border:1px solid #3f3f46;border-radius:6px;color:#fafafa;font:12px system-ui;padding:4px 6px;height:26px;margin:0}
+#selPanel .bh-f input[type=color]{width:100%;height:26px;padding:0;border:1px solid #3f3f46;border-radius:6px;background:#27272a;margin:0}`;
     document.head.appendChild(css);
     const root = bhEl('div', 'sp-sec'); root.id = 'spBeh';
     root.innerHTML = '<div class="sp-lbl">Behaviors</div><div id="spBehNote" class="sp-hint" style="margin:0 0 6px"></div><div id="spBehList"></div>' +
@@ -3832,12 +4115,14 @@ function initBehaviorUI() {
         '<div class="sp-pop" id="spBehPicker" style="display:none"></div>';
     document.getElementById('spBody').appendChild(root);
     const picker = document.getElementById('spBehPicker');
-    Object.keys(BEHAVIOR_TYPES).forEach(type => {
+    let lastCat = '';
+    Object.keys(BEHAVIOR_TYPES).sort((x, y) => BH_CAT_ORDER.indexOf(BEHAVIOR_TYPES[x].cat) - BH_CAT_ORDER.indexOf(BEHAVIOR_TYPES[y].cat)).forEach(type => {
+        if (BEHAVIOR_TYPES[type].cat !== lastCat) { lastCat = BEHAVIOR_TYPES[type].cat; picker.appendChild(bhEl('div', 'bh-cat', lastCat)); }
         const d = BEHAVIOR_TYPES[type], b = bhEl('button', 'bh-item'); b.dataset.type = type; b.title = d.desc;
         b.appendChild(bhEl('span', '', d.icon)); const t = bhEl('span'); t.appendChild(bhEl('b', '', d.label)); t.appendChild(bhEl('small', '', d.desc)); b.appendChild(t);
         b.addEventListener('click', () => {
             const sel = selectionList(); if (sel.length !== 1) return;
-            saveUndoState(); (sel[0].behaviors = sel[0].behaviors || []).push(makeBehavior(type)); bhPickerOpen = false; bhSigPrev = '';
+            saveUndoState(); (sel[0].behaviors = sel[0].behaviors || []).push(makeBehavior(type, sel[0])); bhPickerOpen = false; bhSigPrev = '';
         });
         picker.appendChild(b);
     });
@@ -6157,6 +6442,7 @@ case 'marble':
         case 'trigger_lighting':
         case 'trigger_effect':
         case 'trigger_variable':
+        case 'trigger_behavior':
             newObj.tag = currentTool;
             newObj.solid = false;
             newObj.gravity = 0;
@@ -6329,7 +6615,7 @@ canvas.addEventListener("mousemove", e => {
     const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
         'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform',
         'coin', 'tree', 'bush', 'wind', 'light',
-        'trigger_move', 'trigger_modify', 'trigger_lighting', 'trigger_effect', 'trigger_variable', 'boolean'];
+        'trigger_move', 'trigger_modify', 'trigger_lighting', 'trigger_effect', 'trigger_variable', 'trigger_behavior', 'boolean'];
     if (dragBlacklist.includes(currentTool)) return;
 
     if (ghostX === lastPlacedCell.x && ghostY === lastPlacedCell.y) return;
@@ -7671,6 +7957,23 @@ const EFFECT_TRIGGER_DEFS = {
     }
 };
 
+EFFECT_TRIGGER_DEFS.trigger_behavior = {
+    label: 'Behavior', title: 'Behavior Trigger', color: '#7c3aed', glyph: '\u25b6',
+    hint: 'Turns a behavior ON, OFF or flips it, on every object in the target group. Example: a Move Toward behavior named "open" on a door.',
+    fields: [
+        { key: 'targetGroup', label: 'Target Group', type: 'text', placeholder: "e.g., 'door'" },
+        { key: 'which', label: 'Which behavior (name or type, blank = all)', type: 'text', placeholder: "e.g., 'open' or 'Move Toward'" },
+        { key: 'action', label: 'Action', type: 'select', default: 'enable', options: [
+            { value: 'enable',  label: 'Enable (turn on)' },
+            { value: 'disable', label: 'Disable (turn off)' },
+            { value: 'toggle',  label: 'Toggle (flip)' }
+        ] }
+    ],
+    run(fx) {
+        const mode = fx.action === 'disable' ? 'off' : fx.action === 'toggle' ? 'toggle' : 'on';
+        bhSetByGroup(fx.targetGroup, fx.which, mode);
+    }
+};
 Object.values(EFFECT_TRIGGER_DEFS).forEach(d => d.fields.forEach(f => { if (f.options === FX_TRISTATE) f.bindBool = true; }));
 
 function executeEffectTrigger(trigger, sourceEvent = 'triggered') {
@@ -7887,6 +8190,9 @@ const ACTION_TYPES = [
   { value:'shake_screen',      label:'Shake screen' },
   { value:'spawn_particles',   label:'Particles at group' },
   { value:'log',               label:'Log to console' },
+  { value:'behavior_on',       label:'Enable behavior' },
+  { value:'behavior_off',      label:'Disable behavior' },
+  { value:'behavior_toggle',   label:'Toggle behavior' },
   { value:'set_theme', label:'Set lighting theme' },
   { value:'set_light_color',     label:'Set light color (RGB)' },
   { value:'set_light_radius',    label:'Set light radius' },
@@ -7899,7 +8205,8 @@ const MAIN_ACTION_TYPES = [
   'fire_group', 'activate_group', 'deactivate_group',
   'reset_counter', 'increment_counter', 'set_counter',
   'toggle_clock', 'activate_clock', 'deactivate_clock',
-  'set_var', 'log'
+  'set_var', 'log',
+  'behavior_on', 'behavior_off', 'behavior_toggle'
 ];
 function getActionOptions(current) {
   const opts = ACTION_TYPES.filter(a => MAIN_ACTION_TYPES.includes(a.value));
@@ -8646,6 +8953,10 @@ if (t === 'set_counter') {
     return;
 }
 
+    if (t === 'behavior_on' || t === 'behavior_off' || t === 'behavior_toggle') {
+      bhSetByGroup(group, action.value == null ? '' : action.value, t === 'behavior_on' ? 'on' : t === 'behavior_off' ? 'off' : 'toggle');
+      return;
+    }
     if (t === 'spawn_particles') {
       objects.forEach(o => {
         if (hasGroup(o, group)) spawnParticles(o.x + o.width/2, o.y + o.height/2, 12, '#6366f1', 6);
@@ -8775,6 +9086,13 @@ function appendActionInputsFlat(row, action, i) {
     sel.onchange = () => { scriptSteps[i].value = sel.value; };
     row.appendChild(sel);
     return;
+}
+if (t === 'behavior_on' || t === 'behavior_off' || t === 'behavior_toggle') {
+    const g = makeInput(action.group, 'object group', 110);
+    const v = makeInput(action.value, 'behavior name/type (blank = all)', 190);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v); return;
 }
 if (t === 'set_light_color') {
     const g  = makeInput(action.group,  'group',      90);
@@ -9912,7 +10230,8 @@ case 'goal': {
         case 'trigger_modify':
         case 'trigger_lighting':
         case 'trigger_effect':
-        case 'trigger_variable': {
+        case 'trigger_variable':
+        case 'trigger_behavior': {
             const d = EFFECT_TRIGGER_DEFS[tag];
             ctx.fillStyle = d.color + '22';
             ctx.fillRect(x, y, w, h);
@@ -10828,6 +11147,8 @@ function drawSingleObject(obj) {
     
     let opacity = obj.opacity ?? 1;
     if (isAnyTrigger(obj.tag) && !obj.active) opacity *= 0.3;
+    const bfx = obj._fx && obj._fx.on ? obj._fx : null;     // behavior visuals (pulse, flicker, tint, collected)
+    if (bfx) opacity *= bfx.alpha;
     ctx.globalAlpha = opacity;
 
     const centerX = obj.x - camera.x + obj.width / 2;
@@ -10835,6 +11156,7 @@ function drawSingleObject(obj) {
 
     ctx.translate(centerX, centerY);
     ctx.scale(obj.scaleX, obj.scaleY);
+    if (bfx) ctx.scale(bfx.sx, bfx.sy);
     if (obj.tag !== 'player') {
         if (obj.rotation) ctx.rotate(obj.rotation * Math.PI / 180);
         if (obj.tag !== 'text' && (obj.flipX || obj.flipY)) ctx.scale(obj.flipX ? -1 : 1, obj.flipY ? -1 : 1);
@@ -11018,6 +11340,11 @@ drawBlockGraphic(ctx, obj.tag, obj.width, obj.height, obj);
         const operatorSymbol = {"==":"=","!=":"≠",">":">","<":"<",">=":"≥","<=":"≤"}[cmpProps.operator] || "?";
         ctx.fillText(operatorSymbol, 0, 0);
     }
+    if (bfx && bfx.tint && bfx.tintA > 0 && !BH_NO_TINT.has(obj.tag)) {
+        ctx.globalAlpha = opacity * bfx.tintA;
+        ctx.fillStyle = bfx.tint;
+        ctx.fillRect(-obj.width / 2, -obj.height / 2, obj.width, obj.height);
+    }
     ctx.restore();
 
 }
@@ -11046,6 +11373,7 @@ function drawObjects() {
   });
   drawLockBadges(visibleObjects);
   drawBehaviorBadges(visibleObjects);
+  drawBehaviorPreviews();
   // Draw drag selection rectangle
 if (isDragSelecting) {
     const sx = Math.min(dragSelectStart.x, dragSelectEnd.x) - camera.x;
@@ -11232,6 +11560,7 @@ window.addEventListener('keydown', (e) => {
     }
     switch (e.code) {
         case 'KeyE':
+    if (playMode) { interactPressed = true; break; }
     if (currentTool === 'edit') {
         selectTool(lastSelectedBlock || 'box');
     } else {
