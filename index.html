@@ -664,6 +664,10 @@
         <input type="checkbox" id="setFps" onchange="toggleSetting('fps')">
     </div>
     <div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+        <label for="setPerf" style="color:#333; margin:0;" title="FPS, object count, visible objects and running behaviors (F3)">Performance Stats</label>
+        <input type="checkbox" id="setPerf" onchange="toggleSetting('perf')">
+    </div>
+    <div class="checkbox-group" style="background:#f0f0f0; margin-bottom:10px; padding:10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
     <label for="setMusic" style="color:#333; margin:0;">Music</label>
     <input type="checkbox" id="setMusic" onchange="toggleSetting('music')">
 </div>
@@ -1360,6 +1364,12 @@ let screenShake = 0;       // Current shake intensity
 let gameTime = 0;          // Used for idle animations (sine waves)
 const SPATIAL_CELL_SIZE = 200; // Size of grid buckets
 let spatialGrid = new Map();
+const EMPTY_LIST = [];
+let _gIdx = null, _gIdxLen = -1, _gIdxLast = null;   // lookup index (groups / variables / tags) — see getIndex()
+let gameClock = 0;                                    // game time in ms; only advances while not paused
+const _sched = [];                                    // scheduled one-shot callbacks, earliest first
+let breakSeq = 0;
+const perfStats = { fps: 0, frames: 0, t: 0, visible: 0, behaviors: 0 };
 let currentCode = 0;
 let currentGames = [];
 let musicStarted = false;
@@ -1407,6 +1417,7 @@ const settings = {
     grid: false,       // NEW
     debug: false,      // NEW
     fps: false,       // NEW
+    perf: false,      // performance stats panel (F3)
     music: true,   // ADD
     sfx: true,
     lightQuality: 'high', snapEdges: true, snapCenters: true, snapPixels: true, snapRotation: true // 'high' = 80 rays, 'medium' = 48, 'low' = 24    // ADD
@@ -2657,6 +2668,7 @@ function isAnyTrigger(tag) {
 }
 function setPlayMode(enabled) {
     playMode = enabled;
+    bumpIndex();
     resetBehaviorRuntime();
     const toggleBtn = document.getElementById('toolbarToggleBtn');
     const bubble    = document.getElementById('toolPreviewBubble');
@@ -3728,8 +3740,8 @@ function bhTarget(o, spec) {
     const s = String(resolveFxVars(String(spec == null ? '' : spec))).trim();
     if (!s || s.toLowerCase() === 'player') return player;
     let best = null, bd = Infinity;
-    objects.forEach(t => {
-        if (t === o || t.tag === 'player' || !hasGroup(t, s)) return;
+    getGroupMembers(s).forEach(t => {
+        if (t === o || t.tag === 'player') return;
         const d = (t.x - o.x) ** 2 + (t.y - o.y) ** 2;
         if (d < bd) { bd = d; best = t; }
     });
@@ -3943,8 +3955,10 @@ function bhEvent(b, key) {
 }
 // The one central update: only objects that have at least one enabled behavior are touched.
 function updateBehaviors(dt) {
-    for (let i = 0; i < objects.length; i++) {
-        const o = objects[i], bs = o.behaviors;
+    const list = getIndex().withBeh;                  // only objects that carry behaviors
+    let running = 0;
+    for (let i = 0; i < list.length; i++) {
+        const o = list[i], bs = o.behaviors;
         if (!bs || !bs.length) continue;
         let active = o.active !== false;             // "Deactivate group" pauses an object's behaviors too
         if (active) {
@@ -3957,13 +3971,15 @@ function updateBehaviors(dt) {
         fx.on = true; fx.sx = 1; fx.sy = 1; fx.alpha = 1; fx.tint = null; fx.tintA = 0;
         for (let k = 0; k < bs.length; k++) {
             const b = bs[k];
-            if (b && BEHAVIOR_TYPES[b.type] && bhIsOn(o, b)) bhRun(o, b, dt, fx);
+            if (b && BEHAVIOR_TYPES[b.type] && bhIsOn(o, b)) { running++; bhRun(o, b, dt, fx); }
         }
     }
     interactPressed = false;
+    perfStats.behaviors = running;
 }
 // Put everything back the way it was built (play stops, or Reset is pressed)
 function resetBehaviorRuntime() {
+    perfStats.behaviors = 0;
     objects.forEach(o => {
         const h = o._home;
         if (h) {
@@ -4339,7 +4355,7 @@ function drawBackground() {
     window._themeGroundLine = groundLineColor;
 }
 function checkScriptTriggers() {
-    objects.forEach(trigger => {
+    getByTag('trigger').forEach(trigger => {
         if (trigger.tag !== 'trigger') return;
         const sc = trigger.script;
         if (!sc || sc.event !== 'always') return;
@@ -4403,45 +4419,113 @@ function addShake(amount) {
     if (!settings.shake) return; // CHECK SETTING
     screenShake = amount;
 }
+const cellKey = (cx, cy) => (cx + 2048) * 4096 + (cy + 2048);   // numeric keys: no string building per cell
 function updateSpatialGrid() {
-    spatialGrid.clear();
-    objects.forEach((obj, _idx) => {
-        obj._ord = _idx;                      // draw order = array order
-        // Calculate which grid cells this object overlaps
-        const startX = Math.floor(obj.x / SPATIAL_CELL_SIZE);
-        const endX = Math.floor((obj.x + obj.width) / SPATIAL_CELL_SIZE);
-        const startY = Math.floor(obj.y / SPATIAL_CELL_SIZE);
-        const endY = Math.floor((obj.y + obj.height) / SPATIAL_CELL_SIZE);
-
+    if (spatialGrid.size > 20000) spatialGrid.clear();            // drop cells left empty by long play sessions
+    else spatialGrid.forEach(cell => { cell.length = 0; });        // reuse the arrays instead of reallocating them
+    for (let i = 0; i < objects.length; i++) {
+        const obj = objects[i];
+        obj._ord = i;                                              // draw order = array order
+        const startX = Math.floor(obj.x / SPATIAL_CELL_SIZE), endX = Math.floor((obj.x + obj.width) / SPATIAL_CELL_SIZE);
+        const startY = Math.floor(obj.y / SPATIAL_CELL_SIZE), endY = Math.floor((obj.y + obj.height) / SPATIAL_CELL_SIZE);
         for (let x = startX; x <= endX; x++) {
             for (let y = startY; y <= endY; y++) {
-                const key = `${x},${y}`;
-                if (!spatialGrid.has(key)) spatialGrid.set(key, []);
-                spatialGrid.get(key).push(obj);
-            }
-        }
-    });
-}
-
-function getNearbyObjects(rect) {
-    const nearby = new Set(); // Use Set to avoid duplicates
-    const startX = Math.floor(rect.x / SPATIAL_CELL_SIZE);
-    const endX = Math.floor((rect.x + rect.width) / SPATIAL_CELL_SIZE);
-    const startY = Math.floor(rect.y / SPATIAL_CELL_SIZE);
-    const endY = Math.floor((rect.y + rect.height) / SPATIAL_CELL_SIZE);
-
-    for (let x = startX; x <= endX; x++) {
-        for (let y = startY; y <= endY; y++) {
-            const key = `${x},${y}`;
-            const cellObjects = spatialGrid.get(key);
-            if (cellObjects) {
-                for (const obj of cellObjects) {
-                    nearby.add(obj);
-                }
+                const key = cellKey(x, y);
+                let cell = spatialGrid.get(key);
+                if (!cell) { cell = []; spatialGrid.set(key, cell); }
+                cell.push(obj);
             }
         }
     }
+}
+
+function getNearbyObjects(rect) {
+    const startX = Math.floor(rect.x / SPATIAL_CELL_SIZE), endX = Math.floor((rect.x + rect.width) / SPATIAL_CELL_SIZE);
+    const startY = Math.floor(rect.y / SPATIAL_CELL_SIZE), endY = Math.floor((rect.y + rect.height) / SPATIAL_CELL_SIZE);
+    if (startX === endX && startY === endY) {                       // most small queries touch one cell
+        const cell = spatialGrid.get(cellKey(startX, startY));
+        return cell ? cell.slice() : [];
+    }
+    const nearby = new Set();                                       // Set removes duplicates across cells
+    for (let x = startX; x <= endX; x++) {
+        for (let y = startY; y <= endY; y++) {
+            const cell = spatialGrid.get(cellKey(x, y));
+            if (cell) for (let i = 0; i < cell.length; i++) nearby.add(cell[i]);
+        }
+    }
     return Array.from(nearby);
+}
+
+/* ---- lookup index: group \u2192 members, variable id \u2192 block, tag \u2192 list ----
+   Built lazily the first time something asks, then reused. It rebuilds on its own when
+   the object list changes (added / removed / replaced). Code that renames a group or
+   variable id on an existing object calls bumpIndex() (popup Apply, bindings, play start). */
+function bumpIndex() { _gIdx = null; }
+function getIndex() {
+    const n = objects.length, last = objects[n - 1];
+    if (_gIdx && _gIdxLen === n && _gIdxLast === last) return _gIdx;
+    const groups = new Map(), vars = new Map(), tags = new Map(), withBeh = [], decor = [];
+    for (let i = 0; i < n; i++) {
+        const o = objects[i];
+        let tl = tags.get(o.tag); if (!tl) tags.set(o.tag, tl = []); tl.push(o);
+        let gs = o.group;
+        if (gs) {
+            if (typeof gs === 'string') gs = gs.split(',').map(g => g.trim()).filter(g => g.length > 0);
+            for (let k = 0; k < gs.length; k++) {
+                let a = groups.get(gs[k]); if (!a) groups.set(gs[k], a = []);
+                if (a[a.length - 1] !== o) a.push(o);              // no duplicates when a block lists a group twice
+            }
+        }
+        const vn = o.tag === 'counter' ? o.countGroup : (o.tag === 'boolean' || o.tag === 'text') ? o.varGroup : null;
+        if (vn && !vars.has(vn)) vars.set(vn, o);                    // first block in draw order wins, like before
+        if (o.behaviors && o.behaviors.length) withBeh.push(o);
+        if (o.tag === 'tree' || o.tag === 'bush') decor.push(o);
+    }
+    _gIdxLen = n; _gIdxLast = last;
+    return (_gIdx = { groups, vars, tags, withBeh, decor });
+}
+function getGroupMembers(name) {
+    const g = resolveFxVars(String(name == null ? '' : name));
+    return getIndex().groups.get(g) || EMPTY_LIST;
+}
+function getByTag(tag) { return getIndex().tags.get(tag) || EMPTY_LIST; }
+
+/* ---- scheduled callbacks: do something later instead of polling a timer every frame ---- */
+function scheduleAfter(ms, fn) {
+    const t = gameClock + Math.max(0, ms);
+    let i = _sched.length;
+    while (i > 0 && _sched[i - 1].t > t) i--;                      // keep earliest first
+    _sched.splice(i, 0, { t, fn });
+}
+function runScheduled() {                                         // O(1) when nothing is due
+    while (_sched.length && _sched[0].t <= gameClock) _sched.shift().fn();
+}
+function clearScheduled() { _sched.length = 0; }
+// A breakable block: crumbles 3 s after the player touches it, comes back after "reappearTime" (frames at 60 fps)
+function startBreak(o) {
+    const stamp = o.breakTimer = ++breakSeq;
+    o.opacity = 0.8;
+    scheduleAfter(3000, () => {
+        if (o.breakTimer !== stamp || o.broken) return;           // was reset in the meantime
+        o.broken = true; o.solid = false; o.opacity = 0;
+        spawnParticles(o.x + o.width / 2, o.y + o.height / 2, 10, "brown", 4);
+        scheduleAfter((o.reappearTime ?? 300) * 1000 / 60, () => {
+            if (o.breakTimer !== stamp || !o.broken) return;
+            o.broken = false; o.breakTimer = null; o.solid = true; o.opacity = 1;
+        });
+    });
+}
+function drawPerfHud() {
+    const lines = ['FPS ' + perfStats.fps, 'Objects ' + Math.max(0, objects.length - 1), 'Visible ' + perfStats.visible, 'Active behaviors ' + perfStats.behaviors];
+    const w = 168, h = lines.length * 16 + 14, x = 12, y = canvas.height - h - 12;
+    ctx.save();
+    ctx.fillStyle = 'rgba(24,24,27,0.78)'; roundRect(ctx, x, y, w, h, 8); ctx.fill();
+    ctx.font = '600 12px ui-monospace, Menlo, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    lines.forEach((l, i) => {
+        ctx.fillStyle = i === 0 ? (perfStats.fps < 30 ? '#f87171' : perfStats.fps < 55 ? '#fbbf24' : '#a3e635') : '#e4e4e7';
+        ctx.fillText(l, x + 10, y + 15 + i * 16);
+    });
+    ctx.restore();
 }
 // ---------------------------------
 function resizeCanvas() {
@@ -4486,6 +4570,7 @@ function openSettings() {
     document.getElementById("setGrid").checked      = settings.grid;
     document.getElementById("setDebug").checked     = settings.debug;
     document.getElementById("setFps").checked       = settings.fps;
+    document.getElementById("setPerf").checked      = settings.perf;
     document.getElementById("setMusic").checked     = settings.music;
     document.getElementById("setSfx").checked       = settings.sfx;
 
@@ -5175,6 +5260,7 @@ toolbarOpen = false;
     showMobileControls(false);
     showMobileControls(false);
     otherPlayers = {};
+    clearScheduled();
 
     if (isHost && currentCode) {
         db.ref(`games/${currentCode}`).onDisconnect().cancel();
@@ -5671,24 +5757,7 @@ function confirmCopyBlock() {
    EDITOR TOOLBAR AND POPUP LOGIC
 ============================================================ */
 
-function checkResetBreakables() {
-  objects.forEach(o => {
-        
-        // Reset Breakables
-        if (o.tag === 'breakable') { 
-          if(o.reappearTime === 0 && o.broken === true) {
-            o.broken = false; 
-            o.breakTimer = null; 
-            o.solid = true; 
-            o.opacity = 1; 
-            o.reappearTime = 300;
-          } else {
-            if (o.broken === true) {o.reappearTime -= 1;}
-          }
-        }
-    });
-}
-  
+// (breakables are scheduled — see startBreak())
 // --- Reset Triggers ---
 function resetAllTriggers() {
     resetBehaviorRuntime();
@@ -6157,6 +6226,7 @@ if (selectedObject.tag === 'text') {
 
   saveBindings(selectedObject);
   applyPopupToSelection(selectedObject);
+  bumpIndex();
   closePopup();
 }
 
@@ -6692,8 +6762,9 @@ canvas.addEventListener("mousemove", e => {
     }
 });
 function drawDecorations() {
-    objects.forEach(obj => {
-        if (obj.tag !== 'tree' && obj.tag !== 'bush') return;
+    const dx0 = camera.x - 80, dx1 = camera.x + canvas.width + 80, dy0 = camera.y - 80, dy1 = camera.y + canvas.height + 80;
+    getIndex().decor.forEach(obj => {
+        if (obj.x + obj.width < dx0 || obj.x > dx1 || obj.y + obj.height < dy0 || obj.y > dy1) return;   // off screen
         const sx = obj.x - camera.x;
         const sy = obj.y - camera.y;
         ctx.save();
@@ -7302,10 +7373,7 @@ function resolveCollision(obj, collision) {
             }
         }
 
-        if (obj.tag === 'player' && other.tag === 'breakable' && !other.breakTimer && !other.broken) {
-            other.breakTimer = Date.now();
-            other.opacity = 0.8;
-        }
+        if (obj.tag === 'player' && other.tag === 'breakable' && !other.breakTimer && !other.broken) startBreak(other);
 
         if (obj.tag === 'player') {
             if (other.slime) obj.jumpsLeft = obj.maxJumps;
@@ -7337,10 +7405,7 @@ function resolveCollision(obj, collision) {
             other.vx = Math.max(Math.min(other.vx, 3), -3);
         }
 
-        if (obj.tag === 'player' && other.tag === 'breakable' && !other.breakTimer && !other.broken) {
-            other.breakTimer = Date.now();
-            other.opacity = 0.8;
-        }
+        if (obj.tag === 'player' && other.tag === 'breakable' && !other.breakTimer && !other.broken) startBreak(other);
 
         obj.vx *= 0.5;
 
@@ -7369,7 +7434,7 @@ function resetPlayer(obj) {
 function updatePhysics(delta) {
   objects.forEach(obj => {
     const isStatic = !obj.pushable && obj.gravity === 0 && obj.vx === 0 && obj.vy === 0;
-    const needsUpdate = obj.tag === 'player' || obj.tag === 'breakable' || !isStatic;
+    const needsUpdate = obj.tag === 'player' || !isStatic;
     if (!needsUpdate) return;
 
     // Scale smoothing
@@ -7381,7 +7446,7 @@ function updatePhysics(delta) {
     // --- 1. Player Controls ---
 if (obj.tag === "player") {
     const accel = 0.5 * delta;
-    const onIce = objects.some(o => o.ice && o.solid &&
+    const onIce = getNearbyObjects({ x: obj.x, y: obj.y + obj.height - 8, width: obj.width, height: 16 }).some(o => o.ice && o.solid &&
         obj.x < o.x + o.width && obj.x + obj.width > o.x &&
         Math.abs((obj.y + obj.height) - o.y) < 4
     );
@@ -7392,7 +7457,7 @@ if (obj.tag === "player") {
 
     obj.gravity = 0.6;
 
-const onConveyor = objects.find(o =>
+const onConveyor = getNearbyObjects({ x: obj.x, y: obj.y + obj.height - 8, width: obj.width, height: 16 }).find(o =>
     o.tag === 'conveyor' && o.solid &&
     Math.abs((obj.y + obj.height) - o.y) < 6 &&
     obj.x < o.x + o.width && obj.x + obj.width > o.x
@@ -7471,15 +7536,6 @@ if (onConveyor) {
     if (obj.x < 0) { obj.x = 0; obj.vx = 0; }
     if (obj.x + obj.width > world.width) { obj.x = world.width - obj.width; obj.vx = 0; }
 
-    // --- 7. Breakable Logic ---
-    if (obj.tag === 'breakable' && obj.breakTimer && !obj.broken) {
-      if (Date.now() - obj.breakTimer > 3000) {
-        obj.broken = true;
-        obj.solid = false;
-        obj.opacity = 0;
-        spawnParticles(obj.x + obj.width / 2, obj.y + obj.height / 2, 10, "brown", 4);
-      }
-    }
   });
 }
 /**
@@ -7493,8 +7549,8 @@ function fireTriggerGroup(groupName, sourceEvent = 'triggered') {
     groupName = resolveFxVars(groupName);
     _fireDepth++;
     try {
-        objects.forEach(target => {
-            if (!target.active || !hasGroup(target, groupName)) return;
+        getGroupMembers(groupName).forEach(target => {
+            if (!target.active) return;
             if (target.tag === 'trigger')      executeTriggerLogic(target, sourceEvent);
             else if (isEffectTag(target.tag))  executeEffectTrigger(target, sourceEvent);
         });
@@ -7528,12 +7584,11 @@ function resolveFxVars(v, depth = 0) {
     if (typeof v !== 'string' || v.indexOf('{') === -1) return v;
     const out = v.replace(/\{([^{}]+)\}/g, (m, id) => {
         const name = id.trim();
-        for (const o of objects) {
-            if (o.tag === 'counter' && o.countGroup === name) return String(o.count || 0);
-            if (o.tag === 'boolean' && o.varGroup === name)   return String(!!o.value);
-            if (o.tag === 'text'    && o.varGroup === name)   return String(o.text ?? '');
-        }
-        return m;
+        const o = getIndex().vars.get(name);
+        if (!o) return m;
+        if (o.tag === 'counter') return String(o.count || 0);
+        if (o.tag === 'boolean') return String(!!o.value);
+        return String(o.text ?? '');
     });
     // a text variable can itself contain {placeholders}
     return (out !== v && out.indexOf('{') !== -1 && depth < 4) ? resolveFxVars(out, depth + 1) : out;
@@ -7704,6 +7759,10 @@ function applyOneBinding(o, path, raw) {
         else if ((o.opacity ?? 1) <= 0) o.opacity = 1;
         return;
     }
+    if (path === 'group' || path === 'varGroup' || path === 'countGroup') {
+        const prev = getPath(o, path);
+        if (String(Array.isArray(prev) ? prev.join(',') : prev) !== String(Array.isArray(val) ? val.join(',') : val)) bumpIndex();
+    }
     setPath(o, path, val);
 }
 function applyBindings() {
@@ -7778,7 +7837,7 @@ function initBindingUI() {
 function forEachInGroup(groupName, fn) {
     const g = String(groupName || '').trim();
     if (!g) return;
-    objects.forEach(o => { if (hasGroup(o, g)) fn(o); });
+    getGroupMembers(g).forEach(fn);
 }
 
 const FX_TRISTATE = [
@@ -7987,16 +8046,18 @@ function executeEffectTrigger(trigger, sourceEvent = 'triggered') {
 
 // Effect triggers that have "fire when the player touches it" ticked
 let activeEffectTouches = new Set();
-function checkEffectTriggerTouches() {
+function checkEffectTriggerTouches(near) {
+    near = near || getNearbyObjects(player);                  // only blocks next to the player can be touched
     const now = new Set();
-    objects.forEach(t => {
-        if (!isEffectTag(t.tag) || !t.fx || (!t.fx.onTouch && !t.fx.onTouchVar) || t.active === false) return;
-        if (!getEffectFx(t).onTouch) return;
+    for (let i = 0; i < near.length; i++) {
+        const t = near[i];
+        if (!t.fx || !isEffectTag(t.tag) || (!t.fx.onTouch && !t.fx.onTouchVar) || t.active === false) continue;
+        if (!getEffectFx(t).onTouch) continue;
         if (checkCollision(player, t)) {
             now.add(t);
             if (!activeEffectTouches.has(t)) executeEffectTrigger(t, 'touched');
         }
-    });
+    }
     activeEffectTouches = now;
 }
 
@@ -8737,23 +8798,23 @@ function buildScriptVars(varDefs) {
       case 'player_vx':       vars[name] = player.vx; break;
       case 'player_vy':       vars[name] = player.vy; break;
       case 'object_x': {
-        const o = objects.find(obj => hasGroup(obj, v.group));
+        const o = getGroupMembers(v.group)[0];
         vars[name] = o ? o.x : 0; break;
       }
       case 'object_y': {
-        const o = objects.find(obj => hasGroup(obj, v.group));
+        const o = getGroupMembers(v.group)[0];
         vars[name] = o ? o.y : 0; break;
       }
       case 'object_opacity': {
-        const o = objects.find(obj => hasGroup(obj, v.group));
+        const o = getGroupMembers(v.group)[0];
         vars[name] = o ? (o.opacity ?? 1) : 1; break;
       }
       case 'object_width': {
-        const o = objects.find(obj => hasGroup(obj, v.group));
+        const o = getGroupMembers(v.group)[0];
         vars[name] = o ? o.width : 0; break;
       }
       case 'object_height': {
-        const o = objects.find(obj => hasGroup(obj, v.group));
+        const o = getGroupMembers(v.group)[0];
         vars[name] = o ? o.height : 0; break;
       }
       case 'random_int': {
@@ -8850,9 +8911,9 @@ function evaluateScriptConditions(conditions, vars) {
     if (t === 'player_below')  return player.y > nval;
     if (t === 'player_left')   return player.x < nval;
     if (t === 'player_right')  return player.x > nval;
-    if (t === 'object_visible') return objects.some(o => hasGroup(o, cond.group) && (o.opacity ?? 1) > 0);
-    if (t === 'object_hidden')  return objects.some(o => hasGroup(o, cond.group) && (o.opacity ?? 1) <= 0);
-    if (t === 'object_solid')   return objects.some(o => hasGroup(o, cond.group) && o.solid);
+    if (t === 'object_visible') return getGroupMembers(cond.group).some(o => (o.opacity ?? 1) > 0);
+    if (t === 'object_hidden')  return getGroupMembers(cond.group).some(o => (o.opacity ?? 1) <= 0);
+    if (t === 'object_solid')   return getGroupMembers(cond.group).some(o => o.solid);
     if (t === 'clock_active')   return objects.some(o => o.tag === 'clock' && hasGroup(o, cond.group) && o.active !== false);
     if (t === 'trigger_fired')  return objects.some(o => isAnyTrigger(o.tag) && hasGroup(o, cond.group) && o.hasFired);
     if (t === 'bool_true')      return objects.some(o => o.tag === 'boolean' && o.varGroup === cond.group && !!o.value);
@@ -8889,7 +8950,7 @@ function executeScriptActions(actions, vars) {
 
     if (t === 'activate_group' || t === 'deactivate_group') {
       const on = t === 'activate_group';
-      objects.forEach(o => {
+      getGroupMembers(group).forEach(o => {
         if (hasGroup(o, group)) {
           o.active = on;
           if (o.tag === 'clock' && on) o.lastFired = performance.now() / 1000;
@@ -8987,7 +9048,7 @@ if (t === 'set_light_intensity') {
     return;
 }
     // Per-object property setters
-    objects.forEach(o => {
+    getGroupMembers(group).forEach(o => {
       if (!hasGroup(o, group)) return;
       if (t === 'move_group')   { o.x = parseFloat(val) || o.x; o.y = parseFloat(val2) || o.y; }
       if (t === 'set_velocity') { o.vx = parseFloat(val) || 0;  o.vy = parseFloat(val2) || 0;  }
@@ -9199,7 +9260,7 @@ function executeTriggerLogic(trigger, sourceEvent = 'touched') {
 
     isTriggerFiring = true;
 
-    objects.forEach(target => {
+    (mods.targetGroup ? getGroupMembers(mods.targetGroup) : EMPTY_LIST).forEach(target => {
         if (mods.targetGroup && hasGroup(target, mods.targetGroup)) {
 
             // Counter logic
@@ -9264,72 +9325,40 @@ function executeTriggerLogic(trigger, sourceEvent = 'touched') {
 
     isTriggerFiring = false;
 }
-// 2. Updated Main Loop Checker
-function checkTriggers() {
-    const player = objects.find(o => o.tag === 'player');
-    if (!player) return;
-
-    // Use a temporary set to track triggers touched *this frame*
-    const currentTriggers = new Set(); 
-    
-    // Step 1: Check for collisions and execute logic only on NEW entries
-    objects.forEach(trigger => {
-      if (trigger.tag === 'spawn') {
-    if (rectsCollide(player, trigger)) {
-        // Only award coins once per checkpoint until player re-enters
-        if (!trigger._coinAwarded) {
-            trigger._coinAwarded = true;
-            onCheckpointReached();
-        }
-        START_POS.x = trigger.x + trigger.width/2 - player.width/2;
-        START_POS.y = trigger.y - player.height;
-    } 
-}
-        if (trigger.tag === 'trigger') {
-            if (!trigger.mods) {
-                console.error("Trigger found without a 'mods' property. Skipping.");
-                return; 
+// 2. Main loop checker: only blocks near the player are looked at (spatial grid), not every block in the map
+function checkTriggers(near) {
+    near = near || getNearbyObjects(player);
+    const currentTriggers = new Set();                       // triggers the player is inside this frame
+    for (let i = 0; i < near.length; i++) {
+        const t = near[i];
+        if (t.tag === 'spawn') {
+            if (rectsCollide(player, t)) {
+                if (!t._coinAwarded) { t._coinAwarded = true; onCheckpointReached(); }
+                START_POS.x = t.x + t.width / 2 - player.width / 2;
+                START_POS.y = t.y - player.height;
             }
-            
-            // Check if player is colliding with the trigger
-            if (checkCollision(player, trigger)) {
-                // The player is inside the trigger this frame
-                currentTriggers.add(trigger.id); 
-
-                // Check if this trigger was NOT active last frame (i.e., it's a NEW entry)
-                if (!activeTriggers.has(trigger.id)) {
-                    // This is the moment the player first entered the trigger boundary
-                    
-                    // --- Execute Logic (Fires ONLY ONCE) ---
-                    executeTriggerLogic(trigger);
-                }
+        } else if (t.tag === 'trigger') {
+            if (!t.mods) { console.error("Trigger found without a 'mods' property. Skipping."); continue; }
+            if (checkCollision(player, t)) {
+                currentTriggers.add(t.id);
+                if (!activeTriggers.has(t.id)) executeTriggerLogic(t);   // fires once, on entry
             }
+        } else if (t.tag === 'coin') {
+            if (t._collected || !rectsCollide(player, t)) continue;
+            t._collected = true;
+            t.opacity = 0;
+            const val = t.coinValue || 10;
+            addCoins(val);
+            playSFX('coin');
+            spawnParticles(t.x + t.width / 2, t.y + t.height / 2, 12, '#f59e0b', 5);
+            spawnFloatingText(t.x + t.width / 2, t.y, `+${val}`);
         }
-        objects.forEach(obj => {
-    if (obj.tag !== 'coin') return;
-    if (obj._collected) return;
-    if (rectsCollide(player, obj)) {
-        obj._collected = true;
-        obj.opacity = 0;
-        const val = obj.coinValue || 10;
-        addCoins(val);
-        playSFX('coin');
-        spawnParticles(obj.x + obj.width/2, obj.y + obj.height/2, 12, '#f59e0b', 5);
-        spawnFloatingText(obj.x + obj.width/2, obj.y, `+${val}`);
     }
-});
-    });
-
-    // Step 2: Update the master list for the next frame
-    // We only keep the triggers that the player is still inside.
-    activeTriggers = currentTriggers; 
-    
-    // Note: If you have logic that needs to fire when the player *leaves* a trigger, 
-    // you would compare the old activeTriggers set with currentTriggers here.
+    activeTriggers = currentTriggers;
 }
 function checkClocks() {
     const now = performance.now() / 1000;
-    objects.forEach(obj => {
+    getByTag('clock').forEach(obj => {
         if (obj.tag !== 'clock') return;
         if (!obj.targetGroup || !obj.interval) return;
         if (obj.active === false) return; // respect active state
@@ -9343,7 +9372,7 @@ function checkClocks() {
     });
 }
 function updatePlatforms(delta) {
-    objects.forEach(obj => {
+    getByTag('platform').forEach(obj => {
         if (obj.tag !== 'platform') return;
         const pp = obj.platformProps;
         if (!pp) return;
@@ -9374,7 +9403,7 @@ function updatePlatforms(delta) {
     });
 }
 function checkGoal() {
-    objects.forEach(obj => {
+    getNearbyObjects(player).forEach(obj => {
         if (obj.tag !== 'goal') return;
         if (obj._completed) return;
 
@@ -9478,7 +9507,7 @@ function checkMonitors() {
     const nextPlayerX = editorPlayer.x + editorPlayer.vx;
     const nextPlayerY = editorPlayer.y + editorPlayer.vy;
 
-    objects.forEach(monitor => {
+    getByTag('monitor').forEach(monitor => {
         if (monitor.tag !== 'monitor') return;
 
         const monProps = monitor.monProps || {};
@@ -9495,7 +9524,7 @@ function checkMonitors() {
         let hasCollision = false;
 
         // Check for Player Touch Collision on Target Blocks
-        objects.forEach(target => {
+        getGroupMembers(targetGroup).forEach(target => {
             // Only check blocks belonging to the monitor's target group
             if (hasGroup(target, targetGroup)) {
                 
@@ -9530,7 +9559,7 @@ if (hasCollision) {
    COMPARER LOGIC - Compares Two Counter Values
    ============================================================ */
 function checkComparers() {
-    objects.forEach(comparer => {
+    getByTag('comparer').forEach(comparer => {
         if (comparer.tag !== 'comparer') return;
         
         const cmpProps = comparer.comparerProps || {};
@@ -9550,7 +9579,7 @@ function checkComparers() {
         let value1 = null;
         let value2 = null;
         
-        objects.forEach(obj => {
+        getByTag('counter').forEach(obj => {
             if (obj.tag === 'counter') {
                 if (obj.countGroup === group1) {
                     value1 = obj.count || 0;
@@ -10786,19 +10815,11 @@ function drawSurfaceShading() {
     const viewRect = { x: camera.x, y: camera.y, width: canvas.width, height: canvas.height };
     const visible = getNearbyObjects(viewRect);
 
-    // Build a fast lookup set of occupied world positions
-    // key = "gridX,gridY" snapped to 1px so adjacency checks are reliable
-    const solidSet = new Set();
-    objects.forEach(o => {
-        if (!o.solid || o.tag === 'player' || o.tag === 'trigger') return;
-        solidSet.add(`${Math.round(o.x)},${Math.round(o.y)}`);
-    });
-
     // Check if there is a solid block directly touching a given edge of obj
-    function hasNeighbor(obj, side) {
+    function hasNeighbor(obj, side, list) {
         const TOL = 2; // px tolerance for floating point placement
-        for (let i = 0; i < objects.length; i++) {
-            const o = objects[i];
+        for (let i = 0; i < list.length; i++) {
+            const o = list[i];
             if (o === obj || !o.solid || o.tag === 'player' || o.tag === 'trigger') continue;
             // Must overlap horizontally/vertically to count as a real neighbor
             switch (side) {
@@ -10827,6 +10848,8 @@ function drawSurfaceShading() {
 
     visible.forEach(obj => {
         if (!obj.solid || obj.rotation) return;
+        if (obj.x > camera.x + canvas.width + 8 || obj.x + obj.width < camera.x - 8 ||
+            obj.y > camera.y + canvas.height + 8 || obj.y + obj.height < camera.y - 8) return;   // off screen
         if (obj.tag === 'player'  || obj.tag === 'trigger' || obj.tag === 'coin' ||
             obj.tag === 'tree'    || obj.tag === 'bush' ||
             obj.tag === 'oneway'  || obj.tag === 'goal'    || obj.tag === 'spawn' ||
@@ -10836,15 +10859,16 @@ function drawSurfaceShading() {
         const sy = obj.y - camera.y;
         const w  = obj.width;
         const h  = obj.height;
+        const nb = getNearbyObjects({ x: obj.x - 4, y: obj.y - 4, width: w + 8, height: h + 8 });   // neighbors via the grid
 
         // Top highlight — skip if another block sits directly on top
-        if (!hasNeighbor(obj, 'top')) {
+        if (!hasNeighbor(obj, 'top', nb)) {
             ctx.fillStyle = 'rgba(255,255,255,0.09)';
             ctx.fillRect(sx, sy, w, Math.min(h * 0.22, 6));
         }
 
         // Bottom shadow — skip if another block sits directly below
-        if (!hasNeighbor(obj, 'bottom')) {
+        if (!hasNeighbor(obj, 'bottom', nb)) {
             const shadowStr = currentAmbientRGBA[3] > 0.3 ? 0.22 : 0.1;
             const bH = Math.min(h * 0.28, 7);
             ctx.fillStyle = `rgba(0,0,0,${shadowStr})`;
@@ -10852,7 +10876,7 @@ function drawSurfaceShading() {
         }
 
         // Right edge shadow — skip if block directly to the right
-        if (!hasNeighbor(obj, 'right')) {
+        if (!hasNeighbor(obj, 'right', nb)) {
             const rW = Math.min(w * 0.12, 4);
             ctx.fillStyle = 'rgba(0,0,0,0.07)';
             ctx.fillRect(sx + w - rW, sy + 3, rW, h - 6);
@@ -10905,7 +10929,7 @@ function drawLighting() {
     // --- Build light list ---
     const lights = [];
 
-    objects.forEach(obj => {
+    getByTag('light').forEach(obj => {
         if (obj.tag === 'light') {
             const pulse = Math.sin(performance.now() / 400 + obj.x) * 0.04 + 0.96;
             lights.push({
@@ -11015,6 +11039,7 @@ function draw() {
     drawLighting();
     drawHUD();
 
+    if (settings.perf) drawPerfHud();
     if (settings.debug) drawDebug();
     if (settings.fps) drawFPS();
 }
@@ -11360,7 +11385,13 @@ function drawObjects() {
   };
 
   // Get ONLY the objects currently inside the camera view
-  const visibleObjects = getNearbyObjects(viewRect).sort((a, b) => (a._ord || 0) - (b._ord || 0));
+  // exact on-screen test on top of the grid's coarse cells; rotated blocks get extra room
+  const vx0 = camera.x - 64, vy0 = camera.y - 64, vx1 = camera.x + canvas.width + 64, vy1 = camera.y + canvas.height + 64;
+  const visibleObjects = getNearbyObjects(viewRect).filter(o => {
+      const pad = o.rotation ? Math.max(o.width, o.height) : 0;
+      return o.x + o.width + pad >= vx0 && o.x - pad <= vx1 && o.y + o.height + pad >= vy0 && o.y - pad <= vy1;
+  }).sort((a, b) => (a._ord || 0) - (b._ord || 0));
+  perfStats.visible = visibleObjects.length;
 
   // First pass: draw triggers
   visibleObjects.forEach(obj => {
@@ -11608,6 +11639,9 @@ case 'KeyQ':
     case 'KeyF':
     if (!playMode) toggleNewToolbar();
     break;
+    case 'F3':
+    e.preventDefault(); settings.perf = !settings.perf; saveSettings();
+    break;
     case 'Delete':
 case 'Backspace':
     if (currentTool === 'edit' && multiSelect.length > 0 && !playMode) {
@@ -11654,20 +11688,27 @@ function gameLoop(timestamp) {
     if (!world) { requestAnimationFrame(gameLoop); return; }
     const rawDelta = timestamp - lastTime;
     lastTime = timestamp;
+    perfStats.frames++;
+    if (timestamp - perfStats.t >= 500) {
+        perfStats.fps = Math.round(perfStats.frames * 1000 / (timestamp - perfStats.t));
+        perfStats.frames = 0; perfStats.t = timestamp;
+    }
     const delta = Math.min(rawDelta, 50) / (1000 / 60);
 
     if (!paused) {
+        gameClock += Math.min(rawDelta, 50);
         applyBindings();
         if (playMode) updateBehaviors(Math.min(delta, 3) / 60);
         updateSpatialGrid();
         updatePhysics(delta);
         checkClocks();
-        checkTriggers();
-        checkEffectTriggerTouches();
+        const near = getNearbyObjects(player);     // one nearby-blocks lookup shared by the touch checks
+        checkTriggers(near);
+        checkEffectTriggerTouches(near);
         checkMonitors();
         checkComparers();
         updatePlatforms(delta);
-        checkResetBreakables();
+        runScheduled();
         checkGoal();
         updatePlayerTrail();
         updateFloatingTexts();
