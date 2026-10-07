@@ -7844,43 +7844,84 @@ function resetRegionRuntime() {
 }
 
 function regionTargetIsInside(region, fx) {
-    const type = String(fx.targetType || 'player').toLowerCase();
+    const type = String(fx.targetType || 'player').trim().toLowerCase();
     if (type === 'group') {
         const groupName = String(fx.targetGroup || '').trim();
         if (!groupName) return false;
-        // A group is considered inside while any member overlaps the region.
-        return getGroupMembers(groupName).some(member => member && member !== region && checkCollision(member, region));
+        // A group is considered inside while ANY member overlaps the current region bounds.
+        return getGroupMembers(groupName).some(member =>
+            member && member !== region && member.active !== false && checkCollision(member, region)
+        );
     }
     return checkCollision(player, region);
 }
 
+// Fires either a trigger group, a specific trigger/effect visualId, or a tag.
+// This makes Region Trigger usable without requiring a separate group just to hold one trigger.
+function fireRegionTarget(targetName, sourceEvent) {
+    const raw = String(resolveFxVars(targetName || '')).trim();
+    if (!raw) return false;
+
+    // Prefer an explicitly named group.
+    const group = getGroupMembers(raw);
+    if (group.length) {
+        fireTriggerGroup(raw, sourceEvent);
+        return true;
+    }
+
+    ensureVisualIds();
+    // Then allow a specific visual/object ID.
+    const byId = objects.find(o => o.tag !== 'player' && o.visualId === raw);
+    if (byId && byId.active !== false && byId !== null) {
+        if (byId.tag === 'trigger') executeTriggerLogic(byId, sourceEvent);
+        else if (isEffectTag(byId.tag)) executeEffectTrigger(byId, sourceEvent);
+        return true;
+    }
+
+    // Finally allow a tag name when it identifies one or more trigger objects.
+    const byTag = objects.filter(o => o.tag === raw && o.active !== false);
+    if (byTag.length) {
+        byTag.forEach(o => {
+            if (o.tag === 'trigger') executeTriggerLogic(o, sourceEvent);
+            else if (isEffectTag(o.tag)) executeEffectTrigger(o, sourceEvent);
+        });
+        return true;
+    }
+    return false;
+}
+
 function checkRegionTriggers() {
     if (!playMode) return;
+
     for (const region of objects) {
         if (region.tag !== 'trigger_region' || region.active === false) continue;
+
         const fx = getEffectFx(region);
         const st = getRegionRuntime(region);
+        // Re-read x/y/width/height every frame through checkCollision so editor resizing
+        // and runtime changes immediately affect the active region.
         const inside = regionTargetIsInside(region, fx);
 
-        // Don't treat the initial state as an entry/exit event.
+        // Establish the starting state without creating a fake enter/leave event.
         if (!st.initialized) {
             st.initialized = true;
             st.inside = inside;
             continue;
         }
 
-        if (inside && !st.inside) {
-            st.inside = true;
+        if (inside === st.inside) continue;
+
+        st.inside = inside;
+        if (inside) {
             const target = String(fx.enterGroup || '').trim();
             if (target && (!fx.oneTime || !st.enterFired)) {
-                fireTriggerGroup(target, 'region_enter');
+                fireRegionTarget(target, 'region_enter');
                 st.enterFired = true;
             }
-        } else if (!inside && st.inside) {
-            st.inside = false;
+        } else {
             const target = String(fx.leaveGroup || '').trim();
             if (target && (!fx.oneTime || !st.leaveFired)) {
-                fireTriggerGroup(target, 'region_leave');
+                fireRegionTarget(target, 'region_leave');
                 st.leaveFired = true;
             }
         }
@@ -7897,8 +7938,8 @@ const EFFECT_TRIGGER_DEFS = {
                 { value: 'group', label: 'Group' }
             ] },
             { key: 'targetGroup', label: 'Group to Detect', type: 'text', placeholder: "e.g., 'enemies'" },
-            { key: 'enterGroup', label: 'Enter → Trigger Group', type: 'text', placeholder: "e.g., 'open_door'" },
-            { key: 'leaveGroup', label: 'Leave → Trigger Group', type: 'text', placeholder: "e.g., 'close_door'" },
+            { key: 'enterGroup', label: 'Enter → Fire Trigger / Group', type: 'text', placeholder: "group, trigger ID, or trigger tag" },
+            { key: 'leaveGroup', label: 'Leave → Fire Trigger / Group', type: 'text', placeholder: "group, trigger ID, or trigger tag" },
             { key: 'oneTime', label: 'One-time (each direction)', type: 'checkbox', default: false }
         ],
         run() {}
