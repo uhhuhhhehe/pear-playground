@@ -2118,7 +2118,6 @@ const TOOLBAR_CATEGORIES = [
             { tool: 'trigger_lighting', name: 'Lighting' },
             { tool: 'trigger_modify',   name: 'Modify' },
             { tool: 'trigger_particle', name: 'Particle' },
-            { tool: 'trigger_region',   name: 'Region' },
             { tool: 'monitor',          name: 'Monitor' },
             { tool: 'counter',          name: 'Counter' },
             { tool: 'comparer',         name: 'Comparer' },
@@ -2663,7 +2662,7 @@ function getGroups(obj) {
 function hasGroup(obj, groupName) {
     return getGroups(obj).includes(resolveFxVars(groupName));
 }
-const LEGACY_EFFECT_TRIGGER_TAGS = new Set(['trigger_effect','trigger_variable','trigger_behavior','trigger_sequence']);
+const LEGACY_EFFECT_TRIGGER_TAGS = new Set(['trigger_effect','trigger_variable','trigger_behavior','trigger_sequence','trigger_region']);
 function isEffectTag(tag) {
     return Object.prototype.hasOwnProperty.call(EFFECT_TRIGGER_DEFS, tag);
 }
@@ -6454,12 +6453,7 @@ case 'marble':
         case 'trigger_lighting':
         case 'trigger_modify':
         case 'trigger_particle':
-        case 'trigger_region':
             newObj.tag = currentTool;
-            if (currentTool === 'trigger_region') {
-                newObj.width = 100;
-                newObj.height = 100;
-            }
             newObj.solid = false;
             newObj.gravity = 0;
             newObj.pushable = false;
@@ -7856,95 +7850,7 @@ function regionTargetIsInside(region, fx) {
     return checkCollision(player, region);
 }
 
-// Fires either a trigger group, a specific trigger/effect visualId, or a tag.
-// This makes Region Trigger usable without requiring a separate group just to hold one trigger.
-function fireRegionTarget(targetName, sourceEvent) {
-    const raw = String(resolveFxVars(targetName || '')).trim();
-    if (!raw) return false;
-
-    // Prefer an explicitly named group.
-    const group = getGroupMembers(raw);
-    if (group.length) {
-        fireTriggerGroup(raw, sourceEvent);
-        return true;
-    }
-
-    ensureVisualIds();
-    // Then allow a specific visual/object ID.
-    const byId = objects.find(o => o.tag !== 'player' && o.visualId === raw);
-    if (byId && byId.active !== false && byId !== null) {
-        if (byId.tag === 'trigger') executeTriggerLogic(byId, sourceEvent);
-        else if (isEffectTag(byId.tag)) executeEffectTrigger(byId, sourceEvent);
-        return true;
-    }
-
-    // Finally allow a tag name when it identifies one or more trigger objects.
-    const byTag = objects.filter(o => o.tag === raw && o.active !== false);
-    if (byTag.length) {
-        byTag.forEach(o => {
-            if (o.tag === 'trigger') executeTriggerLogic(o, sourceEvent);
-            else if (isEffectTag(o.tag)) executeEffectTrigger(o, sourceEvent);
-        });
-        return true;
-    }
-    return false;
-}
-
-function checkRegionTriggers() {
-    if (!playMode) return;
-
-    for (const region of objects) {
-        if (region.tag !== 'trigger_region' || region.active === false) continue;
-
-        const fx = getEffectFx(region);
-        const st = getRegionRuntime(region);
-        // Re-read x/y/width/height every frame through checkCollision so editor resizing
-        // and runtime changes immediately affect the active region.
-        const inside = regionTargetIsInside(region, fx);
-
-        // Establish the starting state without creating a fake enter/leave event.
-        if (!st.initialized) {
-            st.initialized = true;
-            st.inside = inside;
-            continue;
-        }
-
-        if (inside === st.inside) continue;
-
-        st.inside = inside;
-        if (inside) {
-            const target = String(fx.enterGroup || '').trim();
-            if (target && (!fx.oneTime || !st.enterFired)) {
-                fireRegionTarget(target, 'region_enter');
-                st.enterFired = true;
-            }
-        } else {
-            const target = String(fx.leaveGroup || '').trim();
-            if (target && (!fx.oneTime || !st.leaveFired)) {
-                fireRegionTarget(target, 'region_leave');
-                st.leaveFired = true;
-            }
-        }
-    }
-}
-
 const EFFECT_TRIGGER_DEFS = {
-    trigger_region: {
-        label: 'Region', title: 'Region Trigger', color: '#22c55e', glyph: '▣', region: true,
-        hint: 'Fire a trigger group when the player or a specified group enters or leaves this region. Resize the block freely; detection always uses its current bounds.',
-        fields: [
-            { key: 'targetType', label: 'Detect', type: 'select', default: 'player', options: [
-                { value: 'player', label: 'Player' },
-                { value: 'group', label: 'Group' }
-            ] },
-            { key: 'targetGroup', label: 'Group to Detect', type: 'text', placeholder: "e.g., 'enemies'" },
-            { key: 'enterGroup', label: 'Enter → Fire Trigger / Group', type: 'text', placeholder: "group, trigger ID, or trigger tag" },
-            { key: 'leaveGroup', label: 'Leave → Fire Trigger / Group', type: 'text', placeholder: "group, trigger ID, or trigger tag" },
-            { key: 'oneTime', label: 'One-time (each direction)', type: 'checkbox', default: false }
-        ],
-        run() {}
-    },
-
     trigger_camera: {
         label: 'Camera', title: 'Camera Trigger', color: '#6366f1', glyph: '⌖',
         hint: 'Snap the camera to a group, release it back to the player, change zoom, or reset the camera.',
@@ -8554,6 +8460,7 @@ const COMPUTE_OPS = [
   { value:'tonumber', label:'text→number($a) →' },
   { value:'clamp',    label:'clamp($a, min, max) →' },
   { value:'lerp',     label:'lerp($a→$b, t%) →' },
+  { value:'random_between', label:'random between($a,$b) →' },
 ];
 
 const CONDITION_TYPES = [
@@ -9266,6 +9173,12 @@ function applyScriptComputes(computeDefs, vars) {
       case 'lerp': {
         const t = (parseFloat(c.extra) || 0) / 100;
         result = na + (nb - na) * t;
+        break;
+      }
+      case 'random_between': {
+        const lo = Math.min(na, nb);
+        const hi = Math.max(na, nb);
+        result = lo + Math.random() * (hi - lo);
         break;
       }
       default: result = 0;
@@ -10838,8 +10751,7 @@ case 'goal': {
         case 'trigger_move':
         case 'trigger_lighting':
         case 'trigger_modify':
-        case 'trigger_particle':
-        case 'trigger_region': {
+        case 'trigger_particle': {
             const d = EFFECT_TRIGGER_DEFS[tag];
             ctx.fillStyle = d.color + '22';
             ctx.fillRect(x, y, w, h);
@@ -11986,12 +11898,15 @@ function drawObjects() {
   }).sort((a, b) => (a._ord || 0) - (b._ord || 0));
   perfStats.visible = visibleObjects.length;
 
-  // First pass: draw triggers
-  visibleObjects.forEach(obj => {
-    if (isAnyTrigger(obj.tag)) drawSingleObject(obj);
-  });
+  // Triggers remain fully active during play/test, but are invisible.
+  // Only draw them while editing so they don't clutter the actual game.
+  if (!playMode && !testMode) {
+    visibleObjects.forEach(obj => {
+      if (isAnyTrigger(obj.tag)) drawSingleObject(obj);
+    });
+  }
 
-  // Second pass: draw non-triggers
+  // Draw non-triggers in all modes.
   visibleObjects.forEach(obj => {
     if (!isAnyTrigger(obj.tag)) drawSingleObject(obj);
   });
@@ -12298,8 +12213,7 @@ function gameLoop(timestamp) {
         const near = getNearbyObjects(player);     // one nearby-blocks lookup shared by the touch checks
         checkTriggers(near);
         checkEffectTriggerTouches(near);
-        checkRegionTriggers();
-        checkMonitors();
+            checkMonitors();
         checkComparers();
         updatePlatforms(delta);
         updateVisualTweens();
