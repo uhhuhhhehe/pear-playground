@@ -1286,9 +1286,12 @@
     <button data-script-add="compute" onclick="addScriptStep('compute')"
       style="font-size:11px;padding:4px 10px;background:#fef3c7;color:#92400e;
              border:1px solid #fcd34d;border-radius:6px;cursor:pointer;">+ Compute</button>
+    <button data-script-add="logic" onclick="addScriptStep('logic')"
+      style="font-size:11px;padding:4px 10px;background:#ede9fe;color:#5b21b6;
+             border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;">+ Logic</button>
     <button data-script-add="condition" onclick="addScriptStep('condition')"
-  style="font-size:11px;padding:4px 10px;background:#dbeafe;color:#1e3a8a;
-         border:1px solid #93c5fd;border-radius:6px;cursor:pointer;">+ If / Else</button>
+      style="font-size:11px;padding:4px 10px;background:#dbeafe;color:#1e3a8a;
+             border:1px solid #93c5fd;border-radius:6px;cursor:pointer;">+ If</button>
     <button onclick="addScriptStep('action')"
       style="font-size:11px;padding:4px 10px;background:#ede9fe;color:#3730a3;
              border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;">+ Do</button>
@@ -8463,7 +8466,15 @@ const COMPUTE_OPS = [
   { value:'random_between', label:'random between($a,$b) →' },
 ];
 
+const LOGIC_OPS = [
+  { value:'and', label:'AND' },
+  { value:'or',  label:'OR' },
+  { value:'not', label:'NOT' },
+];
+
 const CONDITION_TYPES = [
+  { value:'value_true',  label:'$var is true' },
+  { value:'value_false', label:'$var is false' },
   { value:'var_eq',       label:'$var  =  value' },
   { value:'var_neq',      label:'$var  ≠  value' },
   { value:'var_gt',       label:'$var  >  value' },
@@ -8582,14 +8593,14 @@ function openScriptEditor() {
     ? 'Combine Move, Visual, and Timing actions. Main Trigger stays focused on logic and can fire this sequence by group.'
     : 'Calculate, decide, and fire other triggers. World-changing actions belong to effect/sequence triggers.';
 
-  // Migration: if saved in old format, convert
+  // Load the script and upgrade older flat IF/ELSE/END IF scripts into real blocks.
   if (sc.steps) {
-    scriptSteps = JSON.parse(JSON.stringify(sc.steps));
+    scriptSteps = normalizeScriptSteps(JSON.parse(JSON.stringify(sc.steps)));
   } else {
     scriptSteps = [];
     (sc.variables  || []).forEach(v => scriptSteps.push({ kind: 'var',       ...v }));
     (sc.computes   || []).forEach(v => scriptSteps.push({ kind: 'compute',   ...v }));
-    (sc.conditions || []).forEach(v => scriptSteps.push({ kind: 'condition', ...v }));
+    (sc.conditions || []).forEach(v => scriptSteps.push({ kind: 'condition', ...v, thenSteps: [], elseSteps: [] }));
     (sc.actions    || []).forEach(v => scriptSteps.push({ kind: 'action',    ...v }));
   }
 
@@ -8624,155 +8635,159 @@ function setScriptEvent(ev) {
 }
 
 function renderScriptEditor() {
-    refreshScriptTargetList();
-    setScriptEvent(scriptEvent);
-
-    const container = document.getElementById('scriptStepsList');
-    container.innerHTML = '';
-
-    if (scriptSteps.length === 0) {
-        const empty = document.createElement('div');
-        empty.style.cssText = 'font-size:12px;color:#a1a1aa;padding:6px 0;';
-        empty.textContent = 'No steps yet — add one below';
-        container.appendChild(empty);
-    }
-
-    // Calculate indent levels for display
-    let indent = 0;
-    const indents = [];
-    scriptSteps.forEach(step => {
-        if (step.kind === 'end_if') indent = Math.max(0, indent - 1);
-        indents.push(indent);
-        if (step.kind === 'condition') indent++;
-    });
-
-    scriptSteps.forEach((step, i) => {
-        // Special rows for else and end_if
-        if (step.kind === 'end_if' || step.kind === 'else') {
-            const row = document.createElement('div');
-            const isElse = step.kind === 'else';
-            row.style.cssText = `
-                display:flex; align-items:center; gap:6px;
-                margin-left:${Math.max(0, indents[i] - (step.kind === 'end_if' ? 0 : 0)) * 16}px;
-            `;
-
-            // Up/down arrows
-            const arrows = document.createElement('div');
-            arrows.style.cssText = 'display:flex;flex-direction:column;gap:0;flex-shrink:0;';
-            const upBtn = document.createElement('button');
-            upBtn.textContent = '▲'; upBtn.className = 'del-btn'; upBtn.style.fontSize = '11px';
-            upBtn.onclick = () => moveStep(i, -1);
-            const downBtn = document.createElement('button');
-            downBtn.textContent = '▼'; downBtn.className = 'del-btn'; downBtn.style.fontSize = '11px';
-            downBtn.onclick = () => moveStep(i, 1);
-            arrows.appendChild(upBtn); arrows.appendChild(downBtn);
-            row.appendChild(arrows);
-
-            const line = document.createElement('div');
-            line.style.cssText = `
-                flex:1; height:28px; border-radius:6px; display:flex; align-items:center;
-                padding:0 12px; font-size:11px; font-weight:700; letter-spacing:.05em;
-                ${isElse
-                    ? 'background:#fef9c3; border:1px dashed #fcd34d; color:#92400e;'
-                    : 'background:#f0fdf4; border:1px dashed #86efac; color:#166534;'}
-            `;
-            line.textContent = isElse ? 'ELSE' : 'END IF';
-            row.appendChild(line);
-
-            if (isElse) {
-                const delBtn = makeDelBtn(() => removeStep(i));
-                row.appendChild(delBtn);
-            } else {
-                // END IF can't be deleted on its own — it's paired with condition
-                const locked = document.createElement('span');
-                locked.style.cssText = 'font-size:11px;color:#a1a1aa;padding:0 6px;';
-                locked.textContent = '🔒';
-                locked.title = 'Delete the matching IF to remove this';
-                row.appendChild(locked);
-            }
-
-            container.appendChild(row);
-            return;
-        }
-
-        const row = document.createElement('div');
-        const kindMeta = {
-            var:       { cls: 'var-row',  pill: 'VAR',  pillCls: 'pill-var'  },
-            compute:   { cls: 'calc-row', pill: 'CALC', pillCls: 'pill-calc' },
-            condition: { cls: 'cond-row', pill: 'IF',   pillCls: 'pill-cond' },
-            action:    { cls: 'act-row',  pill: 'DO',   pillCls: 'pill-act'  },
-        };
-        const meta = kindMeta[step.kind];
-        row.className = `script-row ${meta.cls}`;
-        row.style.marginLeft = `${indents[i] * 16}px`;
-
-        const upBtn = document.createElement('button');
-        upBtn.textContent = '▲'; upBtn.className = 'del-btn'; upBtn.style.fontSize = '11px';
-        upBtn.onclick = () => moveStep(i, -1);
-        const downBtn = document.createElement('button');
-        downBtn.textContent = '▼'; downBtn.className = 'del-btn'; downBtn.style.fontSize = '11px';
-        downBtn.onclick = () => moveStep(i, 1);
-        const arrows = document.createElement('div');
-        arrows.style.cssText = 'display:flex;flex-direction:column;gap:0;flex-shrink:0;';
-        arrows.appendChild(upBtn); arrows.appendChild(downBtn);
-        row.appendChild(arrows);
-
-        row.appendChild(makePill(meta.pill, meta.pillCls));
-
-        if (step.kind === 'var')       appendVariableInputs(row, step, i);
-        if (step.kind === 'compute')   appendComputeInputs(row, step, i);
-        if (step.kind === 'condition') appendConditionInputs(row, step, i);
-        if (step.kind === 'action')    appendActionInputsForStep(row, step, i);
-
-        // For condition steps, show an "Add Else" button and delete removes the pair
-        if (step.kind === 'condition') {
-            const elseBtn = document.createElement('button');
-            elseBtn.textContent = '+ else';
-            elseBtn.style.cssText = 'font-size:10px;padding:2px 7px;background:#fef9c3;color:#92400e;border:1px solid #fcd34d;border-radius:5px;cursor:pointer;flex-shrink:0;';
-            elseBtn.onclick = () => {
-                // Insert else block just before the matching end_if
-                const endIdx = findMatchingEndIf(i);
-                if (endIdx !== -1) {
-                    // Check if else already exists between i and endIdx
-                    const hasElse = scriptSteps.slice(i + 1, endIdx).some(s => s.kind === 'else');
-                    if (!hasElse) {
-                        scriptSteps.splice(endIdx, 0, { kind: 'else' });
-                        renderScriptEditor();
-                    }
-                }
-            };
-            row.appendChild(elseBtn);
-
-            // Del button removes IF + matching ELSE + END IF
-            row.appendChild(makeDelBtn(() => {
-                const endIdx = findMatchingEndIf(i);
-                if (endIdx !== -1) {
-                    // Remove from i to endIdx inclusive, in reverse order
-                    scriptSteps.splice(i, endIdx - i + 1);
-                } else {
-                    scriptSteps.splice(i, 1);
-                }
-                renderScriptEditor();
-            }));
-        } else {
-            row.appendChild(makeDelBtn(() => removeStep(i)));
-        }
-
-        container.appendChild(row);
-    });
+  refreshScriptTargetList();
+  setScriptEvent(scriptEvent);
+  const container = document.getElementById('scriptStepsList');
+  container.innerHTML = '';
+  if (!scriptSteps.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'font-size:12px;color:#a1a1aa;padding:6px 0;';
+    empty.textContent = 'No steps yet — add one below';
+    container.appendChild(empty);
+    return;
+  }
+  renderScriptBlock(container, scriptSteps, 0, 'root');
 }
 
-// Find the end_if that closes the condition at condIdx, handling nesting
-function findMatchingEndIf(condIdx) {
-    let depth = 0;
-    for (let i = condIdx + 1; i < scriptSteps.length; i++) {
-        if (scriptSteps[i].kind === 'condition') depth++;
-        else if (scriptSteps[i].kind === 'end_if') {
-            if (depth === 0) return i;
-            depth--;
+function renderScriptBlock(container, steps, depth, path) {
+  steps.forEach((step, localIndex) => {
+    const indexPath = path === 'root' ? String(localIndex) : path + '.' + localIndex;
+    if (step.kind === 'condition') {
+      const box = document.createElement('div');
+      box.style.cssText = `margin-left:${depth * 12}px;border:1px solid #bfdbfe;border-radius:9px;background:#f8fbff;padding:7px;`;
+
+      const head = document.createElement('div');
+      head.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+      head.appendChild(makePill('IF', 'pill-cond'));
+      appendConditionInputs(head, step, indexPath);
+      const del = makeDelBtn(() => { steps.splice(localIndex, 1); renderScriptEditor(); });
+      head.appendChild(del);
+      box.appendChild(head);
+
+      const thenWrap = document.createElement('div');
+      thenWrap.style.cssText = 'margin:7px 0 4px 18px;padding-left:8px;border-left:2px solid #bfdbfe;display:flex;flex-direction:column;gap:6px;';
+      if (step.thenSteps && step.thenSteps.length) renderScriptBlock(thenWrap, step.thenSteps, 0, indexPath + '.then');
+      else {
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:11px;color:#93a3b8;padding:3px 0;';
+        hint.textContent = 'Do these actions when true';
+        thenWrap.appendChild(hint);
+      }
+      const thenAdd = document.createElement('button');
+      thenAdd.textContent = '+ Do';
+      thenAdd.style.cssText = 'align-self:flex-start;font-size:10px;padding:3px 8px;background:#ede9fe;color:#3730a3;border:1px solid #c4b5fd;border-radius:5px;cursor:pointer;';
+      thenAdd.onclick = () => { step.thenSteps.push({ kind:'action', type:'fire_group', group:'', value:'', value2:'', extra:'' }); renderScriptEditor(); };
+      thenWrap.appendChild(thenAdd);
+      box.appendChild(thenWrap);
+
+      if (step.elseSteps) {
+        const elseHead = document.createElement('div');
+        elseHead.style.cssText = 'display:flex;align-items:center;gap:6px;margin:5px 0 3px 18px;';
+        const elseLabel = document.createElement('span');
+        elseLabel.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.05em;color:#92400e;background:#fef9c3;border:1px dashed #fcd34d;border-radius:5px;padding:3px 8px;';
+        elseLabel.textContent = 'ELSE';
+        elseHead.appendChild(elseLabel);
+        const removeElse = document.createElement('button');
+        removeElse.textContent = 'remove';
+        removeElse.style.cssText = 'font-size:10px;padding:2px 6px;background:#fff;border:1px solid #fde68a;color:#92400e;border-radius:5px;cursor:pointer;';
+        removeElse.onclick = () => { delete step.elseSteps; renderScriptEditor(); };
+        elseHead.appendChild(removeElse);
+        box.appendChild(elseHead);
+
+        const elseWrap = document.createElement('div');
+        elseWrap.style.cssText = 'margin:0 0 4px 18px;padding-left:8px;border-left:2px solid #fcd34d;display:flex;flex-direction:column;gap:6px;';
+        if (step.elseSteps.length) renderScriptBlock(elseWrap, step.elseSteps, 0, indexPath + '.else');
+        else {
+          const hint = document.createElement('div');
+          hint.style.cssText = 'font-size:11px;color:#a16207;padding:3px 0;';
+          hint.textContent = 'Do these actions when false';
+          elseWrap.appendChild(hint);
         }
+        const elseAdd = document.createElement('button');
+        elseAdd.textContent = '+ Do';
+        elseAdd.style.cssText = 'align-self:flex-start;font-size:10px;padding:3px 8px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:5px;cursor:pointer;';
+        elseAdd.onclick = () => { step.elseSteps.push({ kind:'action', type:'fire_group', group:'', value:'', value2:'', extra:'' }); renderScriptEditor(); };
+        elseWrap.appendChild(elseAdd);
+        box.appendChild(elseWrap);
+      } else {
+        const addElse = document.createElement('button');
+        addElse.textContent = '+ Else';
+        addElse.style.cssText = 'margin:2px 0 0 18px;font-size:10px;padding:3px 8px;background:#fef9c3;color:#92400e;border:1px solid #fcd34d;border-radius:5px;cursor:pointer;';
+        addElse.onclick = () => { step.elseSteps = []; renderScriptEditor(); };
+        box.appendChild(addElse);
+      }
+      container.appendChild(box);
+      return;
     }
-    return -1;
+
+    const row = document.createElement('div');
+    const kindMeta = {
+      var:       { cls:'var-row',  pill:'VAR',  pillCls:'pill-var' },
+      compute:   { cls:'calc-row', pill:'CALC', pillCls:'pill-calc' },
+      logic:     { cls:'logic-row', pill:'LOGIC', pillCls:'pill-cond' },
+      action:    { cls:'act-row',  pill:'DO',   pillCls:'pill-act' }
+    };
+    const meta = kindMeta[step.kind] || kindMeta.action;
+    row.className = `script-row ${meta.cls}`;
+    row.style.marginLeft = `${depth * 12}px`;
+    const up = document.createElement('button'); up.textContent='▲'; up.className='del-btn'; up.style.fontSize='11px';
+    const down = document.createElement('button'); down.textContent='▼'; down.className='del-btn'; down.style.fontSize='11px';
+    // Move buttons operate within the current block, which keeps IF contents inside their IF.
+    up.onclick = () => { if(localIndex>0){ [steps[localIndex-1],steps[localIndex]]=[steps[localIndex],steps[localIndex-1]]; renderScriptEditor(); } };
+    down.onclick = () => { if(localIndex<steps.length-1){ [steps[localIndex+1],steps[localIndex]]=[steps[localIndex],steps[localIndex+1]]; renderScriptEditor(); } };
+    const arrows=document.createElement('div'); arrows.style.cssText='display:flex;flex-direction:column;gap:0;flex-shrink:0;'; arrows.append(up,down);
+    row.appendChild(arrows);
+    row.appendChild(makePill(meta.pill, meta.pillCls));
+    if (step.kind === 'var') appendVariableInputs(row, step, indexPath);
+    if (step.kind === 'compute') appendComputeInputs(row, step, indexPath);
+    if (step.kind === 'logic') appendLogicInputs(row, step, indexPath);
+    if (step.kind === 'action') appendActionInputsForStep(row, step, indexPath);
+    row.appendChild(makeDelBtn(() => { steps.splice(localIndex,1); renderScriptEditor(); }));
+    container.appendChild(row);
+  });
+}
+
+function getStepByPath(path) {
+  const parts = String(path).split('.');
+  if (parts[0] === 'root') parts.shift();
+  let arr = scriptSteps;
+  let step = null;
+  for (let i=0;i<parts.length;i++) {
+    const key = parts[i];
+    if (key === 'then' || key === 'else') {
+      arr = step ? (key === 'then' ? (step.thenSteps || []) : (step.elseSteps || [])) : [];
+    } else {
+      step = arr[parseInt(key,10)];
+      if (i < parts.length-1 && step && step.kind === 'condition') {
+        // next token will choose then/else
+      }
+    }
+  }
+  return step;
+}
+function setStepField(path, field, value) { const step=getStepByPath(path); if(step) step[field]=value; }
+function normalizeScriptSteps(steps) {
+  // Already structured.
+  if (!steps.some(s => s && (s.kind === 'else' || s.kind === 'end_if'))) {
+    return steps.map(s => s && s.kind === 'condition'
+      ? { ...s, thenSteps:Array.isArray(s.thenSteps)?s.thenSteps:[], ...(Array.isArray(s.elseSteps)?{elseSteps:s.elseSteps}: {}) }
+      : s);
+  }
+  const out=[];
+  const stack=[];
+  const target=()=>stack.length ? (stack[stack.length-1].inElse ? stack[stack.length-1].node.elseSteps : stack[stack.length-1].node.thenSteps) : out;
+  for(const raw of steps){
+    if(!raw) continue;
+    if(raw.kind==='condition'){
+      const node={...raw,thenSteps:[],elseSteps:null};
+      target().push(node); stack.push({node,inElse:false});
+    } else if(raw.kind==='else'){
+      if(stack.length) { stack[stack.length-1].node.elseSteps=[]; stack[stack.length-1].inElse=true; }
+    } else if(raw.kind==='end_if'){
+      if(stack.length) stack.pop();
+    } else target().push(raw);
+  }
+  return out;
 }
 
 /* ===== helper ===== */
@@ -8810,14 +8825,14 @@ function removeVariable(i) { scriptVariables.splice(i,1); renderVariables(); }
 function appendVariableInputs(row, step, i) {
   const nameInp = makeInput(step.name, 'name', 80);
   nameInp.style.fontFamily = 'monospace';
-  nameInp.oninput = () => { scriptSteps[i].name = nameInp.value; };
+  nameInp.oninput = () => { setStepField(i, 'name', nameInp.value); };
 
   const eq = document.createElement('span');
   eq.textContent = '=';
   eq.style.cssText = 'font-size:12px;color:#71717a;flex-shrink:0;';
 
   const srcSel = makeSelect(VAR_SOURCES, step.source);
-  srcSel.onchange = () => { scriptSteps[i].source = srcSel.value; renderScriptEditor(); };
+  srcSel.onchange = () => { setStepField(i, 'source', srcSel.value); renderScriptEditor(); };
 
   row.appendChild(nameInp);
   row.appendChild(eq);
@@ -8826,28 +8841,28 @@ function appendVariableInputs(row, step, i) {
   const src = step.source;
   if (src === 'literal_num') {
     const inp = makeInput(step.value, '0', 70, 'number');
-    inp.oninput = () => { scriptSteps[i].value = inp.value; };
+    inp.oninput = () => { setStepField(i, 'value', inp.value); };
     row.appendChild(inp);
   } else if (src === 'literal_str') {
     const inp = makeInput(step.value, 'text...', 120);
-    inp.oninput = () => { scriptSteps[i].value = inp.value; };
+    inp.oninput = () => { setStepField(i, 'value', inp.value); };
     row.appendChild(inp);
   } else if (src === 'counter' || src.startsWith('object_')) {
     const inp = makeInput(step.group, 'group name', 120);
-    inp.oninput = () => { scriptSteps[i].group = inp.value; };
+    inp.oninput = () => { setStepField(i, 'group', inp.value); };
     row.appendChild(inp);
   } else if (src === 'random_int') {
     const min = makeInput(step.value,  'min', 55, 'number');
     const max = makeInput(step.value2, 'max', 55, 'number');
-    min.oninput = () => { scriptSteps[i].value  = min.value; };
-    max.oninput = () => { scriptSteps[i].value2 = max.value; };
+    min.oninput = () => { setStepField(i, 'value', min.value); };
+    max.oninput = () => { setStepField(i, 'value2', max.value); };
     row.appendChild(min); row.appendChild(max);
   }
 }
 
 function appendComputeInputs(row, step, i) {
   const opSel = makeSelect(COMPUTE_OPS, step.op);
-  opSel.onchange = () => { scriptSteps[i].op = opSel.value; renderScriptEditor(); };
+  opSel.onchange = () => { setStepField(i, 'op', opSel.value); renderScriptEditor(); };
   row.appendChild(opSel);
 
   const needsB     = !['abs','floor','ceil','round','tostring','tonumber'].includes(step.op);
@@ -8855,26 +8870,26 @@ function appendComputeInputs(row, step, i) {
   const needsLerp  = step.op === 'lerp';
 
   const aInp = makeInput(step.a, '$a or number', 100);
-  aInp.oninput = () => { scriptSteps[i].a = aInp.value; };
+  aInp.oninput = () => { setStepField(i, 'a', aInp.value); };
   row.appendChild(aInp);
 
   if (needsB && !needsClamp && !needsLerp) {
     const bInp = makeInput(step.b, '$b or number', 100);
-    bInp.oninput = () => { scriptSteps[i].b = bInp.value; };
+    bInp.oninput = () => { setStepField(i, 'b', bInp.value); };
     row.appendChild(bInp);
   }
   if (needsClamp) {
     const mn = makeInput(step.b,     'min', 50, 'number');
     const mx = makeInput(step.extra, 'max', 50, 'number');
-    mn.oninput = () => { scriptSteps[i].b     = mn.value; };
-    mx.oninput = () => { scriptSteps[i].extra = mx.value; };
+    mn.oninput = () => { setStepField(i, 'b', mn.value); };
+    mx.oninput = () => { setStepField(i, 'extra', mx.value); };
     row.appendChild(mn); row.appendChild(mx);
   }
   if (needsLerp) {
     const bInp = makeInput(step.b,     '$b', 70);
     const tInp = makeInput(step.extra, 't%', 45, 'number');
-    bInp.oninput = () => { scriptSteps[i].b     = bInp.value; };
-    tInp.oninput = () => { scriptSteps[i].extra = tInp.value; };
+    bInp.oninput = () => { setStepField(i, 'b', bInp.value); };
+    tInp.oninput = () => { setStepField(i, 'extra', tInp.value); };
     row.appendChild(bInp); row.appendChild(tInp);
   }
 
@@ -8885,35 +8900,56 @@ function appendComputeInputs(row, step, i) {
 
   const outInp = makeInput(step.out, 'output $var', 90);
   outInp.style.fontFamily = 'monospace';
-  outInp.oninput = () => { scriptSteps[i].out = outInp.value; };
+  outInp.oninput = () => { setStepField(i, 'out', outInp.value); };
   row.appendChild(outInp);
+}
+
+function appendLogicInputs(row, step, i) {
+  const op = makeSelect(LOGIC_OPS, step.op || 'and');
+  op.onchange = () => { setStepField(i,'op',op.value); renderScriptEditor(); };
+  row.appendChild(op);
+  const a = makeInput(step.a, 'first $var / true / false', 125);
+  a.oninput = () => setStepField(i,'a',a.value);
+  row.appendChild(a);
+  if ((step.op || 'and') !== 'not') {
+    const b = makeInput(step.b, 'second $var / true / false', 125);
+    b.oninput = () => setStepField(i,'b',b.value);
+    row.appendChild(b);
+  }
+  const arrow=document.createElement('span'); arrow.textContent='→'; arrow.style.cssText='font-size:12px;color:#71717a;'; row.appendChild(arrow);
+  const out=makeInput(step.out,'output $var',90); out.style.fontFamily='monospace';
+  out.oninput=()=>setStepField(i,'out',out.value); row.appendChild(out);
 }
 
 function appendConditionInputs(row, step, i) {
   const typeSel = makeSelect(CONDITION_TYPES, step.type);
-  typeSel.onchange = () => { scriptSteps[i].type = typeSel.value; renderScriptEditor(); };
+  typeSel.onchange = () => { setStepField(i, 'type', typeSel.value); renderScriptEditor(); };
   row.appendChild(typeSel);
 
   const t = step.type;
-  if (t.startsWith('var_')) {
+  if (t === 'value_true' || t === 'value_false') {
+    const a = makeInput(step.a, '$var or true/false', 125);
+    a.oninput = () => setStepField(i,'a',a.value);
+    row.appendChild(a);
+  } else if (t.startsWith('var_')) {
     const a = makeInput(step.a, '$var or value', 100);
     const b = makeInput(step.b, '$var or value', 100);
-    a.oninput = () => { scriptSteps[i].a = a.value; };
-    b.oninput = () => { scriptSteps[i].b = b.value; };
+    a.oninput = () => { setStepField(i, 'a', a.value); };
+    b.oninput = () => { setStepField(i, 'b', b.value); };
     row.appendChild(a); row.appendChild(b);
   } else if (t.startsWith('counter_')) {
     const g = makeInput(step.group, 'counter group', 110);
     const v = makeInput(step.value, 'value or $var', 90);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    v.oninput = () => { scriptSteps[i].value = v.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
+    v.oninput = () => { setStepField(i, 'value', v.value); };
     row.appendChild(g); row.appendChild(v);
   } else if (['player_above','player_below','player_left','player_right'].includes(t)) {
     const v = makeInput(step.value, 'coord or $var', 100);
-    v.oninput = () => { scriptSteps[i].value = v.value; };
+    v.oninput = () => { setStepField(i, 'value', v.value); };
     row.appendChild(v);
   } else {
     const g = makeInput(step.group, 'group name', 150);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
     row.appendChild(g);
   }
 }
@@ -8921,45 +8957,30 @@ function appendConditionInputs(row, step, i) {
 function appendActionInputsForStep(row, step, i) {
   const typeSel = makeSelect(getActionOptions(step.type), step.type);
   typeSel.onchange = () => {
-    scriptSteps[i].type   = typeSel.value;
-    scriptSteps[i].value  = '';
-    scriptSteps[i].value2 = '';
+    setStepField(i, 'type', typeSel.value);
+    setStepField(i, 'value', '');
+    setStepField(i, 'value2', '');
     renderScriptEditor();
   };
   row.appendChild(typeSel);
   appendActionInputsFlat(row, step, i); // <-- this now exists
 }
 function addScriptStep(kind) {
-    const sequenceDefault = scriptEditorTarget && scriptEditorTarget.tag === 'trigger_sequence';
-    const defaults = {
-        var:       { kind: 'var',       name: 'myVar', source: 'literal_num', value: '0', value2: '0', group: '' },
-        compute:   { kind: 'compute',   op: 'add', a: '', b: '', out: 'result', extra: '', extra2: '' },
-        condition: { kind: 'condition', type: 'var_gt', a: '', b: '' },
-        action:    { kind: 'action',    type: sequenceDefault ? 'move_to_position' : 'fire_group', group: '', value: '', value2: '', extra: '', duration: '1', count: '2', steps: '2' },
-        else:      { kind: 'else' },
-        end_if:    { kind: 'end_if' },
-    };
-    
-    if (kind === 'condition') {
-        // Add IF + END IF together so they're always paired
-        scriptSteps.push({ ...defaults.condition });
-        scriptSteps.push({ ...defaults.end_if });
-    } else {
-        scriptSteps.push({ ...defaults[kind] });
-    }
-    renderScriptEditor();
-}
-
-function removeStep(i) {
-  scriptSteps.splice(i, 1);
+  const sequenceDefault = scriptEditorTarget && scriptEditorTarget.tag === 'trigger_sequence';
+  const defaults = {
+    var:     { kind:'var', name:'myVar', source:'literal_num', value:'0', value2:'0', group:'' },
+    compute: { kind:'compute', op:'add', a:'', b:'', out:'result', extra:'', extra2:'' },
+    logic:   { kind:'logic', op:'and', a:'', b:'', out:'condition' },
+    condition: { kind:'condition', type:'var_gt', a:'', b:'', thenSteps:[] },
+    action:  { kind:'action', type:sequenceDefault?'move_to_position':'fire_group', group:'', value:'', value2:'', extra:'', duration:'1', count:'2', steps:'2' }
+  };
+  scriptSteps.push(JSON.parse(JSON.stringify(defaults[kind])));
   renderScriptEditor();
 }
-
+function removeStep(i) { scriptSteps.splice(i,1); renderScriptEditor(); }
 function moveStep(i, dir) {
-  const j = i + dir;
-  if (j < 0 || j >= scriptSteps.length) return;
-  [scriptSteps[i], scriptSteps[j]] = [scriptSteps[j], scriptSteps[i]];
-  renderScriptEditor();
+  const j=i+dir; if(j<0 || j>=scriptSteps.length) return;
+  [scriptSteps[i],scriptSteps[j]]=[scriptSteps[j],scriptSteps[i]]; renderScriptEditor();
 }
 function removeCompute(i) { scriptComputes.splice(i,1); renderComputes(); }
 
@@ -9068,7 +9089,7 @@ function applyScript() {
   if (!scriptEditorTarget) return;
   scriptEditorTarget.script = {
     event: scriptEvent,
-    steps: JSON.parse(JSON.stringify(scriptSteps))
+    steps: JSON.parse(JSON.stringify(normalizeScriptSteps(scriptSteps)))
   };
   closeScriptEditor();
   showCoinToast('Script saved', '#6366f1');
@@ -9187,9 +9208,26 @@ function applyScriptComputes(computeDefs, vars) {
   });
 }
 
+function scriptBoolValue(value, vars) {
+  const v = resolveVal(value, vars);
+  if (typeof v === 'boolean') return v;
+  const s = String(v ?? '').trim().toLowerCase();
+  if (s === 'true' || s === 'yes' || s === 'on' || s === '1') return true;
+  if (s === 'false' || s === 'no' || s === 'off' || s === '0' || s === '') return false;
+  return !!v;
+}
+function applyScriptLogic(logicDefs, vars) {
+  logicDefs.forEach(l => {
+    const a = scriptBoolValue(l.a, vars), b = scriptBoolValue(l.b, vars);
+    vars[l.out] = l.op === 'not' ? !a : l.op === 'or' ? (a || b) : (a && b);
+  });
+}
+
 function evaluateScriptConditions(conditions, vars) {
   return conditions.every(cond => {
     const t = cond.type;
+    if (t === 'value_true') return scriptBoolValue(cond.a, vars);
+    if (t === 'value_false') return !scriptBoolValue(cond.a, vars);
 
     if (t.startsWith('var_')) {
       const a = resolveVal(cond.a, vars);
@@ -9397,7 +9435,7 @@ if (t === 'set_light_intensity') {
 function actionTargetInput(row, action, i, placeholder = 'object or group') {
   const g = makeInput(action.group, placeholder, 150);
   g.setAttribute('list', 'scriptTargetList');
-  g.oninput = () => { scriptSteps[i].group = g.value; };
+  g.oninput = () => { setStepField(i, 'group', g.value); };
   row.appendChild(g);
   return g;
 }
@@ -9428,32 +9466,32 @@ function appendActionInputsFlat(row, action, i) {
     if (t === 'move_object' || t === 'move_by' || t === 'move_to_position') {
       const x = makeInput(action.value, t === 'move_by' ? 'X amount' : 'X', 70, 'number');
       const y = makeInput(action.value2, t === 'move_by' ? 'Y amount' : 'Y', 70, 'number');
-      x.oninput = () => { scriptSteps[i].value = x.value; };
-      y.oninput = () => { scriptSteps[i].value2 = y.value; };
+      x.oninput = () => { setStepField(i, 'value', x.value); };
+      y.oninput = () => { setStepField(i, 'value2', y.value); };
       row.appendChild(x); row.appendChild(y);
       if (t === 'move_to_position') {
         const d = makeInput(action.duration || '0.5', 'seconds', 65, 'number');
-        d.oninput = () => { scriptSteps[i].duration = d.value; };
+        d.oninput = () => { setStepField(i, 'duration', d.value); };
         row.appendChild(d);
       }
     } else if (t === 'rotate_object' || t === 'rotate_by') {
       const v = makeInput(action.value, t === 'rotate_by' ? 'degrees' : 'degrees', 75, 'number');
-      v.oninput = () => { scriptSteps[i].value = v.value; };
+      v.oninput = () => { setStepField(i, 'value', v.value); };
       row.appendChild(v);
     } else if (t === 'set_opacity') {
       const v = makeInput(action.value, '0–1', 65, 'number');
-      v.oninput = () => { scriptSteps[i].value = v.value; };
+      v.oninput = () => { setStepField(i, 'value', v.value); };
       row.appendChild(v);
     } else if (t === 'set_color') {
       const v = makeInput(action.value || '#ffffff', '#RRGGBB', 90);
       v.type = 'text';
-      v.oninput = () => { scriptSteps[i].value = v.value; };
+      v.oninput = () => { setStepField(i, 'value', v.value); };
       row.appendChild(v);
     } else if (t === 'set_scale') {
       const sx = makeInput(action.value || '1', 'X scale', 65, 'number');
       const sy = makeInput(action.value2 || '', 'Y scale', 65, 'number');
-      sx.oninput = () => { scriptSteps[i].value = sx.value; };
-      sy.oninput = () => { scriptSteps[i].value2 = sy.value; };
+      sx.oninput = () => { setStepField(i, 'value', sx.value); };
+      sy.oninput = () => { setStepField(i, 'value2', sy.value); };
       row.appendChild(sx); row.appendChild(sy);
     }
     return;
@@ -9461,95 +9499,95 @@ function appendActionInputsFlat(row, action, i) {
 
   if (t === 'wait') {
     const v = makeInput(action.value || '1', 'seconds', 75, 'number');
-    v.oninput = () => { scriptSteps[i].value = v.value; };
+    v.oninput = () => { setStepField(i, 'value', v.value); };
     row.appendChild(v); return;
   }
   if (t === 'repeat' || t === 'loop') {
     const c = makeInput(action.count || (t === 'loop' ? '0' : '2'), t === 'loop' ? 'repeat forever' : 'count', 70, 'number');
     const n = makeInput(action.steps || '2', 'next actions', 85, 'number');
-    c.oninput = () => { scriptSteps[i].count = c.value; };
-    n.oninput = () => { scriptSteps[i].steps = n.value; };
+    c.oninput = () => { setStepField(i, 'count', c.value); };
+    n.oninput = () => { setStepField(i, 'steps', n.value); };
     row.appendChild(c); row.appendChild(n); return;
   }
 
   if (simpleGroup.includes(t)) {
     const g = makeInput(action.group, 'target group', 160);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
     row.appendChild(g);
     return;
   }
   if (t === 'increment_counter') {
     const g = makeInput(action.group, 'counter group', 140);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
     row.appendChild(g); return;
   }
   if (t === 'set_counter') {
     const g = makeInput(action.group, 'counter group', 120);
     const v = makeInput(action.value, '$var or number', 100);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    v.oninput = () => { scriptSteps[i].value = v.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
+    v.oninput = () => { setStepField(i, 'value', v.value); };
     row.appendChild(g); row.appendChild(v); return;
   }
   if (t === 'move_group') {
     const g = makeInput(action.group, 'group', 90);
     const x = makeInput(action.value, 'X or $var', 80);
     const y = makeInput(action.value2, 'Y or $var', 80);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    x.oninput = () => { scriptSteps[i].value = x.value; };
-    y.oninput = () => { scriptSteps[i].value2 = y.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
+    x.oninput = () => { setStepField(i, 'value', x.value); };
+    y.oninput = () => { setStepField(i, 'value2', y.value); };
     row.appendChild(g); row.appendChild(x); row.appendChild(y); return;
   }
   if (t === 'set_velocity') {
     const g = makeInput(action.group, 'group', 90);
     const vx = makeInput(action.value, 'VX or $var', 75);
     const vy = makeInput(action.value2, 'VY or $var', 75);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    vx.oninput = () => { scriptSteps[i].value = vx.value; };
-    vy.oninput = () => { scriptSteps[i].value2 = vy.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
+    vx.oninput = () => { setStepField(i, 'value', vx.value); };
+    vy.oninput = () => { setStepField(i, 'value2', vy.value); };
     row.appendChild(g); row.appendChild(vx); row.appendChild(vy); return;
   }
   if (t === 'set_text') {
     const g = makeInput(action.group, 'group', 100);
     const v = makeInput(action.value, 'text or $var', 130);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    v.oninput = () => { scriptSteps[i].value = v.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
+    v.oninput = () => { setStepField(i, 'value', v.value); };
     row.appendChild(g); row.appendChild(v); return;
   }
   if (t === 'set_solid' || t === 'set_kill') {
     const g = makeInput(action.group, 'group', 120);
     const sel = makeSelect([{value:'true',label:'Yes'},{value:'false',label:'No'}], action.value);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    sel.onchange = () => { scriptSteps[i].value = sel.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
+    sel.onchange = () => { setStepField(i, 'value', sel.value); };
     row.appendChild(g); row.appendChild(sel); return;
   }
   if (t === 'set_var') {
     const n = makeInput(action.group, '$varName', 90);
     const v = makeInput(action.value, 'value or $var', 120);
     n.style.fontFamily = 'monospace';
-    n.oninput = () => { scriptSteps[i].group = n.value; };
-    v.oninput = () => { scriptSteps[i].value = v.value; };
+    n.oninput = () => { setStepField(i, 'group', n.value); };
+    v.oninput = () => { setStepField(i, 'value', v.value); };
     row.appendChild(n); row.appendChild(v); return;
   }
   if (t === 'shake_screen') {
     const v = makeInput(action.value || '10', 'intensity', 80);
-    v.oninput = () => { scriptSteps[i].value = v.value; };
+    v.oninput = () => { setStepField(i, 'value', v.value); };
     row.appendChild(v); return;
   }
   if (t === 'log') {
     const v = makeInput(action.value, 'message or $var', 200);
-    v.oninput = () => { scriptSteps[i].value = v.value; };
+    v.oninput = () => { setStepField(i, 'value', v.value); };
     row.appendChild(v); return;
   }
   if (t === 'set_theme') {
     const sel = makeSelect(Object.keys(LIGHTING_THEMES).map(k => ({ value:k, label:k.replace('_',' ') })), action.value || 'normal');
-    sel.onchange = () => { scriptSteps[i].value = sel.value; };
+    sel.onchange = () => { setStepField(i, 'value', sel.value); };
     row.appendChild(sel); return;
   }
   if (t === 'behavior_on' || t === 'behavior_off' || t === 'behavior_toggle') {
     const g = makeInput(action.group, 'object group', 110);
     const v = makeInput(action.value, 'behavior name/type (blank = all)', 190);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    v.oninput = () => { scriptSteps[i].value = v.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
+    v.oninput = () => { setStepField(i, 'value', v.value); };
     row.appendChild(g); row.appendChild(v); return;
   }
   if (t === 'set_light_color') {
@@ -9557,17 +9595,17 @@ function appendActionInputsFlat(row, action, i) {
     const r = makeInput(action.value, 'R or $var', 60);
     const gr = makeInput(action.value2, 'G or $var', 60);
     const b = makeInput(action.extra, 'B or $var', 60);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    r.oninput = () => { scriptSteps[i].value = r.value; };
-    gr.oninput = () => { scriptSteps[i].value2 = gr.value; };
-    b.oninput = () => { scriptSteps[i].extra = b.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
+    r.oninput = () => { setStepField(i, 'value', r.value); };
+    gr.oninput = () => { setStepField(i, 'value2', gr.value); };
+    b.oninput = () => { setStepField(i, 'extra', b.value); };
     row.appendChild(g); row.appendChild(r); row.appendChild(gr); row.appendChild(b); return;
   }
   if (t === 'set_light_radius' || t === 'set_light_intensity') {
     const g = makeInput(action.group, 'group', 110);
     const v = makeInput(action.value, t === 'set_light_radius' ? 'radius or $var' : '0–1 or $var', 90);
-    g.oninput = () => { scriptSteps[i].group = g.value; };
-    v.oninput = () => { scriptSteps[i].value = v.value; };
+    g.oninput = () => { setStepField(i, 'group', g.value); };
+    v.oninput = () => { setStepField(i, 'value', v.value); };
     row.appendChild(g); row.appendChild(v); return;
   }
 }
@@ -9610,64 +9648,56 @@ function scriptHasAsyncSteps(steps) {
 }
 function runAsyncScriptSegment(trigger, steps, start, end, vars, token, done) {
   if (trigger._visualScriptToken !== token) return;
-  let i=start;
-  const next=()=>runAsyncScriptSegment(trigger,steps,i,end,vars,token,done);
-  while (i<end) {
+  let i = start;
+  const next = () => runAsyncScriptSegment(trigger, steps, i, end, vars, token, done);
+  while (i < end) {
     if (trigger._visualScriptToken !== token) return;
-    const step=steps[i], rs=resolveStepFields(step);
-    if (step.kind==='var') { Object.assign(vars,buildScriptVars([rs])); i++; continue; }
-    if (step.kind==='compute') { applyScriptComputes([rs],vars); i++; continue; }
-    if (step.kind==='condition') {
-      let elseIdx=-1,endIdx=-1,depth=0;
-      for(let j=i+1;j<end;j++){
-        if(steps[j].kind==='condition') depth++;
-        else if(steps[j].kind==='else'&&depth===0) elseIdx=j;
-        else if(steps[j].kind==='end_if'){ if(depth===0){endIdx=j;break;} depth--; }
-      }
-      if(endIdx===-1) endIdx=end;
-      const pass=evaluateScriptConditions([rs],vars);
-      const bs=pass?i+1:(elseIdx!==-1?elseIdx+1:endIdx);
-      const be=pass?(elseIdx!==-1?elseIdx:endIdx):endIdx;
-      const resume=()=>{ i=endIdx+1; runAsyncScriptSegment(trigger,steps,i,end,vars,token,done); };
-      runAsyncScriptSegment(trigger,steps,bs,be,vars,token,resume);
+    const step = steps[i], rs = resolveStepFields(step);
+    if (step.kind === 'var') { Object.assign(vars, buildScriptVars([rs])); i++; continue; }
+    if (step.kind === 'compute') { applyScriptComputes([rs], vars); i++; continue; }
+    if (step.kind === 'logic') { applyScriptLogic([rs], vars); i++; continue; }
+    if (step.kind === 'condition') {
+      const branch = evaluateScriptConditions([rs], vars) ? (step.thenSteps || []) : (Array.isArray(step.elseSteps) ? step.elseSteps : null);
+      if (!branch) { i++; continue; }
+      runAsyncScriptSegment(trigger, branch, 0, branch.length, vars, token, () => {
+        if (trigger._visualScriptToken === token) runAsyncScriptSegment(trigger, steps, i + 1, end, vars, token, done);
+      });
       return;
     }
-    if (step.kind==='action') {
-      const t=rs.type;
-      if(t==='wait'){
-        const ms=Math.max(0,(parseFloat(resolveVal(rs.value,vars))||0)*1000);
-        scheduleAfter(ms,()=>{ if(trigger._visualScriptToken===token) runAsyncScriptSegment(trigger,steps,i+1,end,vars,token,done); });
+    if (step.kind === 'action') {
+      const t = rs.type;
+      if (t === 'wait') {
+        const ms = Math.max(0, (parseFloat(resolveVal(rs.value, vars)) || 0) * 1000);
+        scheduleAfter(ms, () => { if (trigger._visualScriptToken === token) runAsyncScriptSegment(trigger, steps, i + 1, end, vars, token, done); });
         return;
       }
-      if(t==='move_to_position'){
-        const targets=resolveVisualTargets(rs.group), x=resolveVal(rs.value,vars), y=resolveVal(rs.value2,vars);
-        const ms=Math.max(0,(parseFloat(resolveVal(rs.duration||'0.5',vars))||0)*1000);
-        addVisualTween(targets,x,y,ms,()=>{ if(trigger._visualScriptToken===token) runAsyncScriptSegment(trigger,steps,i+1,end,vars,token,done); });
+      if (t === 'move_to_position') {
+        const targets = resolveVisualTargets(rs.group), x = resolveVal(rs.value, vars), y = resolveVal(rs.value2, vars);
+        const ms = Math.max(0, (parseFloat(resolveVal(rs.duration || '0.5', vars)) || 0) * 1000);
+        addVisualTween(targets, x, y, ms, () => { if (trigger._visualScriptToken === token) runAsyncScriptSegment(trigger, steps, i + 1, end, vars, token, done); });
         return;
       }
-      if(t==='repeat'||t==='loop'){
-        const count=t==='loop'?Infinity:Math.max(0,Math.floor(parseFloat(resolveVal(rs.count,vars))||0));
-        const n=Math.max(0,Math.floor(parseFloat(resolveVal(rs.steps,vars))||0));
-        const bs=i+1, be=Math.min(end,bs+n);
-        if(be<=bs){ i++; continue; }
-        const runBlock=(remaining)=>{
-          if(trigger._visualScriptToken!==token) return;
-          if(remaining===0){ runAsyncScriptSegment(trigger,steps,be,end,vars,token,done); return; }
-          if(remaining===Infinity){
-            scheduleAfter(17,()=>{ if(trigger._visualScriptToken===token) runAsyncScriptSegment(trigger,steps,bs,be,vars,token,()=>runBlock(Infinity)); });
+      if (t === 'repeat' || t === 'loop') {
+        const count = t === 'loop' ? Infinity : Math.max(0, Math.floor(parseFloat(resolveVal(rs.count, vars)) || 0));
+        const n = Math.max(0, Math.floor(parseFloat(resolveVal(rs.steps, vars)) || 0));
+        const bs = i + 1, be = Math.min(end, bs + n);
+        if (be <= bs) { i++; continue; }
+        const runBlock = remaining => {
+          if (trigger._visualScriptToken !== token) return;
+          if (remaining === 0) { runAsyncScriptSegment(trigger, steps, be, end, vars, token, done); return; }
+          if (remaining === Infinity) {
+            scheduleAfter(17, () => { if (trigger._visualScriptToken === token) runAsyncScriptSegment(trigger, steps, bs, be, vars, token, () => runBlock(Infinity)); });
             return;
           }
-          runAsyncScriptSegment(trigger,steps,bs,be,vars,token,()=>runBlock(remaining-1));
+          runAsyncScriptSegment(trigger, steps, bs, be, vars, token, () => runBlock(remaining - 1));
         };
-        runBlock(count);
-        return;
+        runBlock(count); return;
       }
-      executeScriptActions([rs],vars);
-      i++; continue;
+      executeScriptActions([rs], vars); i++; continue;
     }
     i++;
   }
-  if(done) done();
+  if (done) done();
 }
 
 function runTriggerScript(trigger, event = 'touched') {
@@ -9692,54 +9722,21 @@ function resolveStepFields(step) {
     return out;
 }
 function executeScriptSteps(steps, start, end, vars) {
-    let i = start;
-    while (i < end) {
-        const step = steps[i];
-        const rs = resolveStepFields(step);
-
-        if (step.kind === 'var') {
-            Object.assign(vars, buildScriptVars([rs]));
-            i++;
-
-        } else if (step.kind === 'compute') {
-            applyScriptComputes([rs], vars);
-            i++;
-
-        } else if (step.kind === 'condition') {
-            // Find matching else and end_if
-            let elseIdx = -1;
-            let endIdx  = -1;
-            let depth   = 0;
-            for (let j = i + 1; j < end; j++) {
-                if (steps[j].kind === 'condition') depth++;
-                else if (steps[j].kind === 'else' && depth === 0) elseIdx = j;
-                else if (steps[j].kind === 'end_if') {
-                    if (depth === 0) { endIdx = j; break; }
-                    depth--;
-                }
-            }
-            if (endIdx === -1) endIdx = end; // no matching end_if, treat rest as block
-
-            const condPassed = evaluateScriptConditions([rs], vars);
-
-            if (condPassed) {
-                const blockEnd = elseIdx !== -1 ? elseIdx : endIdx;
-                executeScriptSteps(steps, i + 1, blockEnd, vars);
-            } else if (elseIdx !== -1) {
-                executeScriptSteps(steps, elseIdx + 1, endIdx, vars);
-            }
-
-            i = endIdx + 1;
-
-        } else if (step.kind === 'action') {
-            executeScriptActions([rs], vars);
-            i++;
-
-        } else {
-            // else / end_if markers — skip during normal execution
-            i++;
-        }
+  let i = start;
+  while (i < end) {
+    const step = steps[i], rs = resolveStepFields(step);
+    if (step.kind === 'var') { Object.assign(vars, buildScriptVars([rs])); i++; continue; }
+    if (step.kind === 'compute') { applyScriptComputes([rs], vars); i++; continue; }
+    if (step.kind === 'logic') { applyScriptLogic([rs], vars); i++; continue; }
+    if (step.kind === 'condition') {
+      if (evaluateScriptConditions([rs], vars)) executeScriptSteps(step.thenSteps || [], 0, (step.thenSteps || []).length, vars);
+      else if (Array.isArray(step.elseSteps)) executeScriptSteps(step.elseSteps, 0, step.elseSteps.length, vars);
+      i++; continue;
     }
+    if (step.kind === 'action') { executeScriptActions([rs], vars); i++; continue; }
+    // Old marker rows are ignored for backward compatibility after normalization.
+    i++;
+  }
 }
 // Trigger checking function
 // 1. New helper function to execute trigger logic
