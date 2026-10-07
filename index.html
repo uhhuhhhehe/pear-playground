@@ -8673,11 +8673,7 @@ function renderScriptBlock(container, steps, depth, path) {
         hint.textContent = 'Do these actions when true';
         thenWrap.appendChild(hint);
       }
-      const thenAdd = document.createElement('button');
-      thenAdd.textContent = '+ Do';
-      thenAdd.style.cssText = 'align-self:flex-start;font-size:10px;padding:3px 8px;background:#ede9fe;color:#3730a3;border:1px solid #c4b5fd;border-radius:5px;cursor:pointer;';
-      thenAdd.onclick = () => { step.thenSteps.push({ kind:'action', type:'fire_group', group:'', value:'', value2:'', extra:'' }); renderScriptEditor(); };
-      thenWrap.appendChild(thenAdd);
+      appendBranchAddControls(thenWrap, step.thenSteps, false);
       box.appendChild(thenWrap);
 
       if (step.elseSteps) {
@@ -8703,11 +8699,7 @@ function renderScriptBlock(container, steps, depth, path) {
           hint.textContent = 'Do these actions when false';
           elseWrap.appendChild(hint);
         }
-        const elseAdd = document.createElement('button');
-        elseAdd.textContent = '+ Do';
-        elseAdd.style.cssText = 'align-self:flex-start;font-size:10px;padding:3px 8px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:5px;cursor:pointer;';
-        elseAdd.onclick = () => { step.elseSteps.push({ kind:'action', type:'fire_group', group:'', value:'', value2:'', extra:'' }); renderScriptEditor(); };
-        elseWrap.appendChild(elseAdd);
+        appendBranchAddControls(elseWrap, step.elseSteps, true);
         box.appendChild(elseWrap);
       } else {
         const addElse = document.createElement('button');
@@ -8745,6 +8737,35 @@ function renderScriptBlock(container, steps, depth, path) {
     row.appendChild(makeDelBtn(() => { steps.splice(localIndex,1); renderScriptEditor(); }));
     container.appendChild(row);
   });
+}
+
+function appendBranchAddControls(wrap, branch, isElse) {
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;margin-top:2px;';
+  const defs = [
+    ['var','+ Var','#d1fae5','#065f46','#6ee7b7'],
+    ['compute','+ Compute','#fef3c7','#92400e','#fcd34d'],
+    ['logic','+ Logic','#ede9fe','#5b21b6','#c4b5fd'],
+    ['condition','+ If','#dbeafe','#1e3a8a','#93c5fd'],
+    ['action','+ Do','#ede9fe','#3730a3','#c4b5fd']
+  ];
+  defs.forEach(([kind,label,bg,fg,border]) => {
+    const b=document.createElement('button'); b.textContent=label;
+    b.style.cssText=`font-size:10px;padding:3px 7px;background:${bg};color:${fg};border:1px solid ${border};border-radius:5px;cursor:pointer;`;
+    b.onclick=()=>{
+      const sequenceDefault = scriptEditorTarget && scriptEditorTarget.tag === 'trigger_sequence';
+      const defaults={
+        var:{kind:'var',name:'myVar',source:'literal_num',value:'0',value2:'0',group:''},
+        compute:{kind:'compute',op:'add',a:'',b:'',out:'result',extra:'',extra2:''},
+        logic:{kind:'logic',op:'and',a:'',b:'',out:'condition'},
+        condition:{kind:'condition',type:'var_eq',a:'',b:'',thenSteps:[]},
+        action:{kind:'action',type:sequenceDefault?'move_to_position':'fire_group',group:'',value:'',value2:'',extra:'',duration:'1',count:'2',steps:'2'}
+      };
+      branch.push(JSON.parse(JSON.stringify(defaults[kind]))); renderScriptEditor();
+    };
+    bar.appendChild(b);
+  });
+  wrap.appendChild(bar);
 }
 
 function getStepByPath(path) {
@@ -8905,19 +8926,25 @@ function appendComputeInputs(row, step, i) {
 }
 
 function appendLogicInputs(row, step, i) {
-  const op = makeSelect(LOGIC_OPS, step.op || 'and');
+  const op = makeSelect([
+    {value:'and',label:'both are true'},
+    {value:'or',label:'either is true'},
+    {value:'not',label:'NOT (opposite)'}
+  ], step.op || 'and');
   op.onchange = () => { setStepField(i,'op',op.value); renderScriptEditor(); };
   row.appendChild(op);
-  const a = makeInput(step.a, 'first $var / true / false', 125);
+
+  const a = makeInput(step.a, 'first $var / true / false', 135);
   a.oninput = () => setStepField(i,'a',a.value);
   row.appendChild(a);
   if ((step.op || 'and') !== 'not') {
-    const b = makeInput(step.b, 'second $var / true / false', 125);
+    const word = document.createElement('span'); word.textContent = step.op === 'or' ? 'OR' : 'AND'; word.style.cssText='font-size:11px;font-weight:700;color:#7c3aed;'; row.appendChild(word);
+    const b = makeInput(step.b, 'second $var / true / false', 135);
     b.oninput = () => setStepField(i,'b',b.value);
     row.appendChild(b);
   }
   const arrow=document.createElement('span'); arrow.textContent='→'; arrow.style.cssText='font-size:12px;color:#71717a;'; row.appendChild(arrow);
-  const out=makeInput(step.out,'output $var',90); out.style.fontFamily='monospace';
+  const out=makeInput(step.out,'save as $var',100); out.style.fontFamily='monospace';
   out.oninput=()=>setStepField(i,'out',out.value); row.appendChild(out);
 }
 
@@ -8970,7 +8997,7 @@ function addScriptStep(kind) {
   const defaults = {
     var:     { kind:'var', name:'myVar', source:'literal_num', value:'0', value2:'0', group:'' },
     compute: { kind:'compute', op:'add', a:'', b:'', out:'result', extra:'', extra2:'' },
-    logic:   { kind:'logic', op:'and', a:'', b:'', out:'condition' },
+    logic:   { kind:'logic', op:'and', a:'', b:'', out:'result' },
     condition: { kind:'condition', type:'var_gt', a:'', b:'', thenSteps:[] },
     action:  { kind:'action', type:sequenceDefault?'move_to_position':'fire_group', group:'', value:'', value2:'', extra:'', duration:'1', count:'2', steps:'2' }
   };
