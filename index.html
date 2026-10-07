@@ -8430,6 +8430,7 @@ let scriptSteps = [];
 const VAR_SOURCES = [
   { value:'literal_num',  label:'Number' },
   { value:'literal_str',  label:'Text' },
+  { value:'literal_bool', label:'Boolean' },
   { value:'counter',      label:'Counter value' },
   { value:'player_x',     label:'Player X' },
   { value:'player_y',     label:'Player Y' },
@@ -8473,8 +8474,8 @@ const LOGIC_OPS = [
 ];
 
 const CONDITION_TYPES = [
-  { value:'value_true',  label:'$var is true' },
-  { value:'value_false', label:'$var is false' },
+  { value:'value_true',  label:'Boolean is true' },
+  { value:'value_false', label:'Boolean is false' },
   { value:'var_eq',       label:'$var  =  value' },
   { value:'var_neq',      label:'$var  ≠  value' },
   { value:'var_gt',       label:'$var  >  value' },
@@ -8868,6 +8869,13 @@ function appendVariableInputs(row, step, i) {
     const inp = makeInput(step.value, 'text...', 120);
     inp.oninput = () => { setStepField(i, 'value', inp.value); };
     row.appendChild(inp);
+  } else if (src === 'literal_bool') {
+    const sel = makeSelect([
+      {value:'true', label:'True'},
+      {value:'false', label:'False'}
+    ], String(step.value ?? 'false').toLowerCase());
+    sel.onchange = () => { setStepField(i, 'value', sel.value); };
+    row.appendChild(sel);
   } else if (src === 'counter' || src.startsWith('object_')) {
     const inp = makeInput(step.group, 'group name', 120);
     inp.oninput = () => { setStepField(i, 'group', inp.value); };
@@ -8934,18 +8942,23 @@ function appendLogicInputs(row, step, i) {
   op.onchange = () => { setStepField(i,'op',op.value); renderScriptEditor(); };
   row.appendChild(op);
 
-  const a = makeInput(step.a, 'first $var / true / false', 135);
+  const a = makeInput(step.a, '($boolean) or $var', 125);
   a.oninput = () => setStepField(i,'a',a.value);
   row.appendChild(a);
   if ((step.op || 'and') !== 'not') {
     const word = document.createElement('span'); word.textContent = step.op === 'or' ? 'OR' : 'AND'; word.style.cssText='font-size:11px;font-weight:700;color:#7c3aed;'; row.appendChild(word);
-    const b = makeInput(step.b, 'second $var / true / false', 135);
+    const b = makeInput(step.b, '($boolean) or $var', 125);
     b.oninput = () => setStepField(i,'b',b.value);
     row.appendChild(b);
   }
   const arrow=document.createElement('span'); arrow.textContent='→'; arrow.style.cssText='font-size:12px;color:#71717a;'; row.appendChild(arrow);
-  const out=makeInput(step.out,'save as $var',100); out.style.fontFamily='monospace';
-  out.oninput=()=>setStepField(i,'out',out.value); row.appendChild(out);
+  const outWrap=document.createElement('span');
+  outWrap.style.cssText='display:inline-flex;align-items:center;gap:2px;white-space:nowrap;';
+  const open=document.createElement('span'); open.textContent='('; open.style.color='#71717a';
+  const out=makeInput(step.out,'variable',82); out.style.fontFamily='monospace';
+  const close=document.createElement('span'); close.textContent=')'; close.style.color='#71717a';
+  out.oninput=()=>setStepField(i,'out',out.value.replace(/^\$/,''));
+  outWrap.append(open,out,close); row.appendChild(outWrap);
 }
 
 function appendConditionInputs(row, step, i) {
@@ -8955,7 +8968,7 @@ function appendConditionInputs(row, step, i) {
 
   const t = step.type;
   if (t === 'value_true' || t === 'value_false') {
-    const a = makeInput(step.a, '$var or true/false', 125);
+    const a = makeInput(step.a, '($boolean) or $var', 125);
     a.oninput = () => setStepField(i,'a',a.value);
     row.appendChild(a);
   } else if (t.startsWith('var_')) {
@@ -9142,10 +9155,12 @@ function resolveVal(str, vars) {
 function buildScriptVars(varDefs) {
   const vars = {};
   varDefs.forEach(v => {
-    const name = v.name;
+    const name = String(v.name || '').trim().replace(/^\$/,'');
+    if (!name) return;
     switch (v.source) {
       case 'literal_num':     vars[name] = parseFloat(v.value) || 0; break;
       case 'literal_str':     vars[name] = v.value || ''; break;
+      case 'literal_bool':    vars[name] = String(v.value).toLowerCase() === 'true'; break;
       case 'counter': {
         const c = objects.find(o => o.tag === 'counter' && o.countGroup === v.group);
         vars[name] = c ? (c.count || 0) : 0;
@@ -9246,15 +9261,28 @@ function scriptBoolValue(value, vars) {
 function applyScriptLogic(logicDefs, vars) {
   logicDefs.forEach(l => {
     const a = scriptBoolValue(l.a, vars), b = scriptBoolValue(l.b, vars);
-    vars[l.out] = l.op === 'not' ? !a : l.op === 'or' ? (a || b) : (a && b);
+    const out = String(l.out || '').trim().replace(/^\$/,'');
+    if (!out) return;
+    vars[out] = l.op === 'not' ? !a : l.op === 'or' ? (a || b) : (a && b);
   });
 }
 
 function evaluateScriptConditions(conditions, vars) {
   return conditions.every(cond => {
     const t = cond.type;
-    if (t === 'value_true') return scriptBoolValue(cond.a, vars);
-    if (t === 'value_false') return !scriptBoolValue(cond.a, vars);
+    if (t === 'value_true' || t === 'value_false') {
+      const raw = String(cond.a ?? '').trim();
+      let result = scriptBoolValue(raw, vars);
+      if (raw.startsWith('$')) {
+        const key = raw.slice(1).trim();
+        const boolObj = objects.find(o => o.tag === 'boolean' && String(o.varGroup || '').trim() === key);
+        if (boolObj) result = !!boolObj.value;
+      } else if (raw) {
+        const boolObj = objects.find(o => o.tag === 'boolean' && String(o.varGroup || '').trim() === raw);
+        if (boolObj) result = !!boolObj.value;
+      }
+      return t === 'value_true' ? result : !result;
+    }
 
     if (t.startsWith('var_')) {
       const a = resolveVal(cond.a, vars);
@@ -9340,10 +9368,12 @@ function executeScriptActions(actions, vars) {
 }
 
     if (t === 'set_var') {
-      vars[group] = val;
+      const varName = String(group || '').trim().replace(/^\$/,'');
+      if (!varName) return;
+      vars[varName] = val;
       // Write back to trigger's runtime vars if it has them
       if (scriptEditorTarget && scriptEditorTarget._runtimeVars) {
-        scriptEditorTarget._runtimeVars[group] = val;
+        scriptEditorTarget._runtimeVars[varName] = val;
       }
       return;
     }
