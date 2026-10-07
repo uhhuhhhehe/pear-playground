@@ -8139,18 +8139,28 @@ function cameraTriggerAction(fx) {
 
 function updateCameraSystem() {
     const tw = cameraController.tween;
+
+    // While a camera transition is active, the tween owns the camera position.
+    // Do not run normal player/group following until the transition finishes,
+    // or that follow code will overwrite the eased position every frame.
     if (tw) {
         const p = Math.max(0, Math.min(1, (gameClock - tw.started) / tw.duration));
         const e = fxEase(p, tw.easing);
         camera.x = tw.startX + (tw.endX - tw.startX) * e;
         camera.y = tw.startY + (tw.endY - tw.startY) * e;
         camera.zoom = tw.startZoom + (tw.endZoom - tw.startZoom) * e;
+
         if (p >= 1) {
             cameraController.mode = tw.finalMode;
             cameraController.targetGroup = tw.finalGroup || '';
             cameraController.tween = null;
         }
+
+        clampCamera();
+        return;
     }
+
+    // Once the transition is complete, resume normal camera following.
     if (cameraController.mode === 'group' && cameraController.targetGroup) {
         const dest = getCameraDestinationForGroup(cameraController.targetGroup);
         if (dest) {
@@ -8161,6 +8171,7 @@ function updateCameraSystem() {
         camera.x = player.x + player.width/2 - canvas.width / (2 * camera.zoom);
         camera.y = player.y + player.height/2 - canvas.height / (2 * camera.zoom);
     }
+
     clampCamera();
 }
 
