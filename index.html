@@ -2118,6 +2118,7 @@ const TOOLBAR_CATEGORIES = [
             { tool: 'trigger_lighting', name: 'Lighting' },
             { tool: 'trigger_modify',   name: 'Modify' },
             { tool: 'trigger_particle', name: 'Particle' },
+            { tool: 'trigger_region',   name: 'Region' },
             { tool: 'monitor',          name: 'Monitor' },
             { tool: 'counter',          name: 'Counter' },
             { tool: 'comparer',         name: 'Comparer' },
@@ -5692,6 +5693,7 @@ function confirmCopyBlock() {
 // (breakables are scheduled — see startBreak())
 // --- Reset Triggers ---
 function resetAllTriggers() {
+    resetRegionRuntime();
     cameraController.tween = null;
     cameraController.mode = 'player';
     cameraController.targetGroup = '';
@@ -6452,7 +6454,12 @@ case 'marble':
         case 'trigger_lighting':
         case 'trigger_modify':
         case 'trigger_particle':
+        case 'trigger_region':
             newObj.tag = currentTool;
+            if (currentTool === 'trigger_region') {
+                newObj.width = 100;
+                newObj.height = 100;
+            }
             newObj.solid = false;
             newObj.gravity = 0;
             newObj.pushable = false;
@@ -7821,7 +7828,82 @@ const FX_EASING_OPTIONS = [
     { value: 'elasticOut', label: 'Elastic Out' }
 ];
 
+let regionRuntime = new WeakMap();
+
+function getRegionRuntime(region) {
+    let st = regionRuntime.get(region);
+    if (!st) {
+        st = { initialized: false, inside: false, enterFired: false, leaveFired: false };
+        regionRuntime.set(region, st);
+    }
+    return st;
+}
+
+function resetRegionRuntime() {
+    regionRuntime = new WeakMap();
+}
+
+function regionTargetIsInside(region, fx) {
+    const type = String(fx.targetType || 'player').toLowerCase();
+    if (type === 'group') {
+        const groupName = String(fx.targetGroup || '').trim();
+        if (!groupName) return false;
+        // A group is considered inside while any member overlaps the region.
+        return getGroupMembers(groupName).some(member => member && member !== region && checkCollision(member, region));
+    }
+    return checkCollision(player, region);
+}
+
+function checkRegionTriggers() {
+    if (!playMode) return;
+    for (const region of objects) {
+        if (region.tag !== 'trigger_region' || region.active === false) continue;
+        const fx = getEffectFx(region);
+        const st = getRegionRuntime(region);
+        const inside = regionTargetIsInside(region, fx);
+
+        // Don't treat the initial state as an entry/exit event.
+        if (!st.initialized) {
+            st.initialized = true;
+            st.inside = inside;
+            continue;
+        }
+
+        if (inside && !st.inside) {
+            st.inside = true;
+            const target = String(fx.enterGroup || '').trim();
+            if (target && (!fx.oneTime || !st.enterFired)) {
+                fireTriggerGroup(target, 'region_enter');
+                st.enterFired = true;
+            }
+        } else if (!inside && st.inside) {
+            st.inside = false;
+            const target = String(fx.leaveGroup || '').trim();
+            if (target && (!fx.oneTime || !st.leaveFired)) {
+                fireTriggerGroup(target, 'region_leave');
+                st.leaveFired = true;
+            }
+        }
+    }
+}
+
 const EFFECT_TRIGGER_DEFS = {
+    trigger_region: {
+        label: 'Region', title: 'Region Trigger', color: '#22c55e', glyph: '▣', region: true,
+        hint: 'Fire a trigger group when the player or a specified group enters or leaves this region. Resize the block freely; detection always uses its current bounds.',
+        fields: [
+            { key: 'targetType', label: 'Detect', type: 'select', default: 'player', options: [
+                { value: 'player', label: 'Player' },
+                { value: 'group', label: 'Group' }
+            ] },
+            { key: 'targetGroup', label: 'Group to Detect', type: 'text', placeholder: "e.g., 'enemies'" },
+            { key: 'enterGroup', label: 'Enter → Trigger Group', type: 'text', placeholder: "e.g., 'open_door'" },
+            { key: 'leaveGroup', label: 'Leave → Trigger Group', type: 'text', placeholder: "e.g., 'close_door'" },
+            { key: 'oneTime', label: 'One-time (each direction)', type: 'checkbox', default: false }
+        ],
+        run() {}
+    },
+
     trigger_camera: {
         label: 'Camera', title: 'Camera Trigger', color: '#6366f1', glyph: '⌖',
         hint: 'Snap the camera to a group, release it back to the player, change zoom, or reset the camera.',
@@ -8299,7 +8381,7 @@ function checkEffectTriggerTouches(near) {
 }
 
 function getEffectFields(def) {
-    return def.fields.concat(EFFECT_COMMON_FIELDS);
+    return def.region ? def.fields : def.fields.concat(EFFECT_COMMON_FIELDS);
 }
 
 function renderEffectTriggerFields(obj) {
@@ -10715,7 +10797,8 @@ case 'goal': {
         case 'trigger_move':
         case 'trigger_lighting':
         case 'trigger_modify':
-        case 'trigger_particle': {
+        case 'trigger_particle':
+        case 'trigger_region': {
             const d = EFFECT_TRIGGER_DEFS[tag];
             ctx.fillStyle = d.color + '22';
             ctx.fillRect(x, y, w, h);
@@ -12174,6 +12257,7 @@ function gameLoop(timestamp) {
         const near = getNearbyObjects(player);     // one nearby-blocks lookup shared by the touch checks
         checkTriggers(near);
         checkEffectTriggerTouches(near);
+        checkRegionTriggers();
         checkMonitors();
         checkComparers();
         updatePlatforms(delta);
