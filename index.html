@@ -2769,12 +2769,28 @@ function setObjPos(o, nx, ny) {
     if (pp) { pp.startX += dx; pp.endX += dx; pp.startY += dy; pp.endY += dy; }
 }
 // Topmost object under a point (respects draw order). Locked / hidden are skipped unless asked.
+function pointInObjectShape(wx, wy, o) {
+    // Pointer hit-testing must use the same rotated rectangle the editor renders.
+    // Transform the point back into the object's local, unrotated coordinates.
+    const angle = (o.rotation || 0) * Math.PI / 180;
+    if (Math.abs(angle) < 1e-8) {
+        return wx >= o.x && wx <= o.x + o.width && wy >= o.y && wy <= o.y + o.height;
+    }
+    const cx = o.x + o.width / 2, cy = o.y + o.height / 2;
+    const dx = wx - cx, dy = wy - cy;
+    const c = Math.cos(angle), sn = Math.sin(angle);
+    const localX = dx * c + dy * sn;
+    const localY = -dx * sn + dy * c;
+    return Math.abs(localX) <= o.width / 2 && Math.abs(localY) <= o.height / 2;
+}
 function pickObjectAt(wx, wy, includeLocked = false) {
     let best = null, bestOrd = -1;
+    // Query a point-sized area, then use precise shape tests instead of the old
+    // axis-aligned editor rectangle, which was wrong for rotated objects.
     for (const o of getNearbyObjects({ x: wx, y: wy, width: 1, height: 1 })) {
         if (o.tag === 'player' || o.hidden) continue;
         if (o.locked && !includeLocked) continue;
-        if (wx < o.x || wx > o.x + o.width || wy < o.y || wy > o.y + o.height) continue;
+        if (!pointInObjectShape(wx, wy, o)) continue;
         const ord = o._ord || 0;
         if (ord >= bestOrd) { best = o; bestOrd = ord; }
     }
@@ -7365,9 +7381,15 @@ function resolveCollision(obj, collision) {
             obj.vx -= intoSurface * nx;
             obj.vy -= intoSurface * ny;
         }
-        if (ny < -0.17 && preResolveVy >= -1.5) {
+        if (ny < -0.65 && preResolveVy >= -1.5) {
             obj._contactGrounded = true;
-            obj._slopeAngle = Math.atan2(-nx, -ny);
+            const surface = getSlopeSurface(other);
+            let angle = surface ? surface.angle : ((other.rotation || 0) * Math.PI / 180);
+            while (angle > Math.PI) angle -= Math.PI * 2;
+            while (angle < -Math.PI) angle += Math.PI * 2;
+            if (angle > Math.PI / 2) angle -= Math.PI;
+            if (angle < -Math.PI / 2) angle += Math.PI;
+            obj._slopeAngle = Math.max(-Math.PI * 0.42, Math.min(Math.PI * 0.42, angle));
             if (obj.tag === 'player') {
                 obj.isJumping = false;
                 obj.jumpsLeft = obj.maxJumps;
@@ -7457,6 +7479,51 @@ function resolveCollision(obj, collision) {
         }
     }
 }
+function resolveRotatedPenetrations(obj) {
+    // Axis-by-axis resolution can leave a corner embedded in a rotated block
+    // after a diagonal/underside approach. A few short SAT depenetration passes
+    // make the final position non-overlapping without snapping to the block top.
+    for (let pass = 0; pass < 4; pass++) {
+        let corrected = false;
+        const candidates = getNearbyObjects({ x: obj.x - 4, y: obj.y - 4, width: obj.width + 8, height: obj.height + 8 });
+        for (const other of candidates) {
+            if (other === obj || !other.solid || other.tag === 'trigger' || !(other.rotation || obj.rotation)) continue;
+            if (obj.tag !== 'player' && other.tag === 'player') continue;
+            const contact = satContact(obj, other);
+            if (!contact || contact.penetration <= 0) continue;
+            const nx = contact.normalX, ny = contact.normalY;
+            const push = contact.penetration + 0.04;
+            obj.x += nx * push;
+            obj.y += ny * push;
+            const into = obj.vx * nx + obj.vy * ny;
+            if (into < 0) {
+                obj.vx -= into * nx;
+                obj.vy -= into * ny;
+            }
+            // Only a clearly upward-facing surface is ground; side/underside
+            // contacts must never rotate the player or reset its jump.
+            if (ny < -0.65 && obj.vy >= -1.5) {
+                obj._contactGrounded = true;
+                if (obj.tag === 'player') {
+                    const surface = getSlopeSurface(other);
+                    let angle = surface ? surface.angle : ((other.rotation || 0) * Math.PI / 180);
+                    while (angle > Math.PI) angle -= Math.PI * 2;
+                    while (angle < -Math.PI) angle += Math.PI * 2;
+                    if (angle > Math.PI / 2) angle -= Math.PI;
+                    if (angle < -Math.PI / 2) angle += Math.PI;
+                    // Avoid abrupt, near-vertical character rotations on corners.
+                    obj._slopeAngle = Math.max(-Math.PI * 0.42, Math.min(Math.PI * 0.42, angle));
+                    obj._slopeObject = other;
+                    obj.isJumping = false;
+                    obj.jumpsLeft = obj.maxJumps;
+                }
+            }
+            corrected = true;
+        }
+        if (!corrected) break;
+    }
+}
+
 function resetPlayer(obj) {
   playSFX('die'); // ADD
   deathFlash = 1.0;
@@ -7554,6 +7621,9 @@ if (onConveyor) {
     obj.y += obj.vy * delta;
     let yCollision = checkCollisions(obj, 'y');
     if (yCollision.overlap) resolveCollision(obj, yCollision.overlap);
+    // Final continuous-style correction handles rotated block undersides and
+    // corners after both movement axes have been resolved.
+    resolveRotatedPenetrations(obj);
     const onSlope = obj._contactGrounded === true;
     if (onSlope) {
       const degrees = Math.abs(obj._slopeAngle * 180 / Math.PI);
