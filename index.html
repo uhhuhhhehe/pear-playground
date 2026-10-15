@@ -4514,22 +4514,39 @@ function rotatedAABB(o) {
   const x=Math.min(...xs), y=Math.min(...ys), right=Math.max(...xs), bottom=Math.max(...ys);
   return {x,y,width:right-x,height:bottom-y};
 }
-function rectsCollide(a, b) {
-  // Broad-phase first, then SAT on both rectangles' actual rotated edges.
-  const aa = (a.rotation ? rotatedAABB(a) : a), bb = (b.rotation ? rotatedAABB(b) : b);
-  if (!(aa.x < bb.x+bb.width && aa.x+aa.width > bb.x && aa.y < bb.y+bb.height && aa.y+aa.height > bb.y)) return false;
-  if (!(a.rotation || b.rotation)) return true;
-  const ap=rectCorners(a), bp=rectCorners(b);
-  for (const poly of [ap,bp]) {
-    for (let i=0;i<2;i++) {
-      const p1=poly[i], p2=poly[i+1], ax=-(p2.y-p1.y), ay=p2.x-p1.x;
-      let amin=Infinity,amax=-Infinity,bmin=Infinity,bmax=-Infinity;
-      for(const p of ap){const d=p.x*ax+p.y*ay;amin=Math.min(amin,d);amax=Math.max(amax,d);}
-      for(const p of bp){const d=p.x*ax+p.y*ay;bmin=Math.min(bmin,d);bmax=Math.max(bmax,d);}
-      if (amax < bmin || bmax < amin) return false;
+function satContact(a, b) {
+  // Separating Axis Theorem: use the real edges of both rectangles, not their AABBs.
+  const ap = rectCorners(a), bp = rectCorners(b);
+  let minOverlap = Infinity, bestX = 0, bestY = 0;
+  const acx = a.x + a.width / 2, acy = a.y + a.height / 2;
+  const bcx = b.x + b.width / 2, bcy = b.y + b.height / 2;
+  for (const poly of [ap, bp]) {
+    for (let i = 0; i < 2; i++) {
+      const p1 = poly[i], p2 = poly[i + 1];
+      let nx = -(p2.y - p1.y), ny = p2.x - p1.x;
+      const len = Math.hypot(nx, ny);
+      if (len < 1e-8) continue;
+      nx /= len; ny /= len;
+      let amin = Infinity, amax = -Infinity, bmin = Infinity, bmax = -Infinity;
+      for (const pt of ap) { const d = pt.x * nx + pt.y * ny; amin = Math.min(amin, d); amax = Math.max(amax, d); }
+      for (const pt of bp) { const d = pt.x * nx + pt.y * ny; bmin = Math.min(bmin, d); bmax = Math.max(bmax, d); }
+      const intervalOverlap = Math.min(amax, bmax) - Math.max(amin, bmin);
+      if (intervalOverlap <= 0) return null;
+      // Correct containment too: calculate the distance needed to fully separate,
+      // rather than using the smaller object's entire width as a false MTV.
+      const penetration = Math.min(amax - bmin, bmax - amin);
+      if (penetration < minOverlap) { minOverlap = penetration; bestX = nx; bestY = ny; }
     }
   }
-  return true;
+  // The contact normal always points from the solid toward the moving object.
+  if ((acx - bcx) * bestX + (acy - bcy) * bestY < 0) { bestX = -bestX; bestY = -bestY; }
+  return { penetration: minOverlap, normalX: bestX, normalY: bestY };
+}
+function rectsCollide(a, b) {
+  const aa = a.rotation ? rotatedAABB(a) : a, bb = b.rotation ? rotatedAABB(b) : b;
+  if (!(aa.x < bb.x + bb.width && aa.x + aa.width > bb.x && aa.y < bb.y + bb.height && aa.y + aa.height > bb.y)) return false;
+  if (!a.rotation && !b.rotation) return true;
+  return !!satContact(a, b);
 }
 
 // The upper edge of a rotated solid is its walkable slope surface.
@@ -7280,8 +7297,6 @@ function checkCollisions(obj, axis) {
   for (let other of candidates) {
     // Objects don't collide with themselves, triggers, or non-solid objects
     if (other === obj || !other.solid || other.tag === 'trigger') continue;
-    // Rotated solids are handled by their true top-edge slope surface below, not their rectangular AABB.
-    if (other.rotation && getSlopeSurface(other)) continue;
     // --- ADD THIS LINE ---
     // Optimization: simple distance check. If 'other' is too far away (e.g. > 200px), skip complex collision math.
     const maxReach = Math.max(obj.width, obj.height, other.width, other.height) + 10;
@@ -7301,7 +7316,18 @@ if (Math.abs(obj.x - other.x) > maxReach || Math.abs(obj.y - other.y) > maxReach
     // *** END NEW LOGIC ***
 
     if (rectsCollide(obj, other)) {
-      // Calculate overlap
+      // Rotated rectangles use a minimum-translation vector from SAT. This keeps
+      // their sides, undersides, and sloped tops solid without AABB corner jumps.
+      if (other.rotation || obj.rotation) {
+        const contact = satContact(obj, other);
+        if (contact && (!overlap || contact.penetration < overlap.overlap)) {
+          overlap = { object: other, overlap: contact.penetration, axis, centerDist: 0,
+            rotated: true, normalX: contact.normalX, normalY: contact.normalY };
+        }
+        if (contact && axis === 'y' && contact.normalY < -0.17) hasGroundContact = true;
+        continue;
+      }
+      // Calculate overlap for axis-aligned rectangles.
       const halfSize = (obj[sizeAxis] + other[sizeAxis]) / 2;
       const centerDist = (other[moveAxis] + other[sizeAxis] / 2) - (obj[moveAxis] + obj[sizeAxis] / 2);
       const currentOverlap = halfSize - Math.abs(centerDist);
@@ -7327,6 +7353,35 @@ function resolveCollision(obj, collision) {
     const overlap = collision.overlap;
     const isGround = other === ground;
     const isPlayer = other.tag === 'player';
+
+    if (collision.rotated) {
+        const nx = collision.normalX, ny = collision.normalY;
+        // Small skin prevents floating-point jitter and repeated re-penetration.
+        obj.x += nx * (overlap + 0.02);
+        obj.y += ny * (overlap + 0.02);
+        const preResolveVy = obj.vy;
+        const intoSurface = obj.vx * nx + obj.vy * ny;
+        if (intoSurface < 0) {
+            obj.vx -= intoSurface * nx;
+            obj.vy -= intoSurface * ny;
+        }
+        if (ny < -0.17 && preResolveVy >= -1.5) {
+            obj._contactGrounded = true;
+            obj._slopeAngle = Math.atan2(-nx, -ny);
+            if (obj.tag === 'player') {
+                obj.isJumping = false;
+                obj.jumpsLeft = obj.maxJumps;
+                obj._slopeObject = other;
+                if (other.tag === 'breakable' && !other.breakTimer && !other.broken) startBreak(other);
+                if (other.slime) obj.jumpsLeft = obj.maxJumps;
+                if (other.kill && obj.tag === 'player') resetPlayer(obj);
+                if (other.bounce) { obj.vy = -18; obj.isJumping = true; obj._contactGrounded = false; }
+            }
+        }
+        if (obj.tag === 'player' && other.kill) resetPlayer(obj);
+        if (obj.pushable && obj.tag !== 'player' && Math.abs(ny) > 0.35) obj.vy = Math.min(obj.vy, 0);
+        return;
+    }
 
     if (collision.axis === 'y') {
         const direction = isGround || isPlayer ? 1 : Math.sign(collision.centerDist);
@@ -7489,6 +7544,7 @@ if (onConveyor) {
     obj.vy = Math.max(Math.min(obj.vy, 20), -20);
 
     // --- 3. Horizontal Movement & Collision ---
+    obj._contactGrounded = false;
     const previousBottom = obj.y + obj.height;
     obj.x += obj.vx * delta;
     let xCollision = checkCollisions(obj, 'x');
@@ -7498,7 +7554,21 @@ if (onConveyor) {
     obj.y += obj.vy * delta;
     let yCollision = checkCollisions(obj, 'y');
     if (yCollision.overlap) resolveCollision(obj, yCollision.overlap);
-    const onSlope = resolveSlopeContacts(obj, previousBottom);
+    const onSlope = obj._contactGrounded === true;
+    if (onSlope) {
+      const degrees = Math.abs(obj._slopeAngle * 180 / Math.PI);
+      const tangentX = Math.cos(obj._slopeAngle), tangentY = Math.sin(obj._slopeAngle);
+      if (degrees < 20 && (obj.tag !== 'player' || (!keys.left && !keys.right))) {
+        // Static-friction approximation: shallow slopes hold still unless momentum is significant.
+        const tangentSpeed = obj.vx * tangentX + obj.vy * tangentY;
+        if (Math.abs(tangentSpeed) < 2.2) { obj.vx = 0; obj.vy = 0; }
+      } else if (degrees >= 20) {
+        // Gravity naturally projects onto the slope tangent; this small assist makes steep slides readable.
+        const downhill = Math.sin(obj._slopeAngle);
+        obj.vx += downhill * Math.min(obj.tag === 'player' ? 0.3 : 0.18, Math.sin(degrees * Math.PI / 180) * (obj.tag === 'player' ? 0.3 : 0.18)) * delta;
+        obj.vx = Math.max(-12, Math.min(12, obj.vx));
+      }
+    }
 
     if (obj.tag === "player") {
       const currentlyGrounded = onSlope || yCollision.hasGroundContact || (!!yCollision.overlap && obj.vy >= 0);
