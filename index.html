@@ -802,6 +802,11 @@
         <input type="number" id="propHeight">
     </div>
     <div class="input-group">
+        <label for="propRotation">Rotation (degrees):</label>
+        <input type="number" id="propRotation" step="1" min="-360" max="360" value="0">
+        <small style="color:#71717a;font-size:10px;">Rotate solid blocks to make slopes. Physics objects follow the slope surface.</small>
+    </div>
+    <div class="input-group">
         <label for="propOpacity">Opacity (0–1):</label>
         <input type="number" id="propOpacity" step="0.1" min="0" max="1">
     </div>
@@ -1287,8 +1292,8 @@
       style="font-size:11px;padding:4px 10px;background:#fef3c7;color:#92400e;
              border:1px solid #fcd34d;border-radius:6px;cursor:pointer;">+ Compute</button>
     <button data-script-add="condition" onclick="addScriptStep('condition')"
-      style="font-size:11px;padding:4px 10px;background:#dbeafe;color:#1e3a8a;
-             border:1px solid #93c5fd;border-radius:6px;cursor:pointer;">+ If</button>
+  style="font-size:11px;padding:4px 10px;background:#dbeafe;color:#1e3a8a;
+         border:1px solid #93c5fd;border-radius:6px;cursor:pointer;">+ If / Else</button>
     <button onclick="addScriptStep('action')"
       style="font-size:11px;padding:4px 10px;background:#ede9fe;color:#3730a3;
              border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;">+ Do</button>
@@ -1354,7 +1359,7 @@ let ghostY = 0;
 let currentTool = null;
 let GRID_SIZE = 50;
 let START_POS = { x: 200, y: 0 };
-let camera = { x: 0, y: 0, zoom: 1 };
+let camera = { x: 0, y: 0 };
 const keys = { left: false, right: false, jump: false, down: false };
 let gameLoopId = null; // For starting/stopping the game loop
 let fps = 60;              // The value we display
@@ -1910,7 +1915,6 @@ function applyLevelData(data) {
         for (let o of data.objects) {
             try {
                 const restored = Object.assign({}, SAVE_DEFAULTS, o);
-            if (LEGACY_EFFECT_TRIGGER_TAGS.has(restored.tag)) continue;
                 if (typeof restored.group === 'string') {
                     restored.group = restored.group.split(',').map(g => g.trim()).filter(g => g.length > 0);
                 }
@@ -2112,17 +2116,25 @@ const TOOLBAR_CATEGORIES = [
         id: 'logic', label: 'Logic', icon: '⚡',
         color: '#8b5cf6',
         tools: [
-            { tool: 'trigger',          name: 'Main Trigger' },
-            { tool: 'trigger_camera',   name: 'Camera' },
-            { tool: 'trigger_move',     name: 'Move' },
+            { tool: 'trigger',  name: 'Main Trigger' },
+            { tool: 'monitor',  name: 'Monitor'  },
+            { tool: 'counter',  name: 'Counter'  },
+            { tool: 'comparer', name: 'Comparer' },
+            { tool: 'clock',    name: 'Clock'    },
+            { tool: 'boolean',  name: 'Boolean'  },
+        ]
+    },
+    {
+        id: 'effects', label: 'Effects', icon: '✨',
+        color: '#0ea5e9',
+        tools: [
+            { tool: 'trigger_move',     name: 'Move'     },
+            { tool: 'trigger_modify',   name: 'Modify'   },
             { tool: 'trigger_lighting', name: 'Lighting' },
-            { tool: 'trigger_modify',   name: 'Modify' },
-            { tool: 'trigger_particle', name: 'Particle' },
-            { tool: 'monitor',          name: 'Monitor' },
-            { tool: 'counter',          name: 'Counter' },
-            { tool: 'comparer',         name: 'Comparer' },
-            { tool: 'clock',            name: 'Clock' },
-            { tool: 'boolean',          name: 'Boolean' },
+            { tool: 'trigger_variable', name: 'Variable' },
+            { tool: 'trigger_behavior', name: 'Behavior' },
+            { tool: 'trigger_effect',   name: 'Misc'     },
+            { tool: 'trigger_sequence', name: 'Sequence' },
         ]
     },
     {
@@ -2662,7 +2674,6 @@ function getGroups(obj) {
 function hasGroup(obj, groupName) {
     return getGroups(obj).includes(resolveFxVars(groupName));
 }
-const LEGACY_EFFECT_TRIGGER_TAGS = new Set(['trigger_effect','trigger_variable','trigger_behavior','trigger_sequence','trigger_region']);
 function isEffectTag(tag) {
     return Object.prototype.hasOwnProperty.call(EFFECT_TRIGGER_DEFS, tag);
 }
@@ -2670,10 +2681,13 @@ function isAnyTrigger(tag) {
     return tag === 'trigger' || isEffectTag(tag);
 }
 function fireLevelStartScripts() {
-    objects.filter(trigger => trigger.tag === 'trigger').forEach(trigger => {
+    objects.filter(trigger => trigger.tag === 'trigger' || trigger.tag === 'trigger_sequence').forEach(trigger => {
         if (trigger.active === false) return;
         const sc = trigger.script;
-        if (sc && sc.event === 'level_start') runTriggerScript(trigger, 'level_start');
+        if (sc && sc.event === 'level_start') {
+            if (trigger.tag === 'trigger_sequence') executeEffectTrigger(trigger, 'level_start');
+            else runTriggerScript(trigger, 'level_start');
+        }
     });
 }
 function setPlayMode(enabled) {
@@ -4089,75 +4103,35 @@ function redo() {
 ============================================================ */
 // 1. Particle System
 class Particle {
-  constructor(x, y, opts = {}) {
-    this.x = x; this.y = y;
-    this.color = opts.color || '#6366f1';
-    this.shape = opts.shape || 'square';
-    this.life = opts.life ?? 45;
-    this.maxLife = this.life;
-    this.size = Math.max(1, opts.size ?? 4) * (0.75 + Math.random() * 0.5);
-    this.gravity = opts.gravity ?? 0;
-    this.drag = opts.drag ?? 0.98;
-    const spread = Math.max(0, Math.min(360, opts.spread ?? 360));
-    const baseVX = opts.vx ?? 0, baseVY = opts.vy ?? 0;
-    const baseAngle = Math.atan2(baseVY, baseVX);
-    const baseSpeed = Math.hypot(baseVX, baseVY);
-    let angle, speed;
-    if (baseSpeed > 0.001) {
-      const half = (spread * Math.PI / 180) / 2;
-      angle = baseAngle + (Math.random() - 0.5) * 2 * half;
-      speed = baseSpeed + (Math.random() - 0.5) * (opts.speed ?? 0);
-    } else {
-      angle = Math.random() * Math.PI * 2;
-      if (spread < 360) angle = -Math.PI/2 + (Math.random() - 0.5) * (spread * Math.PI / 180);
-      speed = Math.random() * (opts.speed ?? 0);
-    }
-    this.vx = Math.cos(angle) * speed;
-    this.vy = Math.sin(angle) * speed;
+  constructor(x, y, color, speed, life) {
+    this.x = x;
+    this.y = y;
+    this.vx = (Math.random() - 0.5) * speed;
+    this.vy = (Math.random() - 0.5) * speed;
+    this.life = life;
+    this.maxLife = life;
+    this.color = color;
+    this.size = Math.random() * 4 + 2;
   }
   update() {
     this.x += this.vx;
     this.y += this.vy;
-    this.vy += this.gravity;
-    this.vx *= this.drag;
-    this.vy *= this.drag;
     this.life--;
-    this.size *= 0.992;
+    this.size *= 0.95; // Shrink over time
   }
   draw(ctx) {
-    const alpha = Math.max(0, this.life / this.maxLife);
-    ctx.save();
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = this.life / this.maxLife;
     ctx.fillStyle = this.color;
-    const x = this.x - camera.x, y = this.y - camera.y, s = this.size;
-    ctx.translate(x, y);
-    if (this.shape === 'circle') {
-      ctx.beginPath(); ctx.arc(0, 0, s/2, 0, Math.PI*2); ctx.fill();
-    } else if (this.shape === 'triangle') {
-      ctx.beginPath(); ctx.moveTo(0,-s/2); ctx.lineTo(s/2,s/2); ctx.lineTo(-s/2,s/2); ctx.closePath(); ctx.fill();
-    } else if (this.shape === 'diamond') {
-      ctx.beginPath(); ctx.moveTo(0,-s/2); ctx.lineTo(s/2,0); ctx.lineTo(0,s/2); ctx.lineTo(-s/2,0); ctx.closePath(); ctx.fill();
-    } else if (this.shape === 'star') {
-      ctx.beginPath();
-      for (let i=0;i<10;i++) {
-        const r = i%2===0 ? s/2 : s/4;
-        const a = -Math.PI/2 + i*Math.PI/5;
-        const px = Math.cos(a)*r, py = Math.sin(a)*r;
-        if (i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
-      }
-      ctx.closePath(); ctx.fill();
-    } else {
-      ctx.fillRect(-s/2, -s/2, s, s);
-    }
-    ctx.restore();
+    ctx.fillRect(this.x - camera.x, this.y - camera.y, this.size, this.size);
+    ctx.globalAlpha = 1.0;
   }
 }
-function spawnAdvancedParticles(x, y, count, opts = {}) {
-  if (!settings.particles) return;
-  for (let i = 0; i < count; i++) particles.push(new Particle(x, y, opts));
-}
+
 function spawnParticles(x, y, count, color, speed = 5) {
-  spawnAdvancedParticles(x, y, count, { color, speed, life: 45, size: 4, shape: 'square', spread: 360 });
+  if (!settings.particles) return; // CHECK SETTING
+  for (let i = 0; i < count; i++) {
+    particles.push(new Particle(x, y, color, speed, 30 + Math.random() * 20));
+  }
 }
 
 function drawBackground() {
@@ -4356,8 +4330,10 @@ function updateSpatialGrid() {
     for (let i = 0; i < objects.length; i++) {
         const obj = objects[i];
         obj._ord = i;                                              // draw order = array order
-        const startX = Math.floor(obj.x / SPATIAL_CELL_SIZE), endX = Math.floor((obj.x + obj.width) / SPATIAL_CELL_SIZE);
-        const startY = Math.floor(obj.y / SPATIAL_CELL_SIZE), endY = Math.floor((obj.y + obj.height) / SPATIAL_CELL_SIZE);
+        // Index the real rotated bounds, not just the unrotated editor rectangle.
+        const bounds = obj.rotation ? rotatedAABB(obj) : obj;
+        const startX = Math.floor(bounds.x / SPATIAL_CELL_SIZE), endX = Math.floor((bounds.x + bounds.width) / SPATIAL_CELL_SIZE);
+        const startY = Math.floor(bounds.y / SPATIAL_CELL_SIZE), endY = Math.floor((bounds.y + bounds.height) / SPATIAL_CELL_SIZE);
         for (let x = startX; x <= endX; x++) {
             for (let y = startY; y <= endY; y++) {
                 const key = cellKey(x, y);
@@ -4528,13 +4504,82 @@ function toggleSetting(key) {
     }
     saveSettings();
 }
+function rectCorners(o) {
+  const cx = o.x + o.width / 2, cy = o.y + o.height / 2;
+  const r = (o.rotation || 0) * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r);
+  return [[-o.width/2,-o.height/2],[o.width/2,-o.height/2],[o.width/2,o.height/2],[-o.width/2,o.height/2]].map(([x,y]) => ({x:cx+x*c-y*sn,y:cy+x*sn+y*c}));
+}
+function rotatedAABB(o) {
+  const pts = rectCorners(o), xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
+  const x=Math.min(...xs), y=Math.min(...ys), right=Math.max(...xs), bottom=Math.max(...ys);
+  return {x,y,width:right-x,height:bottom-y};
+}
 function rectsCollide(a, b) {
-  return (
-    a.x < b.x + b.width &&
-    a.x + a.width > b.x &&
-    a.y < b.y + b.height &&
-    a.y + a.height > b.y
-  );
+  // Broad-phase first, then SAT on both rectangles' actual rotated edges.
+  const aa = (a.rotation ? rotatedAABB(a) : a), bb = (b.rotation ? rotatedAABB(b) : b);
+  if (!(aa.x < bb.x+bb.width && aa.x+aa.width > bb.x && aa.y < bb.y+bb.height && aa.y+aa.height > bb.y)) return false;
+  if (!(a.rotation || b.rotation)) return true;
+  const ap=rectCorners(a), bp=rectCorners(b);
+  for (const poly of [ap,bp]) {
+    for (let i=0;i<2;i++) {
+      const p1=poly[i], p2=poly[i+1], ax=-(p2.y-p1.y), ay=p2.x-p1.x;
+      let amin=Infinity,amax=-Infinity,bmin=Infinity,bmax=-Infinity;
+      for(const p of ap){const d=p.x*ax+p.y*ay;amin=Math.min(amin,d);amax=Math.max(amax,d);}
+      for(const p of bp){const d=p.x*ax+p.y*ay;bmin=Math.min(bmin,d);bmax=Math.max(bmax,d);}
+      if (amax < bmin || bmax < amin) return false;
+    }
+  }
+  return true;
+}
+
+// The upper edge of a rotated solid is its walkable slope surface.
+function getSlopeSurface(o) {
+  const angle=((o.rotation||0)%360+360)%360;
+  if (!angle || angle > 80 && angle < 280) return null; // horizontal surfaces use normal collision; avoid upside-down/vertical faces
+  const pts=rectCorners(o);
+  const a=pts[0], b=pts[1];
+  const dx=b.x-a.x;
+  if (Math.abs(dx)<0.001) return null;
+  return {x1:Math.min(a.x,b.x),x2:Math.max(a.x,b.x),a,b,angle:Math.atan2(b.y-a.y,b.x-a.x)};
+}
+function slopeYAt(surface,x) {
+  const t=(x-surface.a.x)/(surface.b.x-surface.a.x);
+  return surface.a.y+(surface.b.y-surface.a.y)*t;
+}
+function resolveSlopeContacts(obj, previousBottom) {
+  let best=null;
+  const broad={x:obj.x-12,y:obj.y-obj.height-24,width:obj.width+24,height:obj.height*2+48};
+  for (const other of getNearbyObjects(broad)) {
+    if (other===obj || !other.solid || other.tag==='trigger' || !other.rotation) continue;
+    if (obj.tag!=='player' && other.tag==='player') continue;
+    const surface=getSlopeSurface(other); if(!surface) continue;
+    const left=obj.x+Math.min(6,obj.width*0.2), right=obj.x+obj.width-Math.min(6,obj.width*0.2), center=obj.x+obj.width/2;
+    if (right < surface.x1 || left > surface.x2) continue;
+    const sampleX=Math.max(surface.x1,Math.min(surface.x2,center));
+    const sy=slopeYAt(surface,sampleX);
+    const bottom=obj.y+obj.height;
+    const wasNear=previousBottom===undefined || previousBottom <= sy+Math.max(16,Math.abs(obj.vy||0)*2+5);
+    if ((bottom >= sy-4 && bottom <= sy+Math.max(20,Math.abs(obj.vy||0)*2+8) && (obj.vy||0)>=-1 && wasNear) || (obj._slopeObject===other && bottom>=sy-12 && bottom<=sy+18)) {
+      if (!best || sy < best.y) best={object:other,surface,y:sy,angle:surface.angle};
+    }
+  }
+  if (!best) { if(obj.tag==='player') obj._slopeObject=null; return false; }
+  obj.y=best.y-obj.height;
+  obj.vy=0;
+  obj._slopeObject=best.object;
+  if (obj.tag==='player') {
+    obj.isJumping=false; obj.jumpsLeft=obj.maxJumps; obj._slopeAngle=best.angle;
+    const degrees=best.angle*180/Math.PI;
+    if (Math.abs(degrees)>=20) {
+      const downhill=Math.sign(Math.sin(best.angle));
+      obj.vx += downhill * Math.min(0.85,Math.abs(Math.sin(best.angle))*0.85);
+      obj.vx=Math.max(-12,Math.min(12,obj.vx));
+    }
+  } else {
+    const degrees=best.angle*180/Math.PI;
+    if (Math.abs(degrees)>=20) obj.vx += Math.sign(Math.sin(best.angle))*Math.min(0.6,Math.abs(Math.sin(best.angle))*0.6);
+  }
+  return true;
 }
 async function saveSettings() {
     if (!currentUser) return;
@@ -5345,7 +5390,6 @@ async function joinCurrentGame() {
   if (data.objects) {
     for (let o of Object.values(data.objects)) {
         const restored = Object.assign({}, SAVE_DEFAULTS, o);
-            if (LEGACY_EFFECT_TRIGGER_TAGS.has(restored.tag)) continue;
         if (typeof restored.group === 'string') {
     restored.group = restored.group
         .split(',')
@@ -5465,7 +5509,6 @@ function loadMapFile(ev) {
                 for (let o of data.objects) {
                     try {
                         const restored = Object.assign({}, SAVE_DEFAULTS, o);
-            if (LEGACY_EFFECT_TRIGGER_TAGS.has(restored.tag)) continue;
 
                         // Normalize group
                         if (typeof restored.group === 'string') {
@@ -5692,12 +5735,6 @@ function confirmCopyBlock() {
 // (breakables are scheduled — see startBreak())
 // --- Reset Triggers ---
 function resetAllTriggers() {
-    resetRegionRuntime();
-    cameraController.tween = null;
-    cameraController.mode = 'player';
-    cameraController.targetGroup = '';
-    camera.zoom = 1;
-
     visualTweens.length = 0;
     visualScriptSeq++;
     objects.forEach(o => { delete o._visualScriptToken; });
@@ -5914,6 +5951,7 @@ function openPopup(obj) {
   document.getElementById("propY").value       = Math.round(obj.y);
   document.getElementById("propWidth").value   = obj.width;
   document.getElementById("propHeight").value  = obj.height;
+  document.getElementById("propRotation").value = obj.rotation || 0;
   document.getElementById("propOpacity").value = obj.opacity !== undefined ? obj.opacity : 1;
   document.getElementById("propGravity").value = obj.gravity ?? 0;
 
@@ -6054,6 +6092,8 @@ function applyProperties() {
   // General properties (apply to ALL)
   selectedObject.width = parseFloat(document.getElementById("propWidth").value) || GRID_SIZE;
   selectedObject.height = parseFloat(document.getElementById("propHeight").value) || GRID_SIZE;
+  const newRotation = parseFloat(document.getElementById("propRotation").value);
+  if (Number.isFinite(newRotation)) selectedObject.rotation = ((newRotation % 360) + 360) % 360;
   const rawGroup = document.getElementById("propGroup").value;
 selectedObject.group = rawGroup
     .split(',')
@@ -6448,11 +6488,13 @@ case 'marble':
             newObj.mods = {};
             newObj.id = Date.now() + Math.random();
             break;
-        case 'trigger_camera':
         case 'trigger_move':
-        case 'trigger_lighting':
         case 'trigger_modify':
-        case 'trigger_particle':
+        case 'trigger_lighting':
+        case 'trigger_effect':
+        case 'trigger_variable':
+        case 'trigger_behavior':
+        case 'trigger_sequence':
             newObj.tag = currentTool;
             newObj.solid = false;
             newObj.gravity = 0;
@@ -6597,7 +6639,7 @@ case 'bush':
 canvas.addEventListener("dblclick", e => {
     if (!isSelectTool() || playMode) return;
     const rect = canvas.getBoundingClientRect();
-    const clickedObject = pickObjectAt((e.clientX - rect.left - canvas.width/2) / (camera.zoom || 1) + canvas.width/2 + camera.x, (e.clientY - rect.top - canvas.height/2) / (camera.zoom || 1) + canvas.height/2 + camera.y);
+    const clickedObject = pickObjectAt(e.clientX - rect.left + camera.x, e.clientY - rect.top + camera.y);
     if (clickedObject) {
         if (!selectionList().includes(clickedObject)) setSelection([clickedObject]);
         else primaryObject = clickedObject;
@@ -6607,8 +6649,8 @@ canvas.addEventListener("dblclick", e => {
 canvas.addEventListener("mousemove", e => {
     if (!currentTool) return;
     const rect = canvas.getBoundingClientRect();
-    ghostX = Math.floor(((e.clientX - rect.left - canvas.width/2) / (camera.zoom || 1) + canvas.width/2 + camera.x) / GRID_SIZE) * GRID_SIZE;
-    ghostY = Math.floor(((e.clientY - rect.top - canvas.height/2) / (camera.zoom || 1) + canvas.height/2 + camera.y) / GRID_SIZE) * GRID_SIZE;
+    ghostX = Math.floor((e.clientX - rect.left + camera.x) / GRID_SIZE) * GRID_SIZE;
+    ghostY = Math.floor((e.clientY - rect.top  + camera.y) / GRID_SIZE) * GRID_SIZE;
 
     ghostValid = true;
     if (!playMode && isSelectTool()) {
@@ -6625,7 +6667,7 @@ canvas.addEventListener("mousemove", e => {
     const dragBlacklist = ['delete', 'edit', 'copy', 'select', 'trigger', 'monitor',
         'counter', 'comparer', 'clock', 'spawn', 'defaultspawn', 'text', 'goal', 'platform',
         'coin', 'tree', 'bush', 'wind', 'light',
-        'trigger_camera', 'trigger_move', 'trigger_lighting', 'trigger_modify', 'trigger_particle', 'boolean'];
+        'trigger_move', 'trigger_modify', 'trigger_lighting', 'trigger_effect', 'trigger_variable', 'trigger_behavior', 'trigger_sequence', 'boolean'];
     if (dragBlacklist.includes(currentTool)) return;
 
     if (ghostX === lastPlacedCell.x && ghostY === lastPlacedCell.y) return;
@@ -7238,6 +7280,8 @@ function checkCollisions(obj, axis) {
   for (let other of candidates) {
     // Objects don't collide with themselves, triggers, or non-solid objects
     if (other === obj || !other.solid || other.tag === 'trigger') continue;
+    // Rotated solids are handled by their true top-edge slope surface below, not their rectangular AABB.
+    if (other.rotation && getSlopeSurface(other)) continue;
     // --- ADD THIS LINE ---
     // Optimization: simple distance check. If 'other' is too far away (e.g. > 200px), skip complex collision math.
     const maxReach = Math.max(obj.width, obj.height, other.width, other.height) + 10;
@@ -7367,7 +7411,9 @@ function resetPlayer(obj) {
   obj.vx = 0;
   obj.vy = 0;
   obj.isJumping = true;
-  obj.jumpsLeft = 0; 
+  obj.jumpsLeft = 0;
+  obj._slopeObject = null;
+  obj._slopeAngle = 0;
 }
 
 
@@ -7443,6 +7489,7 @@ if (onConveyor) {
     obj.vy = Math.max(Math.min(obj.vy, 20), -20);
 
     // --- 3. Horizontal Movement & Collision ---
+    const previousBottom = obj.y + obj.height;
     obj.x += obj.vx * delta;
     let xCollision = checkCollisions(obj, 'x');
     if (xCollision.overlap) resolveCollision(obj, xCollision.overlap);
@@ -7451,12 +7498,17 @@ if (onConveyor) {
     obj.y += obj.vy * delta;
     let yCollision = checkCollisions(obj, 'y');
     if (yCollision.overlap) resolveCollision(obj, yCollision.overlap);
+    const onSlope = resolveSlopeContacts(obj, previousBottom);
 
     if (obj.tag === "player") {
-      const currentlyGrounded = yCollision.hasGroundContact || yCollision.overlap;
+      const currentlyGrounded = onSlope || yCollision.hasGroundContact || (!!yCollision.overlap && obj.vy >= 0);
 
       if (!currentlyGrounded) {
         obj.isJumping = true;
+        obj._slopeObject = null;
+        obj._slopeAngle = 0;
+      } else if (onSlope) {
+        obj.isJumping = false;
       }
 
       if (obj.wasGrounded && obj.isJumping && obj.vy >= 0) {
@@ -7801,117 +7853,97 @@ function forEachFxTarget(targetName, fn) {
     objects.filter(o => o.tag !== 'player' && o.tag === raw).forEach(fn);
 }
 
-
-const FX_EASING_OPTIONS = [
-    { value: 'linear', label: 'Linear' },
-    { value: 'easeIn', label: 'Ease In' },
-    { value: 'easeOut', label: 'Ease Out' },
-    { value: 'easeInOut', label: 'Ease In Out' },
-    { value: 'sineIn', label: 'Sine In' },
-    { value: 'sineOut', label: 'Sine Out' },
-    { value: 'sineInOut', label: 'Sine In Out' },
-    { value: 'quadIn', label: 'Quad In' },
-    { value: 'quadOut', label: 'Quad Out' },
-    { value: 'quadInOut', label: 'Quad In Out' },
-    { value: 'cubicIn', label: 'Cubic In' },
-    { value: 'cubicOut', label: 'Cubic Out' },
-    { value: 'cubicInOut', label: 'Cubic In Out' },
-    { value: 'bounceIn', label: 'Bounce In' },
-    { value: 'bounceOut', label: 'Bounce Out' },
-    { value: 'bounceInOut', label: 'Bounce In Out' },
-    { value: 'elasticOut', label: 'Elastic Out' }
-];
-
-let regionRuntime = new WeakMap();
-
-function getRegionRuntime(region) {
-    let st = regionRuntime.get(region);
-    if (!st) {
-        st = { initialized: false, inside: false, enterFired: false, leaveFired: false };
-        regionRuntime.set(region, st);
-    }
-    return st;
-}
-
-function resetRegionRuntime() {
-    regionRuntime = new WeakMap();
-}
-
-function regionTargetIsInside(region, fx) {
-    const type = String(fx.targetType || 'player').trim().toLowerCase();
-    if (type === 'group') {
-        const groupName = String(fx.targetGroup || '').trim();
-        if (!groupName) return false;
-        // A group is considered inside while ANY member overlaps the current region bounds.
-        return getGroupMembers(groupName).some(member =>
-            member && member !== region && member.active !== false && checkCollision(member, region)
-        );
-    }
-    return checkCollision(player, region);
-}
-
 const EFFECT_TRIGGER_DEFS = {
-    trigger_camera: {
-        label: 'Camera', title: 'Camera Trigger', color: '#6366f1', glyph: '⌖',
-        hint: 'Snap the camera to a group, release it back to the player, change zoom, or reset the camera.',
+    trigger_move: {
+        label: 'Move', title: 'Move Trigger', color: '#0ea5e9', glyph: '\u279c',
+        hint: 'Moves or launches every block in the target group. Leave a box blank to ignore it.',
         fields: [
-            { key: 'action', label: 'Camera Action', type: 'select', default: 'snap', options: [
-                { value: 'snap',   label: 'Snap / Follow Group' },
-                { value: 'unsnap', label: 'Unsnap → Player' },
-                { value: 'zoom',   label: 'Change Zoom' },
-                { value: 'reset',  label: 'Reset Camera' }
-            ] },
-            { key: 'targetGroup', label: 'Camera Group', type: 'text', placeholder: "e.g., 'boss_room'" },
-            { key: 'zoom', label: 'Zoom', type: 'number', step: '0.05', min: '0.5', max: '3', default: '1' },
-            { key: 'duration', label: 'Transition Time (seconds)', type: 'number', step: '0.05', min: '0', default: '0' },
-            { key: 'easing', label: 'Transition', type: 'select', default: 'easeInOut', options: FX_EASING_OPTIONS }
+            { key: 'targetGroup', label: 'Object or Group', type: 'text', placeholder: "group name or object ID" },
+            { key: 'x',  label: 'X Position', type: 'number', placeholder: 'e.g., 500' },
+            { key: 'y',  label: 'Y Position', type: 'number', placeholder: 'e.g., 300' },
+            { key: 'relative', label: 'X / Y are offsets from where the block is now', type: 'checkbox' },
+            { key: 'rotation', label: 'Rotation (degrees)', type: 'number', placeholder: 'e.g., 90' },
+            { key: 'rotationRelative', label: 'Rotation is an offset', type: 'checkbox' },
+            { key: 'vx', label: 'Velocity X', type: 'number', placeholder: 'e.g., 5' },
+            { key: 'vy', label: 'Velocity Y', type: 'number', placeholder: 'e.g., -10' }
         ],
         run(fx) {
-            cameraTriggerAction(fx);
+            const x = parseFxNum(fx.x), y = parseFxNum(fx.y), r = parseFxNum(fx.rotation);
+            const vx = parseFxNum(fx.vx), vy = parseFxNum(fx.vy);
+            forEachFxTarget(fx.targetGroup, o => {
+                if (x !== null) o.x = fx.relative ? o.x + x : x;
+                if (y !== null) o.y = fx.relative ? o.y + y : y;
+                if (r !== null) o.rotation = fx.rotationRelative ? (o.rotation || 0) + r : r;
+                if (vx !== null) o.vx = vx;
+                if (vy !== null) o.vy = vy;
+            });
         }
     },
 
-    trigger_move: {
-        label: 'Move', title: 'Move Trigger', color: '#0ea5e9', glyph: '➜',
-        hint: 'Move an object or group to coordinates, by an offset, or to another group. Transitions are optional.',
+    trigger_modify: {
+        label: 'Modify', title: 'Modify Trigger', color: '#f59e0b', glyph: '\u270e',
+        hint: 'Changes the properties of every block in the target group. Leave a box on (Ignore) / blank to leave it alone.',
         fields: [
-            { key: 'targetGroup', label: 'Object or Group', type: 'text', placeholder: "group name, object ID, or object tag" },
-            { key: 'mode', label: 'Move Mode', type: 'select', default: 'position', options: [
-                { value: 'position', label: 'Move to Coordinates' },
-                { value: 'relative', label: 'Move by Amount' },
-                { value: 'group', label: 'Move to Group Position' }
+            { key: 'targetGroup', label: 'Object or Group', type: 'text', placeholder: "group name or object ID" },
+            { key: 'opacity', label: 'Opacity (0–1)', type: 'number', step: '0.1', min: '0', max: '1' },
+            { key: 'color', label: 'Color (#RRGGBB)', type: 'text', placeholder: '#ffffff' },
+            { key: 'scaleX', label: 'Scale X', type: 'number', step: '0.1', min: '0.01' },
+            { key: 'scaleY', label: 'Scale Y', type: 'number', step: '0.1', min: '0.01' },
+            { key: 'visible', label: 'Visibility', type: 'select', options: [
+                { value: '', label: '(Ignore)' }, { value: 'show', label: 'Show' }, { value: 'hide', label: 'Hide' }
             ] },
-            { key: 'x', label: 'X / X Amount', type: 'number', placeholder: 'e.g., 500' },
-            { key: 'y', label: 'Y / Y Amount', type: 'number', placeholder: 'e.g., 300' },
-            { key: 'destinationGroup', label: 'Destination Group', type: 'text', placeholder: "used by Move to Group Position" },
-            { key: 'duration', label: 'Transition Time (seconds)', type: 'number', step: '0.05', min: '0', default: '0' },
-            { key: 'easing', label: 'Transition', type: 'select', default: 'easeInOut', options: FX_EASING_OPTIONS }
+            { key: 'width',   label: 'Width',  type: 'number' },
+            { key: 'height',  label: 'Height', type: 'number' },
+            { key: 'solid',  label: 'Solid',      type: 'select', options: FX_TRISTATE },
+            { key: 'kill',   label: 'Kill block', type: 'select', options: FX_TRISTATE },
+            { key: 'slime',  label: 'Sticky / slime', type: 'select', options: FX_TRISTATE },
+            { key: 'bounce', label: 'Bounce', type: 'select', options: FX_TRISTATE },
+            { key: 'ice',    label: 'Ice',    type: 'select', options: FX_TRISTATE },
+            { key: 'text',   label: 'Set text (for Text blocks)', type: 'text', placeholder: 'New text...' }
         ],
         run(fx) {
-            moveTriggerAction(fx);
+            const op = parseFxNum(fx.opacity), w = parseFxNum(fx.width), h = parseFxNum(fx.height);
+            const sx = parseFxNum(fx.scaleX), sy = parseFxNum(fx.scaleY);
+            const solid = parseFxBool(fx.solid), kill = parseFxBool(fx.kill), slime = parseFxBool(fx.slime);
+            const bounce = parseFxBool(fx.bounce), ice = parseFxBool(fx.ice);
+            const hasText = fx.text !== undefined && fx.text !== '';
+            const color = String(fx.color || '').trim();
+            forEachFxTarget(fx.targetGroup, o => {
+                if (op !== null) o.opacity = Math.max(0, Math.min(1, op));
+                if (/^#[0-9a-f]{6}$/i.test(color)) { o.color = color; if (o.tag === 'text') o.textColor = color; }
+                if (sx !== null) o.scaleX = Math.max(0.01, sx);
+                if (sy !== null) o.scaleY = Math.max(0.01, sy);
+                if (fx.visible === 'show') o.opacity = 1;
+                if (fx.visible === 'hide') o.opacity = 0;
+                if (w  !== null) o.width  = w;
+                if (h  !== null) o.height = h;
+                if (solid  !== null) o.solid  = solid;
+                if (kill   !== null) o.kill   = kill;
+                if (slime  !== null) o.slime  = slime;
+                if (bounce !== null) o.bounce = bounce;
+                if (ice    !== null) o.ice    = ice;
+                if (hasText) o.text = String(fx.text);
+            });
         }
     },
 
     trigger_lighting: {
-        label: 'Lighting', title: 'Lighting Trigger', color: '#eab308', glyph: '☀',
-        hint: 'Changes the world lighting theme and/or edits Light blocks in a group.',
+        label: 'Lighting', title: 'Lighting Trigger', color: '#eab308', glyph: '\u2600',
+        hint: 'Changes the world lighting theme and/or edits Light blocks in a group. Blank = ignore.',
         fields: [
-            { key: 'theme', label: 'Lighting Theme', type: 'select',
+            { key: 'theme', label: 'Lighting theme', type: 'select',
               options: () => [{ value: '', label: '(Ignore)' }]
                   .concat(Object.keys(LIGHTING_THEMES).map(k => ({ value: k, label: k }))) },
-            { key: 'lightGroup', label: 'Light Group', type: 'text', placeholder: "e.g., 'torches'" },
-            { key: 'lightR', label: 'Red (0–255)', type: 'number', min: '0', max: '255' },
-            { key: 'lightG', label: 'Green (0–255)', type: 'number', min: '0', max: '255' },
-            { key: 'lightB', label: 'Blue (0–255)', type: 'number', min: '0', max: '255' },
-            { key: 'lightRadius', label: 'Radius', type: 'number', min: '10' },
-            { key: 'lightIntensity', label: 'Intensity (0–1)', type: 'number', step: '0.05', min: '0', max: '1' }
+            { key: 'lightGroup', label: 'Light Group (Light blocks to edit)', type: 'text', placeholder: "e.g., 'torches'" },
+            { key: 'lightR', label: 'Red (0\u2013255)',   type: 'number', min: '0', max: '255' },
+            { key: 'lightG', label: 'Green (0\u2013255)', type: 'number', min: '0', max: '255' },
+            { key: 'lightB', label: 'Blue (0\u2013255)',  type: 'number', min: '0', max: '255' },
+            { key: 'lightRadius',    label: 'Radius',          type: 'number', min: '10' },
+            { key: 'lightIntensity', label: 'Intensity (0\u20131)', type: 'number', step: '0.05', min: '0', max: '1' }
         ],
         run(fx) {
             if (fx.theme) setLightingTheme(fx.theme);
-            const c = v => {
-                const n = parseFxNum(v);
-                return n === null ? null : Math.round(Math.max(0, Math.min(255, n)));
-            };
+            const c = v => { const n = parseFxNum(v); return n === null ? null : Math.round(Math.max(0, Math.min(255, n))); };
             const r = c(fx.lightR), g = c(fx.lightG), b = c(fx.lightB);
             const rad = parseFxNum(fx.lightRadius), inten = parseFxNum(fx.lightIntensity);
             forEachInGroup(fx.lightGroup, o => {
@@ -7919,389 +7951,128 @@ const EFFECT_TRIGGER_DEFS = {
                 if (r !== null) o.lightR = r;
                 if (g !== null) o.lightG = g;
                 if (b !== null) o.lightB = b;
-                if (rad !== null) o.lightRadius = rad;
+                if (rad   !== null) o.lightRadius = rad;
                 if (inten !== null) o.lightIntensity = Math.max(0, Math.min(1, inten));
             });
         }
     },
 
-    trigger_modify: {
-        label: 'Modify', title: 'Modify Trigger', color: '#f59e0b', glyph: '✎',
-        hint: 'Change object properties. Opacity, scale, width and height can use the same optional transition system.',
+    trigger_variable: {
+        label: 'Variable', title: 'Variable Trigger', color: '#14b8a6', glyph: '=',
+        hint: 'Changes Counter, Text and Boolean variables by their Variable ID (a counter\'s Count Group). Any box can contain {placeholders}.',
         fields: [
-            { key: 'targetGroup', label: 'Object or Group', type: 'text', placeholder: "group name, object ID, or object tag" },
-            { key: 'opacity', label: 'Opacity (0–1)', type: 'number', step: '0.05', min: '0', max: '1' },
-            { key: 'color', label: 'Color (#RRGGBB)', type: 'text', placeholder: '#ffffff' },
-            { key: 'scaleX', label: 'Scale X', type: 'number', step: '0.05', min: '0.01' },
-            { key: 'scaleY', label: 'Scale Y', type: 'number', step: '0.05', min: '0.01' },
-            { key: 'visible', label: 'Visibility', type: 'select', options: [
-                { value: '', label: '(Ignore)' }, { value: 'show', label: 'Show' }, { value: 'hide', label: 'Hide' }
+            { key: 'varId', label: 'Variable ID', type: 'text', placeholder: "e.g., 'coins' or 'playerName'" },
+            { key: 'counterOp', label: 'Counter operation', type: 'select', options: [
+                { value: '',      label: '(Ignore)' },
+                { value: 'set',   label: 'Set to amount' },
+                { value: 'add',   label: 'Add amount' },
+                { value: 'sub',   label: 'Subtract amount' },
+                { value: 'inc',   label: 'Increment (+1)' },
+                { value: 'dec',   label: 'Decrement (\u22121)' },
+                { value: 'reset', label: 'Reset to 0' }
             ] },
-            { key: 'width', label: 'Width', type: 'number', min: '1' },
-            { key: 'height', label: 'Height', type: 'number', min: '1' },
-            { key: 'solid', label: 'Solid', type: 'select', options: FX_TRISTATE },
-            { key: 'kill', label: 'Kill Block', type: 'select', options: FX_TRISTATE },
-            { key: 'slime', label: 'Sticky / Slime', type: 'select', options: FX_TRISTATE },
-            { key: 'bounce', label: 'Bounce', type: 'select', options: FX_TRISTATE },
-            { key: 'ice', label: 'Ice', type: 'select', options: FX_TRISTATE },
-            { key: 'text', label: 'Set Text (Text blocks)', type: 'text', placeholder: 'New text...' },
-            { key: 'duration', label: 'Transition Time (seconds)', type: 'number', step: '0.05', min: '0', default: '0' },
-            { key: 'easing', label: 'Transition', type: 'select', default: 'easeInOut', options: FX_EASING_OPTIONS }
+            { key: 'counterAmount', label: 'Amount (number or {variable})', type: 'number', placeholder: 'e.g., 5 or {counter2}' },
+            { key: 'textValue', label: 'Set text to (Text variables)', type: 'text', placeholder: 'New text...' },
+            { key: 'boolValue', label: 'Boolean value', type: 'select', options: [
+                { value: '',       label: '(Ignore)' },
+                { value: 'true',   label: 'True' },
+                { value: 'false',  label: 'False' },
+                { value: 'toggle', label: 'Toggle' }
+            ] },
+            { key: 'boolFrom', label: 'Or copy a Boolean from', type: 'text', placeholder: '{otherFlag} or !{otherFlag}' }
         ],
         run(fx) {
-            modifyTriggerAction(fx);
+            const id = String(fx.varId || '').trim();
+            if (!id) return;
+            const op  = fx.counterOp || '';
+            const amt = parseFxNum(fx.counterAmount);
+            const hasText = fx.textValue !== undefined && fx.textValue !== '';
+            const copied = String(fx.boolFrom || '').trim() !== '' ? parseVarBool(fx.boolFrom) : null;
+            objects.forEach(o => {
+                if (o.tag === 'counter' && o.countGroup === id && op) {
+                    const cur = o.count || 0;
+                    if (op === 'set' && amt !== null) setCounterValue(o, amt);
+                    else if (op === 'add' && amt !== null) setCounterValue(o, cur + amt);
+                    else if (op === 'sub' && amt !== null) setCounterValue(o, cur - amt);
+                    else if (op === 'inc') setCounterValue(o, cur + 1);
+                    else if (op === 'dec') setCounterValue(o, cur - 1);
+                    else if (op === 'reset') o.count = 0;
+                }
+                if (o.varGroup !== id) return;
+                if (o.tag === 'text' && hasText) o.text = String(fx.textValue);
+                if (o.tag === 'boolean') {
+                    if (copied !== null)                o.value = copied;
+                    else if (fx.boolValue === 'true')   o.value = true;
+                    else if (fx.boolValue === 'false')  o.value = false;
+                    else if (fx.boolValue === 'toggle') o.value = !o.value;
+                }
+            });
         }
     },
 
-    trigger_particle: {
-        label: 'Particle', title: 'Particle Trigger', color: '#ec4899', glyph: '✦',
-        hint: 'Spawn customizable particles from an object or group, with color, shape, velocity, spread, size, gravity, drag and lifetime.',
+    trigger_effect: {
+        label: 'Misc', title: 'Misc Effect Trigger', color: '#ec4899', glyph: '\u2726',
+        hint: 'Screen shake, respawning the player, or particles on a group.',
         fields: [
-            { key: 'targetGroup', label: 'Spawn At Object / Group', type: 'text', placeholder: "e.g., 'gem' or 'explosion_point'" },
-            { key: 'count', label: 'Particle Count', type: 'number', min: '1', default: '12' },
-            { key: 'color', label: 'Color', type: 'color', default: '#6366f1' },
-            { key: 'shape', label: 'Shape', type: 'select', default: 'square', options: [
-                { value: 'square', label: 'Square' },
-                { value: 'circle', label: 'Circle' },
-                { value: 'triangle', label: 'Triangle' },
-                { value: 'diamond', label: 'Diamond' },
-                { value: 'star', label: 'Star' }
+            { key: 'effect', label: 'Effect', type: 'select', default: 'shake', options: [
+                { value: 'shake',     label: 'Shake screen' },
+                { value: 'respawn',   label: 'Respawn player' },
+                { value: 'particles', label: 'Particles at group' }
             ] },
-            { key: 'speed', label: 'Random Speed', type: 'number', step: '0.1', min: '0', default: '6' },
-            { key: 'velocityX', label: 'Velocity X', type: 'number', step: '0.1', default: '0' },
-            { key: 'velocityY', label: 'Velocity Y', type: 'number', step: '0.1', default: '0' },
-            { key: 'spread', label: 'Spread (degrees)', type: 'number', min: '0', max: '360', default: '360' },
-            { key: 'size', label: 'Size', type: 'number', step: '0.5', min: '1', default: '4' },
-            { key: 'life', label: 'Lifetime (seconds)', type: 'number', step: '0.05', min: '0.05', default: '0.75' },
-            { key: 'gravity', label: 'Gravity', type: 'number', step: '0.05', default: '0' },
-            { key: 'drag', label: 'Drag', type: 'number', step: '0.01', min: '0', max: '1', default: '0.98' }
+            { key: 'amount', label: 'Shake intensity (blank = 10)', type: 'number', min: '0' },
+            { key: 'targetGroup', label: 'Particle Group', type: 'text', placeholder: "e.g., 'gems'" },
+            { key: 'color', label: 'Particle color', type: 'color', default: '#6366f1' }
         ],
         run(fx) {
-            particleTriggerAction(fx);
-        }
-    }
-};
-
-function fxEase(t, type = 'linear') {
-    t = Math.max(0, Math.min(1, t));
-    switch (type) {
-        case 'easeIn': return t * t;
-        case 'easeOut': return 1 - (1 - t) * (1 - t);
-        case 'easeInOut': return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2)/2;
-        case 'sineIn': return 1 - Math.cos((t * Math.PI) / 2);
-        case 'sineOut': return Math.sin((t * Math.PI) / 2);
-        case 'sineInOut': return -(Math.cos(Math.PI * t) - 1) / 2;
-        case 'quadIn': return t*t;
-        case 'quadOut': return 1 - (1-t)*(1-t);
-        case 'quadInOut': return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
-        case 'cubicIn': return t*t*t;
-        case 'cubicOut': return 1 - Math.pow(1-t,3);
-        case 'cubicInOut': return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
-        case 'bounceOut': {
-            const n1 = 7.5625, d1 = 2.75;
-            if (t < 1/d1) return n1*t*t;
-            if (t < 2/d1) { t -= 1.5/d1; return n1*t*t + 0.75; }
-            if (t < 2.5/d1) { t -= 2.25/d1; return n1*t*t + 0.9375; }
-            t -= 2.625/d1; return n1*t*t + 0.984375;
-        }
-        case 'bounceIn': return 1 - fxEase(1-t, 'bounceOut');
-        case 'bounceInOut': return t < 0.5
-            ? (1 - fxEase(1 - 2*t, 'bounceOut')) / 2
-            : (1 + fxEase(2*t - 1, 'bounceOut')) / 2;
-        case 'elasticOut':
-            if (t === 0 || t === 1) return t;
-            return Math.pow(2, -10*t) * Math.sin((t*10 - 0.75) * (2*Math.PI/3)) + 1;
-        default: return t;
-    }
-}
-
-function fxLerpColor(a, b, t) {
-    const ca = parseColor(a), cb = parseColor(b);
-    const r = Math.round(ca[0] + (cb[0] - ca[0]) * t);
-    const g = Math.round(ca[1] + (cb[1] - ca[1]) * t);
-    const bl = Math.round(ca[2] + (cb[2] - ca[2]) * t);
-    return `#${[r,g,bl].map(v => v.toString(16).padStart(2,'0')).join('')}`;
-}
-
-let fxTweens = [];
-
-function addFxTween(targets, props, durationMs, easing, done) {
-    const start = targets.map(o => {
-        const copy = { o };
-        Object.keys(props).forEach(k => {
-            if (o[k] !== undefined) copy[k] = o[k];
-            else if (k === 'opacity') copy[k] = 1;
-            else if (k === 'scaleX' || k === 'scaleY') copy[k] = 1;
-            else if (k === 'color') copy[k] = o.textColor || '#ffffff';
-            else copy[k] = 0;
-        });
-        return copy;
-    });
-    const d = Math.max(0, durationMs);
-    if (!start.length || d <= 0) {
-        start.forEach(item => Object.keys(props).forEach(k => item.o[k] = props[k]));
-        if (done) done();
-        return;
-    }
-    fxTweens.push({ start, props, started: gameClock, duration:d, easing:easing || 'linear', done });
-}
-
-function updateFxTweens() {
-    for (let i = fxTweens.length - 1; i >= 0; i--) {
-        const tw = fxTweens[i];
-        const p = Math.max(0, Math.min(1, (gameClock - tw.started) / tw.duration));
-        const e = fxEase(p, tw.easing);
-        tw.start.forEach(item => {
-            if (!item.o) return;
-            Object.keys(tw.props).forEach(k => {
-                const target = tw.props[k];
-                const begin = item[k];
-                if (k === 'color') {
-                    item.o[k] = fxLerpColor(begin || '#ffffff', target || '#ffffff', e);
-                    if (item.o.tag === 'text') item.o.textColor = item.o[k];
-                } else {
-                    item.o[k] = begin + (target - begin) * e;
-                }
-            });
-        });
-        if (p >= 1) {
-            tw.start.forEach(item => Object.keys(tw.props).forEach(k => {
-                item.o[k] = tw.props[k];
-                if (k === 'color' && item.o.tag === 'text') item.o.textColor = tw.props[k];
-            }));
-            fxTweens.splice(i, 1);
-            if (tw.done) tw.done();
-        }
-    }
-}
-
-function getGroupCenter(groupName) {
-    const raw = String(resolveFxVars(groupName || '')).trim();
-    if (!raw) return null;
-    const members = getGroupMembers(raw);
-    if (!members.length) return null;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    members.forEach(o => {
-        minX = Math.min(minX, o.x); minY = Math.min(minY, o.y);
-        maxX = Math.max(maxX, o.x + o.width); maxY = Math.max(maxY, o.y + o.height);
-    });
-    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-}
-
-function getCameraDestinationForGroup(groupName) {
-    const c = getGroupCenter(groupName);
-    if (!c) return null;
-    return { x: c.x, y: c.y };
-}
-
-function clampCamera() {
-    const maxX = Math.max(0, world.width - canvas.width / Math.max(0.01, camera.zoom || 1));
-    const maxY = Math.max(0, world.height - canvas.height / Math.max(0.01, camera.zoom || 1));
-    camera.x = Math.max(0, Math.min(camera.x, maxX));
-    camera.y = Math.max(0, Math.min(camera.y, maxY));
-}
-
-let cameraController = {
-    mode: 'player',
-    targetGroup: '',
-    zoom: 1,
-    tween: null
-};
-
-function startCameraTween(destX, destY, destZoom, durationMs, easing, finalMode, finalGroup) {
-    const z = Math.max(0.5, Math.min(3, destZoom || 1));
-    const d = Math.max(0, durationMs || 0);
-    if (d <= 0) {
-        camera.x = destX; camera.y = destY; camera.zoom = z;
-        cameraController.mode = finalMode;
-        cameraController.targetGroup = finalGroup || '';
-        cameraController.tween = null;
-        clampCamera();
-        return;
-    }
-    cameraController.tween = {
-        startX: camera.x, startY: camera.y, startZoom: camera.zoom,
-        endX: destX, endY: destY, endZoom: z,
-        started: gameClock, duration: d, easing: easing || 'linear',
-        finalMode, finalGroup: finalGroup || ''
-    };
-}
-
-function cameraTriggerAction(fx) {
-    const action = fx.action || 'snap';
-    const durationMs = Math.max(0, (parseFxNum(fx.duration) || 0) * 1000);
-    const easing = fx.easing || 'easeInOut';
-    if (action === 'reset') {
-        cameraController.tween = null;
-        cameraController.mode = 'player';
-        cameraController.targetGroup = '';
-        camera.zoom = 1;
-        camera.x = player.x - canvas.width / 2;
-        camera.y = player.y - canvas.height / 2;
-        clampCamera();
-        return;
-    }
-    if (action === 'unsnap') {
-        cameraController.mode = 'transition';
-        cameraController.targetGroup = '';
-        const tx = player.x + player.width / 2 - canvas.width / (2 * camera.zoom);
-        const ty = player.y + player.height / 2 - canvas.height / (2 * camera.zoom);
-        startCameraTween(tx, ty, camera.zoom, durationMs, easing, 'player', '');
-        return;
-    }
-    if (action === 'zoom') {
-        const z = Math.max(0.5, Math.min(3, parseFxNum(fx.zoom) ?? 1));
-        const centerX = camera.x + canvas.width / (2 * camera.zoom);
-        const centerY = camera.y + canvas.height / (2 * camera.zoom);
-        const tx = centerX - canvas.width / (2 * z);
-        const ty = centerY - canvas.height / (2 * z);
-        startCameraTween(tx, ty, z, durationMs, easing, cameraController.mode === 'transition' ? 'player' : cameraController.mode, cameraController.targetGroup);
-        return;
-    }
-    const dest = getCameraDestinationForGroup(fx.targetGroup);
-    if (!dest) return;
-    const z = Math.max(0.5, Math.min(3, parseFxNum(fx.zoom) ?? camera.zoom ?? 1));
-    const tx = dest.x - canvas.width / (2 * z);
-    const ty = dest.y - canvas.height / (2 * z);
-    startCameraTween(tx, ty, z, durationMs, easing, 'group', String(resolveFxVars(fx.targetGroup || '')).trim());
-}
-
-function updateCameraSystem() {
-    const tw = cameraController.tween;
-
-    // While a camera transition is active, the tween owns the camera position.
-    // Do not run normal player/group following until the transition finishes,
-    // or that follow code will overwrite the eased position every frame.
-    if (tw) {
-        const p = Math.max(0, Math.min(1, (gameClock - tw.started) / tw.duration));
-        const e = fxEase(p, tw.easing);
-        camera.x = tw.startX + (tw.endX - tw.startX) * e;
-        camera.y = tw.startY + (tw.endY - tw.startY) * e;
-        camera.zoom = tw.startZoom + (tw.endZoom - tw.startZoom) * e;
-
-        if (p >= 1) {
-            cameraController.mode = tw.finalMode;
-            cameraController.targetGroup = tw.finalGroup || '';
-            cameraController.tween = null;
-        }
-
-        clampCamera();
-        return;
-    }
-
-    // Once the transition is complete, resume normal camera following.
-    if (cameraController.mode === 'group' && cameraController.targetGroup) {
-        const dest = getCameraDestinationForGroup(cameraController.targetGroup);
-        if (dest) {
-            camera.x = dest.x - canvas.width / (2 * camera.zoom);
-            camera.y = dest.y - canvas.height / (2 * camera.zoom);
-        }
-    } else if (cameraController.mode === 'player') {
-        camera.x = player.x + player.width/2 - canvas.width / (2 * camera.zoom);
-        camera.y = player.y + player.height/2 - canvas.height / (2 * camera.zoom);
-    }
-
-    clampCamera();
-}
-
-function moveTriggerAction(fx) {
-    const targets = [];
-    forEachFxTarget(fx.targetGroup, o => targets.push(o));
-    if (!targets.length) return;
-    const mode = fx.mode || 'position';
-    const durationMs = Math.max(0, (parseFxNum(fx.duration) || 0) * 1000);
-    const easing = fx.easing || 'easeInOut';
-    const props = {};
-    const x = parseFxNum(fx.x), y = parseFxNum(fx.y);
-    if (mode === 'relative') {
-        targets.forEach(o => {
-            const dest = {};
-            if (x !== null) dest.x = o.x + x;
-            if (y !== null) dest.y = o.y + y;
-            const d = Math.max(0, durationMs);
-            if (d <= 0) { if (dest.x !== undefined) o.x = dest.x; if (dest.y !== undefined) o.y = dest.y; }
-            else {
-                addFxTween([o], dest, d, easing);
+            const effect = fx.effect || 'shake';
+            if (effect === 'shake')   { addShake(parseFxNum(fx.amount) ?? 10); return; }
+            if (effect === 'respawn') { resetPlayer(player); return; }
+            if (effect === 'particles') {
+                forEachInGroup(fx.targetGroup, o =>
+                    spawnParticles(o.x + o.width / 2, o.y + o.height / 2, 12, fx.color || '#6366f1', 6));
             }
-        });
-        return;
+        }
     }
-    if (mode === 'group') {
-        const c = getGroupCenter(fx.destinationGroup);
-        if (!c) return;
-        targets.forEach(o => {
-            const dest = { x: c.x - o.width / 2, y: c.y - o.height / 2 };
-            if (durationMs > 0) addFxTween([o], dest, durationMs, easing);
-            else { o.x = dest.x; o.y = dest.y; }
-        });
-        return;
+};
+
+EFFECT_TRIGGER_DEFS.trigger_sequence = {
+    label: 'Sequence', title: 'Sequence Trigger', color: '#8b5cf6', glyph: '⟳',
+    hint: 'Combine Move, Visual, and Timing actions in one simple sequence. Use the editor below to build chains like Move → Wait → Move back → Wait.',
+    fields: []
+};
+
+EFFECT_TRIGGER_DEFS.trigger_behavior = {
+    label: 'Behavior', title: 'Behavior Trigger', color: '#7c3aed', glyph: '\u25b6',
+    hint: 'Turns a behavior ON, OFF or flips it, on every object in the target group. Example: a Move Toward behavior named "open" on a door.',
+    fields: [
+        { key: 'targetGroup', label: 'Target Group', type: 'text', placeholder: "e.g., 'door'" },
+        { key: 'which', label: 'Which behavior (name or type, blank = all)', type: 'text', placeholder: "e.g., 'open' or 'Move Toward'" },
+        { key: 'action', label: 'Action', type: 'select', default: 'enable', options: [
+            { value: 'enable',  label: 'Enable (turn on)' },
+            { value: 'disable', label: 'Disable (turn off)' },
+            { value: 'toggle',  label: 'Toggle (flip)' }
+        ] }
+    ],
+    run(fx) {
+        const mode = fx.action === 'disable' ? 'off' : fx.action === 'toggle' ? 'toggle' : 'on';
+        bhSetByGroup(fx.targetGroup, fx.which, mode);
     }
-    if (x === null && y === null) return;
-    targets.forEach(o => {
-        const dest = {};
-        if (x !== null) dest.x = x;
-        if (y !== null) dest.y = y;
-        if (durationMs > 0) addFxTween([o], dest, durationMs, easing);
-        else { if (dest.x !== undefined) o.x = dest.x; if (dest.y !== undefined) o.y = dest.y; }
-    });
-}
-
-function modifyTriggerAction(fx) {
-    const targets = [];
-    forEachFxTarget(fx.targetGroup, o => targets.push(o));
-    if (!targets.length) return;
-    const durationMs = Math.max(0, (parseFxNum(fx.duration) || 0) * 1000);
-    const easing = fx.easing || 'easeInOut';
-    const props = {};
-    const op = parseFxNum(fx.opacity), sx = parseFxNum(fx.scaleX), sy = parseFxNum(fx.scaleY);
-    const w = parseFxNum(fx.width), h = parseFxNum(fx.height);
-    if (op !== null) props.opacity = Math.max(0, Math.min(1, op));
-    if (sx !== null) props.scaleX = Math.max(0.01, sx);
-    if (sy !== null) props.scaleY = Math.max(0.01, sy);
-    if (w !== null) props.width = Math.max(1, w);
-    if (h !== null) props.height = Math.max(1, h);
-    const color = String(fx.color || '').trim();
-    if (/^#[0-9a-f]{6}$/i.test(color)) props.color = color;
-
-    if (durationMs > 0 && Object.keys(props).length) addFxTween(targets, props, durationMs, easing);
-    else Object.keys(props).forEach(k => targets.forEach(o => {
-        o[k] = props[k];
-        if (k === 'color' && o.tag === 'text') o.textColor = props[k];
-    }));
-
-    if (fx.visible === 'show') targets.forEach(o => o.opacity = 1);
-    if (fx.visible === 'hide') targets.forEach(o => o.opacity = 0);
-
-    const solid = parseFxBool(fx.solid), kill = parseFxBool(fx.kill), slime = parseFxBool(fx.slime);
-    const bounce = parseFxBool(fx.bounce), ice = parseFxBool(fx.ice);
-    if (solid !== null) targets.forEach(o => o.solid = solid);
-    if (kill !== null) targets.forEach(o => o.kill = kill);
-    if (slime !== null) targets.forEach(o => o.slime = slime);
-    if (bounce !== null) targets.forEach(o => o.bounce = bounce);
-    if (ice !== null) targets.forEach(o => o.ice = ice);
-    if (fx.text !== undefined && fx.text !== '') targets.forEach(o => o.text = String(fx.text));
-}
-
-function particleTriggerAction(fx) {
-    const count = Math.max(1, Math.floor(parseFxNum(fx.count) ?? 12));
-    const color = fx.color || '#6366f1';
-    const speed = Math.max(0, parseFxNum(fx.speed) ?? 6);
-    const vx = parseFxNum(fx.velocityX) ?? 0;
-    const vy = parseFxNum(fx.velocityY) ?? 0;
-    const spread = Math.max(0, Math.min(360, parseFxNum(fx.spread) ?? 360));
-    const size = Math.max(1, parseFxNum(fx.size) ?? 4);
-    const life = Math.max(0.05, parseFxNum(fx.life) ?? 0.75);
-    const gravity = parseFxNum(fx.gravity) ?? 0;
-    const drag = Math.max(0, Math.min(1, parseFxNum(fx.drag) ?? 0.98));
-    forEachFxTarget(fx.targetGroup, o => {
-        spawnAdvancedParticles(o.x + o.width/2, o.y + o.height/2, count, {
-            color, shape: fx.shape || 'square', speed, vx, vy, spread,
-            size, life: life * 60, gravity, drag
-        });
-    });
-}
+};
+Object.values(EFFECT_TRIGGER_DEFS).forEach(d => d.fields.forEach(f => { if (f.options === FX_TRISTATE) f.bindBool = true; }));
 
 function executeEffectTrigger(trigger, sourceEvent = 'triggered') {
+    if (trigger.tag === 'trigger_sequence') {
+        const sc = trigger.script;
+        if (!sc || !sc.steps || !sc.steps.length || sc.event !== sourceEvent) return;
+        if (trigger.scriptOneTime && trigger.hasFired) return;
+        const vars = {};
+        if (trigger._runtimeVars) Object.assign(vars, trigger._runtimeVars);
+        const token = ++visualScriptSeq;
+        trigger._visualScriptToken = token;
+        trigger.hasFired = true;
+        runAsyncScriptSegment(trigger, sc.steps, 0, sc.steps.length, vars, token, () => {});
+        return;
+    }
     const def = EFFECT_TRIGGER_DEFS[trigger.tag];
     if (!def) return;
     const fx = getEffectFx(trigger);
@@ -8310,15 +8081,17 @@ function executeEffectTrigger(trigger, sourceEvent = 'triggered') {
     if (fx.oneTime) trigger.hasFired = true;
 }
 
+// Effect triggers that have "fire when the player touches it" ticked
 let activeEffectTouches = new Set();
 function checkEffectTriggerTouches(near) {
-    near = near || getNearbyObjects(player);
+    near = near || getNearbyObjects(player);                  // only blocks next to the player can be touched
     const now = new Set();
     for (let i = 0; i < near.length; i++) {
         const t = near[i];
-        if (t.active === false || !isEffectTag(t.tag)) continue;
-        const fx = getEffectFx(t);
-        if (!fx.onTouch) continue;
+        if (t.active === false) continue;
+        if (t.tag === 'trigger_sequence') { if (!t.scriptOnTouch) continue; }
+        else if (!t.fx || (!t.fx.onTouch && !t.fx.onTouchVar)) continue;
+        if (t.tag !== 'trigger_sequence' && !getEffectFx(t).onTouch) continue;
         if (checkCollision(player, t)) {
             now.add(t);
             if (!activeEffectTouches.has(t)) executeEffectTrigger(t, 'touched');
@@ -8327,16 +8100,39 @@ function checkEffectTriggerTouches(near) {
     activeEffectTouches = now;
 }
 
+/* ----- edit-popup form for effect triggers (built from the defs above) ----- */
 function getEffectFields(def) {
-    return def.region ? def.fields : def.fields.concat(EFFECT_COMMON_FIELDS);
+    return def.fields.concat(EFFECT_COMMON_FIELDS);
 }
-
 function renderEffectTriggerFields(obj) {
     const def = EFFECT_TRIGGER_DEFS[obj.tag];
     if (!def) return;
     document.getElementById('effectTriggerTitle').textContent = def.title;
     const box = document.getElementById('effectTriggerFields');
     box.innerHTML = '';
+
+    if (obj.tag === 'trigger_sequence') {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'Open Sequence Editor';
+        btn.style.cssText = 'width:100%;padding:10px;background:#8b5cf6;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;margin-bottom:10px;';
+        btn.onclick = () => { closePopup(); selectedObject = obj; openScriptEditor(); };
+        box.appendChild(btn);
+        const common = document.createElement('div');
+        common.style.cssText = 'display:flex;gap:12px;align-items:center;margin:8px 0 10px;font-size:11px;color:#52525b;';
+        const one = document.createElement('label');
+        one.innerHTML = `<input id="fx_oneTime" type="checkbox" ${obj.scriptOneTime ? 'checked' : ''}> One-time`;
+        common.appendChild(one);
+        const touch = document.createElement('label');
+        touch.innerHTML = `<input id="fx_onTouch" type="checkbox" ${obj.scriptOnTouch ? 'checked' : ''}> Player touches`;
+        common.appendChild(touch);
+        box.appendChild(common);
+        const info = document.createElement('div');
+        info.style.cssText = 'font-size:11px;color:#71717a;line-height:1.45;';
+        info.textContent = 'Build a chain of Move, Visual, Wait, Repeat, and Loop actions. Fire this trigger from a Main Trigger using its group.';
+        box.appendChild(info);
+        return;
+    }
 
     if (def.hint) {
         const hint = document.createElement('div');
@@ -8347,8 +8143,9 @@ function renderEffectTriggerFields(obj) {
 
     const fx = obj.fx || {};
     getEffectFields(def).forEach(f => {
-        const id = 'fx_' + f.key;
+        const id  = 'fx_' + f.key;
         const val = fx[f.key] !== undefined ? fx[f.key] : f.default;
+
         if (f.type === 'checkbox') {
             const wrap = document.createElement('div');
             wrap.className = 'checkbox-group';
@@ -8374,6 +8171,7 @@ function renderEffectTriggerFields(obj) {
         const lab = document.createElement('label');
         lab.htmlFor = id; lab.textContent = f.label + ':';
         wrap.appendChild(lab);
+
         let inp;
         if (f.type === 'select') {
             inp = document.createElement('select');
@@ -8394,13 +8192,28 @@ function renderEffectTriggerFields(obj) {
         inp.id = id;
         inp.value = val !== undefined && val !== null ? val : '';
         wrap.appendChild(inp);
+        if (f.bindBool) {
+            const bi = document.createElement('input');
+            bi.type = 'text'; bi.id = id + 'Var'; bi.className = 'bindInput';
+            bi.placeholder = 'or Boolean variable: {flag} / !{flag}';
+            bi.value = fx[f.key + 'Var'] || '';
+            inp.disabled = bi.value.trim() !== '';
+            bi.addEventListener('input', () => { inp.disabled = bi.value.trim() !== ''; });
+            wrap.appendChild(bi);
+        }
         box.appendChild(wrap);
     });
 }
-
 function saveEffectTriggerFields(obj) {
     const def = EFFECT_TRIGGER_DEFS[obj.tag];
     if (!def) return;
+    if (obj.tag === 'trigger_sequence') {
+        obj.scriptOneTime = !!document.getElementById('fx_oneTime')?.checked;
+        obj.scriptOnTouch = !!document.getElementById('fx_onTouch')?.checked;
+        if (obj.hasFired === undefined) obj.hasFired = false;
+        if (obj.active === undefined) obj.active = true;
+        return;
+    }
     const fx = {};
     getEffectFields(def).forEach(f => {
         const el = document.getElementById('fx_' + f.key);
@@ -8415,8 +8228,6 @@ function saveEffectTriggerFields(obj) {
     if (obj.hasFired === undefined) obj.hasFired = false;
     if (obj.active === undefined) obj.active = true;
 }
-
-
 /* ============================================================
    TRIGGER SCRIPT EDITOR — full data processing edition
 ============================================================ */
@@ -8427,7 +8238,6 @@ let scriptSteps = [];
 const VAR_SOURCES = [
   { value:'literal_num',  label:'Number' },
   { value:'literal_str',  label:'Text' },
-  { value:'literal_bool', label:'Boolean' },
   { value:'counter',      label:'Counter value' },
   { value:'player_x',     label:'Player X' },
   { value:'player_y',     label:'Player Y' },
@@ -8461,12 +8271,9 @@ const COMPUTE_OPS = [
   { value:'tonumber', label:'text→number($a) →' },
   { value:'clamp',    label:'clamp($a, min, max) →' },
   { value:'lerp',     label:'lerp($a→$b, t%) →' },
-  { value:'random_between', label:'random between($a,$b) →' },
 ];
 
 const CONDITION_TYPES = [
-  { value:'value_true',  label:'Boolean is true' },
-  { value:'value_false', label:'Boolean is false' },
   { value:'var_eq',       label:'$var  =  value' },
   { value:'var_neq',      label:'$var  ≠  value' },
   { value:'var_gt',       label:'$var  >  value' },
@@ -8572,16 +8379,6 @@ function getActionOptions(current) {
 }
 
 /* ===== open / close ===== */
-function stripLogicSteps(steps) {
-  return (steps || []).filter(step => step && step.kind !== 'logic').map(step => {
-    if (step.kind === 'condition') {
-      step.thenSteps = stripLogicSteps(step.thenSteps || []);
-      if (step.elseSteps) step.elseSteps = stripLogicSteps(step.elseSteps);
-    }
-    return step;
-  });
-}
-
 function openScriptEditor() {
   if (!selectedObject || (selectedObject.tag !== 'trigger' && selectedObject.tag !== 'trigger_sequence')) return;
   scriptEditorTarget = selectedObject;
@@ -8595,19 +8392,16 @@ function openScriptEditor() {
     ? 'Combine Move, Visual, and Timing actions. Main Trigger stays focused on logic and can fire this sequence by group.'
     : 'Calculate, decide, and fire other triggers. World-changing actions belong to effect/sequence triggers.';
 
-  // Load the script and upgrade older flat IF/ELSE/END IF scripts into real blocks.
+  // Migration: if saved in old format, convert
   if (sc.steps) {
-    scriptSteps = normalizeScriptSteps(JSON.parse(JSON.stringify(sc.steps)));
+    scriptSteps = JSON.parse(JSON.stringify(sc.steps));
   } else {
     scriptSteps = [];
     (sc.variables  || []).forEach(v => scriptSteps.push({ kind: 'var',       ...v }));
     (sc.computes   || []).forEach(v => scriptSteps.push({ kind: 'compute',   ...v }));
-    (sc.conditions || []).forEach(v => scriptSteps.push({ kind: 'condition', ...v, thenSteps: [], elseSteps: [] }));
+    (sc.conditions || []).forEach(v => scriptSteps.push({ kind: 'condition', ...v }));
     (sc.actions    || []).forEach(v => scriptSteps.push({ kind: 'action',    ...v }));
   }
-
-  // Remove any old Logic blocks from saved scripts; Boolean variables remain intact.
-  scriptSteps = stripLogicSteps(scriptSteps);
 
   document.getElementById('scriptEditorPopup').style.display = 'block';
   document.getElementById('overlay').style.display = 'block';
@@ -8640,176 +8434,155 @@ function setScriptEvent(ev) {
 }
 
 function renderScriptEditor() {
-  refreshScriptTargetList();
-  setScriptEvent(scriptEvent);
-  const container = document.getElementById('scriptStepsList');
-  container.innerHTML = '';
-  if (!scriptSteps.length) {
-    const empty = document.createElement('div');
-    empty.style.cssText = 'font-size:12px;color:#a1a1aa;padding:6px 0;';
-    empty.textContent = 'No steps yet — add one below';
-    container.appendChild(empty);
-    return;
-  }
-  renderScriptBlock(container, scriptSteps, 0, 'root');
-}
+    refreshScriptTargetList();
+    setScriptEvent(scriptEvent);
 
-function renderScriptBlock(container, steps, depth, path) {
-  steps.forEach((step, localIndex) => {
-    const indexPath = path === 'root' ? String(localIndex) : path + '.' + localIndex;
-    if (step.kind === 'condition') {
-      const box = document.createElement('div');
-      box.style.cssText = `margin-left:${depth * 12}px;border:1px solid #bfdbfe;border-radius:9px;background:#f8fbff;padding:7px;`;
+    const container = document.getElementById('scriptStepsList');
+    container.innerHTML = '';
 
-      const head = document.createElement('div');
-      head.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
-      head.appendChild(makePill('IF', 'pill-cond'));
-      appendConditionInputs(head, step, indexPath);
-      const del = makeDelBtn(() => { steps.splice(localIndex, 1); renderScriptEditor(); });
-      head.appendChild(del);
-      box.appendChild(head);
+    if (scriptSteps.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'font-size:12px;color:#a1a1aa;padding:6px 0;';
+        empty.textContent = 'No steps yet — add one below';
+        container.appendChild(empty);
+    }
 
-      const thenWrap = document.createElement('div');
-      thenWrap.style.cssText = 'margin:7px 0 4px 18px;padding-left:8px;border-left:2px solid #bfdbfe;display:flex;flex-direction:column;gap:6px;';
-      if (step.thenSteps && step.thenSteps.length) renderScriptBlock(thenWrap, step.thenSteps, 0, indexPath + '.then');
-      else {
-        const hint = document.createElement('div');
-        hint.style.cssText = 'font-size:11px;color:#93a3b8;padding:3px 0;';
-        hint.textContent = 'Do these actions when true';
-        thenWrap.appendChild(hint);
-      }
-      appendBranchAddControls(thenWrap, step.thenSteps, false);
-      box.appendChild(thenWrap);
+    // Calculate indent levels for display
+    let indent = 0;
+    const indents = [];
+    scriptSteps.forEach(step => {
+        if (step.kind === 'end_if') indent = Math.max(0, indent - 1);
+        indents.push(indent);
+        if (step.kind === 'condition') indent++;
+    });
 
-      if (step.elseSteps) {
-        const elseHead = document.createElement('div');
-        elseHead.style.cssText = 'display:flex;align-items:center;gap:6px;margin:5px 0 3px 18px;';
-        const elseLabel = document.createElement('span');
-        elseLabel.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:.05em;color:#92400e;background:#fef9c3;border:1px dashed #fcd34d;border-radius:5px;padding:3px 8px;';
-        elseLabel.textContent = 'ELSE';
-        elseHead.appendChild(elseLabel);
-        const removeElse = document.createElement('button');
-        removeElse.textContent = 'remove';
-        removeElse.style.cssText = 'font-size:10px;padding:2px 6px;background:#fff;border:1px solid #fde68a;color:#92400e;border-radius:5px;cursor:pointer;';
-        removeElse.onclick = () => { delete step.elseSteps; renderScriptEditor(); };
-        elseHead.appendChild(removeElse);
-        box.appendChild(elseHead);
+    scriptSteps.forEach((step, i) => {
+        // Special rows for else and end_if
+        if (step.kind === 'end_if' || step.kind === 'else') {
+            const row = document.createElement('div');
+            const isElse = step.kind === 'else';
+            row.style.cssText = `
+                display:flex; align-items:center; gap:6px;
+                margin-left:${Math.max(0, indents[i] - (step.kind === 'end_if' ? 0 : 0)) * 16}px;
+            `;
 
-        const elseWrap = document.createElement('div');
-        elseWrap.style.cssText = 'margin:0 0 4px 18px;padding-left:8px;border-left:2px solid #fcd34d;display:flex;flex-direction:column;gap:6px;';
-        if (step.elseSteps.length) renderScriptBlock(elseWrap, step.elseSteps, 0, indexPath + '.else');
-        else {
-          const hint = document.createElement('div');
-          hint.style.cssText = 'font-size:11px;color:#a16207;padding:3px 0;';
-          hint.textContent = 'Do these actions when false';
-          elseWrap.appendChild(hint);
+            // Up/down arrows
+            const arrows = document.createElement('div');
+            arrows.style.cssText = 'display:flex;flex-direction:column;gap:0;flex-shrink:0;';
+            const upBtn = document.createElement('button');
+            upBtn.textContent = '▲'; upBtn.className = 'del-btn'; upBtn.style.fontSize = '11px';
+            upBtn.onclick = () => moveStep(i, -1);
+            const downBtn = document.createElement('button');
+            downBtn.textContent = '▼'; downBtn.className = 'del-btn'; downBtn.style.fontSize = '11px';
+            downBtn.onclick = () => moveStep(i, 1);
+            arrows.appendChild(upBtn); arrows.appendChild(downBtn);
+            row.appendChild(arrows);
+
+            const line = document.createElement('div');
+            line.style.cssText = `
+                flex:1; height:28px; border-radius:6px; display:flex; align-items:center;
+                padding:0 12px; font-size:11px; font-weight:700; letter-spacing:.05em;
+                ${isElse
+                    ? 'background:#fef9c3; border:1px dashed #fcd34d; color:#92400e;'
+                    : 'background:#f0fdf4; border:1px dashed #86efac; color:#166534;'}
+            `;
+            line.textContent = isElse ? 'ELSE' : 'END IF';
+            row.appendChild(line);
+
+            if (isElse) {
+                const delBtn = makeDelBtn(() => removeStep(i));
+                row.appendChild(delBtn);
+            } else {
+                // END IF can't be deleted on its own — it's paired with condition
+                const locked = document.createElement('span');
+                locked.style.cssText = 'font-size:11px;color:#a1a1aa;padding:0 6px;';
+                locked.textContent = '🔒';
+                locked.title = 'Delete the matching IF to remove this';
+                row.appendChild(locked);
+            }
+
+            container.appendChild(row);
+            return;
         }
-        appendBranchAddControls(elseWrap, step.elseSteps, true);
-        box.appendChild(elseWrap);
-      } else {
-        const addElse = document.createElement('button');
-        addElse.textContent = '+ Else';
-        addElse.style.cssText = 'margin:2px 0 0 18px;font-size:10px;padding:3px 8px;background:#fef9c3;color:#92400e;border:1px solid #fcd34d;border-radius:5px;cursor:pointer;';
-        addElse.onclick = () => { step.elseSteps = []; renderScriptEditor(); };
-        box.appendChild(addElse);
-      }
-      container.appendChild(box);
-      return;
+
+        const row = document.createElement('div');
+        const kindMeta = {
+            var:       { cls: 'var-row',  pill: 'VAR',  pillCls: 'pill-var'  },
+            compute:   { cls: 'calc-row', pill: 'CALC', pillCls: 'pill-calc' },
+            condition: { cls: 'cond-row', pill: 'IF',   pillCls: 'pill-cond' },
+            action:    { cls: 'act-row',  pill: 'DO',   pillCls: 'pill-act'  },
+        };
+        const meta = kindMeta[step.kind];
+        row.className = `script-row ${meta.cls}`;
+        row.style.marginLeft = `${indents[i] * 16}px`;
+
+        const upBtn = document.createElement('button');
+        upBtn.textContent = '▲'; upBtn.className = 'del-btn'; upBtn.style.fontSize = '11px';
+        upBtn.onclick = () => moveStep(i, -1);
+        const downBtn = document.createElement('button');
+        downBtn.textContent = '▼'; downBtn.className = 'del-btn'; downBtn.style.fontSize = '11px';
+        downBtn.onclick = () => moveStep(i, 1);
+        const arrows = document.createElement('div');
+        arrows.style.cssText = 'display:flex;flex-direction:column;gap:0;flex-shrink:0;';
+        arrows.appendChild(upBtn); arrows.appendChild(downBtn);
+        row.appendChild(arrows);
+
+        row.appendChild(makePill(meta.pill, meta.pillCls));
+
+        if (step.kind === 'var')       appendVariableInputs(row, step, i);
+        if (step.kind === 'compute')   appendComputeInputs(row, step, i);
+        if (step.kind === 'condition') appendConditionInputs(row, step, i);
+        if (step.kind === 'action')    appendActionInputsForStep(row, step, i);
+
+        // For condition steps, show an "Add Else" button and delete removes the pair
+        if (step.kind === 'condition') {
+            const elseBtn = document.createElement('button');
+            elseBtn.textContent = '+ else';
+            elseBtn.style.cssText = 'font-size:10px;padding:2px 7px;background:#fef9c3;color:#92400e;border:1px solid #fcd34d;border-radius:5px;cursor:pointer;flex-shrink:0;';
+            elseBtn.onclick = () => {
+                // Insert else block just before the matching end_if
+                const endIdx = findMatchingEndIf(i);
+                if (endIdx !== -1) {
+                    // Check if else already exists between i and endIdx
+                    const hasElse = scriptSteps.slice(i + 1, endIdx).some(s => s.kind === 'else');
+                    if (!hasElse) {
+                        scriptSteps.splice(endIdx, 0, { kind: 'else' });
+                        renderScriptEditor();
+                    }
+                }
+            };
+            row.appendChild(elseBtn);
+
+            // Del button removes IF + matching ELSE + END IF
+            row.appendChild(makeDelBtn(() => {
+                const endIdx = findMatchingEndIf(i);
+                if (endIdx !== -1) {
+                    // Remove from i to endIdx inclusive, in reverse order
+                    scriptSteps.splice(i, endIdx - i + 1);
+                } else {
+                    scriptSteps.splice(i, 1);
+                }
+                renderScriptEditor();
+            }));
+        } else {
+            row.appendChild(makeDelBtn(() => removeStep(i)));
+        }
+
+        container.appendChild(row);
+    });
+}
+
+// Find the end_if that closes the condition at condIdx, handling nesting
+function findMatchingEndIf(condIdx) {
+    let depth = 0;
+    for (let i = condIdx + 1; i < scriptSteps.length; i++) {
+        if (scriptSteps[i].kind === 'condition') depth++;
+        else if (scriptSteps[i].kind === 'end_if') {
+            if (depth === 0) return i;
+            depth--;
+        }
     }
-
-    const row = document.createElement('div');
-    const kindMeta = {
-      var:       { cls:'var-row',  pill:'VAR',  pillCls:'pill-var' },
-      compute:   { cls:'calc-row', pill:'CALC', pillCls:'pill-calc' },
-      action:    { cls:'act-row',  pill:'DO',   pillCls:'pill-act' }
-    };
-    const meta = kindMeta[step.kind] || kindMeta.action;
-    row.className = `script-row ${meta.cls}`;
-    row.style.marginLeft = `${depth * 12}px`;
-    const up = document.createElement('button'); up.textContent='▲'; up.className='del-btn'; up.style.fontSize='11px';
-    const down = document.createElement('button'); down.textContent='▼'; down.className='del-btn'; down.style.fontSize='11px';
-    // Move buttons operate within the current block, which keeps IF contents inside their IF.
-    up.onclick = () => { if(localIndex>0){ [steps[localIndex-1],steps[localIndex]]=[steps[localIndex],steps[localIndex-1]]; renderScriptEditor(); } };
-    down.onclick = () => { if(localIndex<steps.length-1){ [steps[localIndex+1],steps[localIndex]]=[steps[localIndex],steps[localIndex+1]]; renderScriptEditor(); } };
-    const arrows=document.createElement('div'); arrows.style.cssText='display:flex;flex-direction:column;gap:0;flex-shrink:0;'; arrows.append(up,down);
-    row.appendChild(arrows);
-    row.appendChild(makePill(meta.pill, meta.pillCls));
-    if (step.kind === 'var') appendVariableInputs(row, step, indexPath);
-    if (step.kind === 'compute') appendComputeInputs(row, step, indexPath);
-    if (step.kind === 'action') appendActionInputsForStep(row, step, indexPath);
-    row.appendChild(makeDelBtn(() => { steps.splice(localIndex,1); renderScriptEditor(); }));
-    container.appendChild(row);
-  });
-}
-
-function appendBranchAddControls(wrap, branch, isElse) {
-  const bar = document.createElement('div');
-  bar.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;margin-top:2px;';
-  const defs = [
-    ['var','+ Var','#d1fae5','#065f46','#6ee7b7'],
-    ['compute','+ Compute','#fef3c7','#92400e','#fcd34d'],
-    ['condition','+ If','#dbeafe','#1e3a8a','#93c5fd'],
-    ['action','+ Do','#ede9fe','#3730a3','#c4b5fd']
-  ];
-  defs.forEach(([kind,label,bg,fg,border]) => {
-    const b=document.createElement('button'); b.textContent=label;
-    b.style.cssText=`font-size:10px;padding:3px 7px;background:${bg};color:${fg};border:1px solid ${border};border-radius:5px;cursor:pointer;`;
-    b.onclick=()=>{
-      const sequenceDefault = scriptEditorTarget && scriptEditorTarget.tag === 'trigger_sequence';
-      const defaults={
-        var:{kind:'var',name:'myVar',source:'literal_num',value:'0',value2:'0',group:''},
-        compute:{kind:'compute',op:'add',a:'',b:'',out:'result',extra:'',extra2:''},
-        condition:{kind:'condition',type:'var_eq',a:'',b:'',thenSteps:[]},
-        action:{kind:'action',type:sequenceDefault?'move_to_position':'fire_group',group:'',value:'',value2:'',extra:'',duration:'1',count:'2',steps:'2'}
-      };
-      branch.push(JSON.parse(JSON.stringify(defaults[kind]))); renderScriptEditor();
-    };
-    bar.appendChild(b);
-  });
-  wrap.appendChild(bar);
-}
-
-function getStepByPath(path) {
-  const parts = String(path).split('.');
-  if (parts[0] === 'root') parts.shift();
-  let arr = scriptSteps;
-  let step = null;
-  for (let i=0;i<parts.length;i++) {
-    const key = parts[i];
-    if (key === 'then' || key === 'else') {
-      arr = step ? (key === 'then' ? (step.thenSteps || []) : (step.elseSteps || [])) : [];
-    } else {
-      step = arr[parseInt(key,10)];
-      if (i < parts.length-1 && step && step.kind === 'condition') {
-        // next token will choose then/else
-      }
-    }
-  }
-  return step;
-}
-function setStepField(path, field, value) { const step=getStepByPath(path); if(step) step[field]=value; }
-function normalizeScriptSteps(steps) {
-  // Already structured.
-  if (!steps.some(s => s && (s.kind === 'else' || s.kind === 'end_if'))) {
-    return steps.map(s => s && s.kind === 'condition'
-      ? { ...s, thenSteps:Array.isArray(s.thenSteps)?s.thenSteps:[], ...(Array.isArray(s.elseSteps)?{elseSteps:s.elseSteps}: {}) }
-      : s);
-  }
-  const out=[];
-  const stack=[];
-  const target=()=>stack.length ? (stack[stack.length-1].inElse ? stack[stack.length-1].node.elseSteps : stack[stack.length-1].node.thenSteps) : out;
-  for(const raw of steps){
-    if(!raw) continue;
-    if(raw.kind==='condition'){
-      const node={...raw,thenSteps:[],elseSteps:null};
-      target().push(node); stack.push({node,inElse:false});
-    } else if(raw.kind==='else'){
-      if(stack.length) { stack[stack.length-1].node.elseSteps=[]; stack[stack.length-1].inElse=true; }
-    } else if(raw.kind==='end_if'){
-      if(stack.length) stack.pop();
-    } else target().push(raw);
-  }
-  return out;
+    return -1;
 }
 
 /* ===== helper ===== */
@@ -8847,14 +8620,14 @@ function removeVariable(i) { scriptVariables.splice(i,1); renderVariables(); }
 function appendVariableInputs(row, step, i) {
   const nameInp = makeInput(step.name, 'name', 80);
   nameInp.style.fontFamily = 'monospace';
-  nameInp.oninput = () => { setStepField(i, 'name', nameInp.value); };
+  nameInp.oninput = () => { scriptSteps[i].name = nameInp.value; };
 
   const eq = document.createElement('span');
   eq.textContent = '=';
   eq.style.cssText = 'font-size:12px;color:#71717a;flex-shrink:0;';
 
   const srcSel = makeSelect(VAR_SOURCES, step.source);
-  srcSel.onchange = () => { setStepField(i, 'source', srcSel.value); renderScriptEditor(); };
+  srcSel.onchange = () => { scriptSteps[i].source = srcSel.value; renderScriptEditor(); };
 
   row.appendChild(nameInp);
   row.appendChild(eq);
@@ -8863,35 +8636,28 @@ function appendVariableInputs(row, step, i) {
   const src = step.source;
   if (src === 'literal_num') {
     const inp = makeInput(step.value, '0', 70, 'number');
-    inp.oninput = () => { setStepField(i, 'value', inp.value); };
+    inp.oninput = () => { scriptSteps[i].value = inp.value; };
     row.appendChild(inp);
   } else if (src === 'literal_str') {
     const inp = makeInput(step.value, 'text...', 120);
-    inp.oninput = () => { setStepField(i, 'value', inp.value); };
+    inp.oninput = () => { scriptSteps[i].value = inp.value; };
     row.appendChild(inp);
-  } else if (src === 'literal_bool') {
-    const sel = makeSelect([
-      {value:'true', label:'True'},
-      {value:'false', label:'False'}
-    ], String(step.value ?? 'false').toLowerCase());
-    sel.onchange = () => { setStepField(i, 'value', sel.value); };
-    row.appendChild(sel);
   } else if (src === 'counter' || src.startsWith('object_')) {
     const inp = makeInput(step.group, 'group name', 120);
-    inp.oninput = () => { setStepField(i, 'group', inp.value); };
+    inp.oninput = () => { scriptSteps[i].group = inp.value; };
     row.appendChild(inp);
   } else if (src === 'random_int') {
     const min = makeInput(step.value,  'min', 55, 'number');
     const max = makeInput(step.value2, 'max', 55, 'number');
-    min.oninput = () => { setStepField(i, 'value', min.value); };
-    max.oninput = () => { setStepField(i, 'value2', max.value); };
+    min.oninput = () => { scriptSteps[i].value  = min.value; };
+    max.oninput = () => { scriptSteps[i].value2 = max.value; };
     row.appendChild(min); row.appendChild(max);
   }
 }
 
 function appendComputeInputs(row, step, i) {
   const opSel = makeSelect(COMPUTE_OPS, step.op);
-  opSel.onchange = () => { setStepField(i, 'op', opSel.value); renderScriptEditor(); };
+  opSel.onchange = () => { scriptSteps[i].op = opSel.value; renderScriptEditor(); };
   row.appendChild(opSel);
 
   const needsB     = !['abs','floor','ceil','round','tostring','tonumber'].includes(step.op);
@@ -8899,26 +8665,26 @@ function appendComputeInputs(row, step, i) {
   const needsLerp  = step.op === 'lerp';
 
   const aInp = makeInput(step.a, '$a or number', 100);
-  aInp.oninput = () => { setStepField(i, 'a', aInp.value); };
+  aInp.oninput = () => { scriptSteps[i].a = aInp.value; };
   row.appendChild(aInp);
 
   if (needsB && !needsClamp && !needsLerp) {
     const bInp = makeInput(step.b, '$b or number', 100);
-    bInp.oninput = () => { setStepField(i, 'b', bInp.value); };
+    bInp.oninput = () => { scriptSteps[i].b = bInp.value; };
     row.appendChild(bInp);
   }
   if (needsClamp) {
     const mn = makeInput(step.b,     'min', 50, 'number');
     const mx = makeInput(step.extra, 'max', 50, 'number');
-    mn.oninput = () => { setStepField(i, 'b', mn.value); };
-    mx.oninput = () => { setStepField(i, 'extra', mx.value); };
+    mn.oninput = () => { scriptSteps[i].b     = mn.value; };
+    mx.oninput = () => { scriptSteps[i].extra = mx.value; };
     row.appendChild(mn); row.appendChild(mx);
   }
   if (needsLerp) {
     const bInp = makeInput(step.b,     '$b', 70);
     const tInp = makeInput(step.extra, 't%', 45, 'number');
-    bInp.oninput = () => { setStepField(i, 'b', bInp.value); };
-    tInp.oninput = () => { setStepField(i, 'extra', tInp.value); };
+    bInp.oninput = () => { scriptSteps[i].b     = bInp.value; };
+    tInp.oninput = () => { scriptSteps[i].extra = tInp.value; };
     row.appendChild(bInp); row.appendChild(tInp);
   }
 
@@ -8929,36 +8695,81 @@ function appendComputeInputs(row, step, i) {
 
   const outInp = makeInput(step.out, 'output $var', 90);
   outInp.style.fontFamily = 'monospace';
-  outInp.oninput = () => { setStepField(i, 'out', outInp.value); };
+  outInp.oninput = () => { scriptSteps[i].out = outInp.value; };
   row.appendChild(outInp);
+}
+
+function appendConditionInputs(row, step, i) {
+  const typeSel = makeSelect(CONDITION_TYPES, step.type);
+  typeSel.onchange = () => { scriptSteps[i].type = typeSel.value; renderScriptEditor(); };
+  row.appendChild(typeSel);
+
+  const t = step.type;
+  if (t.startsWith('var_')) {
+    const a = makeInput(step.a, '$var or value', 100);
+    const b = makeInput(step.b, '$var or value', 100);
+    a.oninput = () => { scriptSteps[i].a = a.value; };
+    b.oninput = () => { scriptSteps[i].b = b.value; };
+    row.appendChild(a); row.appendChild(b);
+  } else if (t.startsWith('counter_')) {
+    const g = makeInput(step.group, 'counter group', 110);
+    const v = makeInput(step.value, 'value or $var', 90);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(g); row.appendChild(v);
+  } else if (['player_above','player_below','player_left','player_right'].includes(t)) {
+    const v = makeInput(step.value, 'coord or $var', 100);
+    v.oninput = () => { scriptSteps[i].value = v.value; };
+    row.appendChild(v);
+  } else {
+    const g = makeInput(step.group, 'group name', 150);
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    row.appendChild(g);
+  }
 }
 
 function appendActionInputsForStep(row, step, i) {
   const typeSel = makeSelect(getActionOptions(step.type), step.type);
   typeSel.onchange = () => {
-    setStepField(i, 'type', typeSel.value);
-    setStepField(i, 'value', '');
-    setStepField(i, 'value2', '');
+    scriptSteps[i].type   = typeSel.value;
+    scriptSteps[i].value  = '';
+    scriptSteps[i].value2 = '';
     renderScriptEditor();
   };
   row.appendChild(typeSel);
   appendActionInputsFlat(row, step, i); // <-- this now exists
 }
 function addScriptStep(kind) {
-  const sequenceDefault = scriptEditorTarget && scriptEditorTarget.tag === 'trigger_sequence';
-  const defaults = {
-    var:     { kind:'var', name:'myVar', source:'literal_num', value:'0', value2:'0', group:'' },
-    compute: { kind:'compute', op:'add', a:'', b:'', out:'result', extra:'', extra2:'' },
-    condition: { kind:'condition', type:'var_gt', a:'', b:'', thenSteps:[] },
-    action:  { kind:'action', type:sequenceDefault?'move_to_position':'fire_group', group:'', value:'', value2:'', extra:'', duration:'1', count:'2', steps:'2' }
-  };
-  scriptSteps.push(JSON.parse(JSON.stringify(defaults[kind])));
+    const sequenceDefault = scriptEditorTarget && scriptEditorTarget.tag === 'trigger_sequence';
+    const defaults = {
+        var:       { kind: 'var',       name: 'myVar', source: 'literal_num', value: '0', value2: '0', group: '' },
+        compute:   { kind: 'compute',   op: 'add', a: '', b: '', out: 'result', extra: '', extra2: '' },
+        condition: { kind: 'condition', type: 'var_gt', a: '', b: '' },
+        action:    { kind: 'action',    type: sequenceDefault ? 'move_to_position' : 'fire_group', group: '', value: '', value2: '', extra: '', duration: '1', count: '2', steps: '2' },
+        else:      { kind: 'else' },
+        end_if:    { kind: 'end_if' },
+    };
+    
+    if (kind === 'condition') {
+        // Add IF + END IF together so they're always paired
+        scriptSteps.push({ ...defaults.condition });
+        scriptSteps.push({ ...defaults.end_if });
+    } else {
+        scriptSteps.push({ ...defaults[kind] });
+    }
+    renderScriptEditor();
+}
+
+function removeStep(i) {
+  scriptSteps.splice(i, 1);
   renderScriptEditor();
 }
-function removeStep(i) { scriptSteps.splice(i,1); renderScriptEditor(); }
+
 function moveStep(i, dir) {
-  const j=i+dir; if(j<0 || j>=scriptSteps.length) return;
-  [scriptSteps[i],scriptSteps[j]]=[scriptSteps[j],scriptSteps[i]]; renderScriptEditor();
+  const j = i + dir;
+  if (j < 0 || j >= scriptSteps.length) return;
+  [scriptSteps[i], scriptSteps[j]] = [scriptSteps[j], scriptSteps[i]];
+  renderScriptEditor();
 }
 function removeCompute(i) { scriptComputes.splice(i,1); renderComputes(); }
 
@@ -9067,7 +8878,7 @@ function applyScript() {
   if (!scriptEditorTarget) return;
   scriptEditorTarget.script = {
     event: scriptEvent,
-    steps: JSON.parse(JSON.stringify(normalizeScriptSteps(scriptSteps)))
+    steps: JSON.parse(JSON.stringify(scriptSteps))
   };
   closeScriptEditor();
   showCoinToast('Script saved', '#6366f1');
@@ -9093,12 +8904,10 @@ function resolveVal(str, vars) {
 function buildScriptVars(varDefs) {
   const vars = {};
   varDefs.forEach(v => {
-    const name = String(v.name || '').trim().replace(/^\$/,'');
-    if (!name) return;
+    const name = v.name;
     switch (v.source) {
       case 'literal_num':     vars[name] = parseFloat(v.value) || 0; break;
       case 'literal_str':     vars[name] = v.value || ''; break;
-      case 'literal_bool':    vars[name] = String(v.value).toLowerCase() === 'true'; break;
       case 'counter': {
         const c = objects.find(o => o.tag === 'counter' && o.countGroup === v.group);
         vars[name] = c ? (c.count || 0) : 0;
@@ -9176,51 +8985,15 @@ function applyScriptComputes(computeDefs, vars) {
         result = na + (nb - na) * t;
         break;
       }
-      case 'random_between': {
-        const lo = Math.min(na, nb);
-        const hi = Math.max(na, nb);
-        result = lo + Math.random() * (hi - lo);
-        break;
-      }
       default: result = 0;
     }
     vars[c.out] = result;
   });
 }
 
-function scriptBoolValue(value, vars) {
-  const v = resolveVal(value, vars);
-  if (typeof v === 'boolean') return v;
-  const s = String(v ?? '').trim().toLowerCase();
-  if (s === 'true' || s === 'yes' || s === 'on' || s === '1') return true;
-  if (s === 'false' || s === 'no' || s === 'off' || s === '0' || s === '') return false;
-  return !!v;
-}
-function applyScriptLogic(logicDefs, vars) {
-  logicDefs.forEach(l => {
-    const a = scriptBoolValue(l.a, vars), b = scriptBoolValue(l.b, vars);
-    const out = String(l.out || '').trim().replace(/^\$/,'');
-    if (!out) return;
-    vars[out] = l.op === 'not' ? !a : l.op === 'or' ? (a || b) : (a && b);
-  });
-}
-
 function evaluateScriptConditions(conditions, vars) {
   return conditions.every(cond => {
     const t = cond.type;
-    if (t === 'value_true' || t === 'value_false') {
-      const raw = String(cond.a ?? '').trim();
-      let result = scriptBoolValue(raw, vars);
-      if (raw.startsWith('$')) {
-        const key = raw.slice(1).trim();
-        const boolObj = objects.find(o => o.tag === 'boolean' && String(o.varGroup || '').trim() === key);
-        if (boolObj) result = !!boolObj.value;
-      } else if (raw) {
-        const boolObj = objects.find(o => o.tag === 'boolean' && String(o.varGroup || '').trim() === raw);
-        if (boolObj) result = !!boolObj.value;
-      }
-      return t === 'value_true' ? result : !result;
-    }
 
     if (t.startsWith('var_')) {
       const a = resolveVal(cond.a, vars);
@@ -9306,12 +9079,10 @@ function executeScriptActions(actions, vars) {
 }
 
     if (t === 'set_var') {
-      const varName = String(group || '').trim().replace(/^\$/,'');
-      if (!varName) return;
-      vars[varName] = val;
+      vars[group] = val;
       // Write back to trigger's runtime vars if it has them
       if (scriptEditorTarget && scriptEditorTarget._runtimeVars) {
-        scriptEditorTarget._runtimeVars[varName] = val;
+        scriptEditorTarget._runtimeVars[group] = val;
       }
       return;
     }
@@ -9430,7 +9201,7 @@ if (t === 'set_light_intensity') {
 function actionTargetInput(row, action, i, placeholder = 'object or group') {
   const g = makeInput(action.group, placeholder, 150);
   g.setAttribute('list', 'scriptTargetList');
-  g.oninput = () => { setStepField(i, 'group', g.value); };
+  g.oninput = () => { scriptSteps[i].group = g.value; };
   row.appendChild(g);
   return g;
 }
@@ -9461,32 +9232,32 @@ function appendActionInputsFlat(row, action, i) {
     if (t === 'move_object' || t === 'move_by' || t === 'move_to_position') {
       const x = makeInput(action.value, t === 'move_by' ? 'X amount' : 'X', 70, 'number');
       const y = makeInput(action.value2, t === 'move_by' ? 'Y amount' : 'Y', 70, 'number');
-      x.oninput = () => { setStepField(i, 'value', x.value); };
-      y.oninput = () => { setStepField(i, 'value2', y.value); };
+      x.oninput = () => { scriptSteps[i].value = x.value; };
+      y.oninput = () => { scriptSteps[i].value2 = y.value; };
       row.appendChild(x); row.appendChild(y);
       if (t === 'move_to_position') {
         const d = makeInput(action.duration || '0.5', 'seconds', 65, 'number');
-        d.oninput = () => { setStepField(i, 'duration', d.value); };
+        d.oninput = () => { scriptSteps[i].duration = d.value; };
         row.appendChild(d);
       }
     } else if (t === 'rotate_object' || t === 'rotate_by') {
       const v = makeInput(action.value, t === 'rotate_by' ? 'degrees' : 'degrees', 75, 'number');
-      v.oninput = () => { setStepField(i, 'value', v.value); };
+      v.oninput = () => { scriptSteps[i].value = v.value; };
       row.appendChild(v);
     } else if (t === 'set_opacity') {
       const v = makeInput(action.value, '0–1', 65, 'number');
-      v.oninput = () => { setStepField(i, 'value', v.value); };
+      v.oninput = () => { scriptSteps[i].value = v.value; };
       row.appendChild(v);
     } else if (t === 'set_color') {
       const v = makeInput(action.value || '#ffffff', '#RRGGBB', 90);
       v.type = 'text';
-      v.oninput = () => { setStepField(i, 'value', v.value); };
+      v.oninput = () => { scriptSteps[i].value = v.value; };
       row.appendChild(v);
     } else if (t === 'set_scale') {
       const sx = makeInput(action.value || '1', 'X scale', 65, 'number');
       const sy = makeInput(action.value2 || '', 'Y scale', 65, 'number');
-      sx.oninput = () => { setStepField(i, 'value', sx.value); };
-      sy.oninput = () => { setStepField(i, 'value2', sy.value); };
+      sx.oninput = () => { scriptSteps[i].value = sx.value; };
+      sy.oninput = () => { scriptSteps[i].value2 = sy.value; };
       row.appendChild(sx); row.appendChild(sy);
     }
     return;
@@ -9494,95 +9265,95 @@ function appendActionInputsFlat(row, action, i) {
 
   if (t === 'wait') {
     const v = makeInput(action.value || '1', 'seconds', 75, 'number');
-    v.oninput = () => { setStepField(i, 'value', v.value); };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
     row.appendChild(v); return;
   }
   if (t === 'repeat' || t === 'loop') {
     const c = makeInput(action.count || (t === 'loop' ? '0' : '2'), t === 'loop' ? 'repeat forever' : 'count', 70, 'number');
     const n = makeInput(action.steps || '2', 'next actions', 85, 'number');
-    c.oninput = () => { setStepField(i, 'count', c.value); };
-    n.oninput = () => { setStepField(i, 'steps', n.value); };
+    c.oninput = () => { scriptSteps[i].count = c.value; };
+    n.oninput = () => { scriptSteps[i].steps = n.value; };
     row.appendChild(c); row.appendChild(n); return;
   }
 
   if (simpleGroup.includes(t)) {
     const g = makeInput(action.group, 'target group', 160);
-    g.oninput = () => { setStepField(i, 'group', g.value); };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
     row.appendChild(g);
     return;
   }
   if (t === 'increment_counter') {
     const g = makeInput(action.group, 'counter group', 140);
-    g.oninput = () => { setStepField(i, 'group', g.value); };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
     row.appendChild(g); return;
   }
   if (t === 'set_counter') {
     const g = makeInput(action.group, 'counter group', 120);
     const v = makeInput(action.value, '$var or number', 100);
-    g.oninput = () => { setStepField(i, 'group', g.value); };
-    v.oninput = () => { setStepField(i, 'value', v.value); };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
     row.appendChild(g); row.appendChild(v); return;
   }
   if (t === 'move_group') {
     const g = makeInput(action.group, 'group', 90);
     const x = makeInput(action.value, 'X or $var', 80);
     const y = makeInput(action.value2, 'Y or $var', 80);
-    g.oninput = () => { setStepField(i, 'group', g.value); };
-    x.oninput = () => { setStepField(i, 'value', x.value); };
-    y.oninput = () => { setStepField(i, 'value2', y.value); };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    x.oninput = () => { scriptSteps[i].value = x.value; };
+    y.oninput = () => { scriptSteps[i].value2 = y.value; };
     row.appendChild(g); row.appendChild(x); row.appendChild(y); return;
   }
   if (t === 'set_velocity') {
     const g = makeInput(action.group, 'group', 90);
     const vx = makeInput(action.value, 'VX or $var', 75);
     const vy = makeInput(action.value2, 'VY or $var', 75);
-    g.oninput = () => { setStepField(i, 'group', g.value); };
-    vx.oninput = () => { setStepField(i, 'value', vx.value); };
-    vy.oninput = () => { setStepField(i, 'value2', vy.value); };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    vx.oninput = () => { scriptSteps[i].value = vx.value; };
+    vy.oninput = () => { scriptSteps[i].value2 = vy.value; };
     row.appendChild(g); row.appendChild(vx); row.appendChild(vy); return;
   }
   if (t === 'set_text') {
     const g = makeInput(action.group, 'group', 100);
     const v = makeInput(action.value, 'text or $var', 130);
-    g.oninput = () => { setStepField(i, 'group', g.value); };
-    v.oninput = () => { setStepField(i, 'value', v.value); };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
     row.appendChild(g); row.appendChild(v); return;
   }
   if (t === 'set_solid' || t === 'set_kill') {
     const g = makeInput(action.group, 'group', 120);
     const sel = makeSelect([{value:'true',label:'Yes'},{value:'false',label:'No'}], action.value);
-    g.oninput = () => { setStepField(i, 'group', g.value); };
-    sel.onchange = () => { setStepField(i, 'value', sel.value); };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    sel.onchange = () => { scriptSteps[i].value = sel.value; };
     row.appendChild(g); row.appendChild(sel); return;
   }
   if (t === 'set_var') {
     const n = makeInput(action.group, '$varName', 90);
     const v = makeInput(action.value, 'value or $var', 120);
     n.style.fontFamily = 'monospace';
-    n.oninput = () => { setStepField(i, 'group', n.value); };
-    v.oninput = () => { setStepField(i, 'value', v.value); };
+    n.oninput = () => { scriptSteps[i].group = n.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
     row.appendChild(n); row.appendChild(v); return;
   }
   if (t === 'shake_screen') {
     const v = makeInput(action.value || '10', 'intensity', 80);
-    v.oninput = () => { setStepField(i, 'value', v.value); };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
     row.appendChild(v); return;
   }
   if (t === 'log') {
     const v = makeInput(action.value, 'message or $var', 200);
-    v.oninput = () => { setStepField(i, 'value', v.value); };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
     row.appendChild(v); return;
   }
   if (t === 'set_theme') {
     const sel = makeSelect(Object.keys(LIGHTING_THEMES).map(k => ({ value:k, label:k.replace('_',' ') })), action.value || 'normal');
-    sel.onchange = () => { setStepField(i, 'value', sel.value); };
+    sel.onchange = () => { scriptSteps[i].value = sel.value; };
     row.appendChild(sel); return;
   }
   if (t === 'behavior_on' || t === 'behavior_off' || t === 'behavior_toggle') {
     const g = makeInput(action.group, 'object group', 110);
     const v = makeInput(action.value, 'behavior name/type (blank = all)', 190);
-    g.oninput = () => { setStepField(i, 'group', g.value); };
-    v.oninput = () => { setStepField(i, 'value', v.value); };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
     row.appendChild(g); row.appendChild(v); return;
   }
   if (t === 'set_light_color') {
@@ -9590,17 +9361,17 @@ function appendActionInputsFlat(row, action, i) {
     const r = makeInput(action.value, 'R or $var', 60);
     const gr = makeInput(action.value2, 'G or $var', 60);
     const b = makeInput(action.extra, 'B or $var', 60);
-    g.oninput = () => { setStepField(i, 'group', g.value); };
-    r.oninput = () => { setStepField(i, 'value', r.value); };
-    gr.oninput = () => { setStepField(i, 'value2', gr.value); };
-    b.oninput = () => { setStepField(i, 'extra', b.value); };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    r.oninput = () => { scriptSteps[i].value = r.value; };
+    gr.oninput = () => { scriptSteps[i].value2 = gr.value; };
+    b.oninput = () => { scriptSteps[i].extra = b.value; };
     row.appendChild(g); row.appendChild(r); row.appendChild(gr); row.appendChild(b); return;
   }
   if (t === 'set_light_radius' || t === 'set_light_intensity') {
     const g = makeInput(action.group, 'group', 110);
     const v = makeInput(action.value, t === 'set_light_radius' ? 'radius or $var' : '0–1 or $var', 90);
-    g.oninput = () => { setStepField(i, 'group', g.value); };
-    v.oninput = () => { setStepField(i, 'value', v.value); };
+    g.oninput = () => { scriptSteps[i].group = g.value; };
+    v.oninput = () => { scriptSteps[i].value = v.value; };
     row.appendChild(g); row.appendChild(v); return;
   }
 }
@@ -9643,55 +9414,64 @@ function scriptHasAsyncSteps(steps) {
 }
 function runAsyncScriptSegment(trigger, steps, start, end, vars, token, done) {
   if (trigger._visualScriptToken !== token) return;
-  let i = start;
-  const next = () => runAsyncScriptSegment(trigger, steps, i, end, vars, token, done);
-  while (i < end) {
+  let i=start;
+  const next=()=>runAsyncScriptSegment(trigger,steps,i,end,vars,token,done);
+  while (i<end) {
     if (trigger._visualScriptToken !== token) return;
-    const step = steps[i], rs = resolveStepFields(step);
-    if (step.kind === 'var') { Object.assign(vars, buildScriptVars([rs])); i++; continue; }
-    if (step.kind === 'compute') { applyScriptComputes([rs], vars); i++; continue; }
-    if (step.kind === 'condition') {
-      const branch = evaluateScriptConditions([rs], vars) ? (step.thenSteps || []) : (Array.isArray(step.elseSteps) ? step.elseSteps : null);
-      if (!branch) { i++; continue; }
-      runAsyncScriptSegment(trigger, branch, 0, branch.length, vars, token, () => {
-        if (trigger._visualScriptToken === token) runAsyncScriptSegment(trigger, steps, i + 1, end, vars, token, done);
-      });
+    const step=steps[i], rs=resolveStepFields(step);
+    if (step.kind==='var') { Object.assign(vars,buildScriptVars([rs])); i++; continue; }
+    if (step.kind==='compute') { applyScriptComputes([rs],vars); i++; continue; }
+    if (step.kind==='condition') {
+      let elseIdx=-1,endIdx=-1,depth=0;
+      for(let j=i+1;j<end;j++){
+        if(steps[j].kind==='condition') depth++;
+        else if(steps[j].kind==='else'&&depth===0) elseIdx=j;
+        else if(steps[j].kind==='end_if'){ if(depth===0){endIdx=j;break;} depth--; }
+      }
+      if(endIdx===-1) endIdx=end;
+      const pass=evaluateScriptConditions([rs],vars);
+      const bs=pass?i+1:(elseIdx!==-1?elseIdx+1:endIdx);
+      const be=pass?(elseIdx!==-1?elseIdx:endIdx):endIdx;
+      const resume=()=>{ i=endIdx+1; runAsyncScriptSegment(trigger,steps,i,end,vars,token,done); };
+      runAsyncScriptSegment(trigger,steps,bs,be,vars,token,resume);
       return;
     }
-    if (step.kind === 'action') {
-      const t = rs.type;
-      if (t === 'wait') {
-        const ms = Math.max(0, (parseFloat(resolveVal(rs.value, vars)) || 0) * 1000);
-        scheduleAfter(ms, () => { if (trigger._visualScriptToken === token) runAsyncScriptSegment(trigger, steps, i + 1, end, vars, token, done); });
+    if (step.kind==='action') {
+      const t=rs.type;
+      if(t==='wait'){
+        const ms=Math.max(0,(parseFloat(resolveVal(rs.value,vars))||0)*1000);
+        scheduleAfter(ms,()=>{ if(trigger._visualScriptToken===token) runAsyncScriptSegment(trigger,steps,i+1,end,vars,token,done); });
         return;
       }
-      if (t === 'move_to_position') {
-        const targets = resolveVisualTargets(rs.group), x = resolveVal(rs.value, vars), y = resolveVal(rs.value2, vars);
-        const ms = Math.max(0, (parseFloat(resolveVal(rs.duration || '0.5', vars)) || 0) * 1000);
-        addVisualTween(targets, x, y, ms, () => { if (trigger._visualScriptToken === token) runAsyncScriptSegment(trigger, steps, i + 1, end, vars, token, done); });
+      if(t==='move_to_position'){
+        const targets=resolveVisualTargets(rs.group), x=resolveVal(rs.value,vars), y=resolveVal(rs.value2,vars);
+        const ms=Math.max(0,(parseFloat(resolveVal(rs.duration||'0.5',vars))||0)*1000);
+        addVisualTween(targets,x,y,ms,()=>{ if(trigger._visualScriptToken===token) runAsyncScriptSegment(trigger,steps,i+1,end,vars,token,done); });
         return;
       }
-      if (t === 'repeat' || t === 'loop') {
-        const count = t === 'loop' ? Infinity : Math.max(0, Math.floor(parseFloat(resolveVal(rs.count, vars)) || 0));
-        const n = Math.max(0, Math.floor(parseFloat(resolveVal(rs.steps, vars)) || 0));
-        const bs = i + 1, be = Math.min(end, bs + n);
-        if (be <= bs) { i++; continue; }
-        const runBlock = remaining => {
-          if (trigger._visualScriptToken !== token) return;
-          if (remaining === 0) { runAsyncScriptSegment(trigger, steps, be, end, vars, token, done); return; }
-          if (remaining === Infinity) {
-            scheduleAfter(17, () => { if (trigger._visualScriptToken === token) runAsyncScriptSegment(trigger, steps, bs, be, vars, token, () => runBlock(Infinity)); });
+      if(t==='repeat'||t==='loop'){
+        const count=t==='loop'?Infinity:Math.max(0,Math.floor(parseFloat(resolveVal(rs.count,vars))||0));
+        const n=Math.max(0,Math.floor(parseFloat(resolveVal(rs.steps,vars))||0));
+        const bs=i+1, be=Math.min(end,bs+n);
+        if(be<=bs){ i++; continue; }
+        const runBlock=(remaining)=>{
+          if(trigger._visualScriptToken!==token) return;
+          if(remaining===0){ runAsyncScriptSegment(trigger,steps,be,end,vars,token,done); return; }
+          if(remaining===Infinity){
+            scheduleAfter(17,()=>{ if(trigger._visualScriptToken===token) runAsyncScriptSegment(trigger,steps,bs,be,vars,token,()=>runBlock(Infinity)); });
             return;
           }
-          runAsyncScriptSegment(trigger, steps, bs, be, vars, token, () => runBlock(remaining - 1));
+          runAsyncScriptSegment(trigger,steps,bs,be,vars,token,()=>runBlock(remaining-1));
         };
-        runBlock(count); return;
+        runBlock(count);
+        return;
       }
-      executeScriptActions([rs], vars); i++; continue;
+      executeScriptActions([rs],vars);
+      i++; continue;
     }
     i++;
   }
-  if (done) done();
+  if(done) done();
 }
 
 function runTriggerScript(trigger, event = 'touched') {
@@ -9716,20 +9496,54 @@ function resolveStepFields(step) {
     return out;
 }
 function executeScriptSteps(steps, start, end, vars) {
-  let i = start;
-  while (i < end) {
-    const step = steps[i], rs = resolveStepFields(step);
-    if (step.kind === 'var') { Object.assign(vars, buildScriptVars([rs])); i++; continue; }
-    if (step.kind === 'compute') { applyScriptComputes([rs], vars); i++; continue; }
-    if (step.kind === 'condition') {
-      if (evaluateScriptConditions([rs], vars)) executeScriptSteps(step.thenSteps || [], 0, (step.thenSteps || []).length, vars);
-      else if (Array.isArray(step.elseSteps)) executeScriptSteps(step.elseSteps, 0, step.elseSteps.length, vars);
-      i++; continue;
+    let i = start;
+    while (i < end) {
+        const step = steps[i];
+        const rs = resolveStepFields(step);
+
+        if (step.kind === 'var') {
+            Object.assign(vars, buildScriptVars([rs]));
+            i++;
+
+        } else if (step.kind === 'compute') {
+            applyScriptComputes([rs], vars);
+            i++;
+
+        } else if (step.kind === 'condition') {
+            // Find matching else and end_if
+            let elseIdx = -1;
+            let endIdx  = -1;
+            let depth   = 0;
+            for (let j = i + 1; j < end; j++) {
+                if (steps[j].kind === 'condition') depth++;
+                else if (steps[j].kind === 'else' && depth === 0) elseIdx = j;
+                else if (steps[j].kind === 'end_if') {
+                    if (depth === 0) { endIdx = j; break; }
+                    depth--;
+                }
+            }
+            if (endIdx === -1) endIdx = end; // no matching end_if, treat rest as block
+
+            const condPassed = evaluateScriptConditions([rs], vars);
+
+            if (condPassed) {
+                const blockEnd = elseIdx !== -1 ? elseIdx : endIdx;
+                executeScriptSteps(steps, i + 1, blockEnd, vars);
+            } else if (elseIdx !== -1) {
+                executeScriptSteps(steps, elseIdx + 1, endIdx, vars);
+            }
+
+            i = endIdx + 1;
+
+        } else if (step.kind === 'action') {
+            executeScriptActions([rs], vars);
+            i++;
+
+        } else {
+            // else / end_if markers — skip during normal execution
+            i++;
+        }
     }
-    if (step.kind === 'action') { executeScriptActions([rs], vars); i++; continue; }
-    // Old marker rows are ignored for backward compatibility after normalization.
-    i++;
-  }
 }
 // Trigger checking function
 // 1. New helper function to execute trigger logic
@@ -10737,11 +10551,13 @@ case 'goal': {
     ctx.strokeRect(x, y, w, h);
     break;
 }
-        case 'trigger_camera':
         case 'trigger_move':
-        case 'trigger_lighting':
         case 'trigger_modify':
-        case 'trigger_particle': {
+        case 'trigger_lighting':
+        case 'trigger_effect':
+        case 'trigger_variable':
+        case 'trigger_behavior':
+        case 'trigger_sequence': {
             const d = EFFECT_TRIGGER_DEFS[tag];
             ctx.fillStyle = d.color + '22';
             ctx.fillRect(x, y, w, h);
@@ -11414,9 +11230,9 @@ function drawLighting() {
         if (obj.tag === 'light') {
             const pulse = Math.sin(performance.now() / 400 + obj.x) * 0.04 + 0.96;
             lights.push({
-                x:         (obj.x + obj.width/2 - camera.x) * (camera.zoom || 1) + canvas.width * (1 - (camera.zoom || 1)) / 2,
-                y:         (obj.y + obj.height/2 - camera.y) * (camera.zoom || 1) + canvas.height * (1 - (camera.zoom || 1)) / 2,
-                radius:    (obj.lightRadius ?? 220) * pulse * (camera.zoom || 1),
+                x:         obj.x - camera.x + obj.width  / 2,
+                y:         obj.y - camera.y + obj.height / 2,
+                radius:    (obj.lightRadius ?? 220) * pulse,
                 r:         obj.lightR  ?? 255,
                 g:         obj.lightG  ?? 220,
                 b:         obj.lightB  ?? 100,
@@ -11496,17 +11312,12 @@ function draw() {
     ctx.save();
     ctx.translate(shakeX, shakeY);
 
-    // World-space camera zoom. Camera coordinates are the top-left of the zoomed view.
-    const z = Math.max(0.5, camera.zoom || 1);
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.scale(z, z);
-    ctx.translate(-canvas.width / 2, -canvas.height / 2);
-
     drawBackground();
     drawDecorations();
     if (settings.grid) drawGrid();
     drawObjects();
     drawSurfaceShading();
+    //drawPlayerTrail();
     particles.forEach(p => p.draw(ctx));
     drawGround();
     drawGhost();
@@ -11673,9 +11484,11 @@ function drawSingleObject(obj) {
         if (obj.tag !== 'text' && (obj.flipX || obj.flipY)) ctx.scale(obj.flipX ? -1 : 1, obj.flipY ? -1 : 1);
     }
     if (obj.tag === 'player') {
-    // Lean forward when running
-    const leanAmount = obj.vx * 0.03;
-    ctx.rotate(leanAmount);
+    // Follow a contacted slope with the body perpendicular to its normal.
+    // On flat ground retain the small run lean.
+    const slopeAngle = (!obj.isJumping && obj._slopeObject) ? (obj._slopeAngle || 0) : 0;
+    const leanAmount = slopeAngle ? 0 : obj.vx * 0.03;
+    ctx.rotate(slopeAngle + leanAmount);
 
     // Squish horizontally when running fast
     const speedRatio = Math.abs(obj.vx) / 6;
@@ -11874,29 +11687,25 @@ function drawObjects() {
   const viewRect = {
       x: camera.x,
       y: camera.y,
-      width: canvas.width / Math.max(0.01, camera.zoom || 1),
-      height: canvas.height / Math.max(0.01, camera.zoom || 1)
+      width: canvas.width,
+      height: canvas.height
   };
 
   // Get ONLY the objects currently inside the camera view
   // exact on-screen test on top of the grid's coarse cells; rotated blocks get extra room
-  const viewW = canvas.width / Math.max(0.01, camera.zoom || 1), viewH = canvas.height / Math.max(0.01, camera.zoom || 1);
-  const vx0 = camera.x - 64, vy0 = camera.y - 64, vx1 = camera.x + viewW + 64, vy1 = camera.y + viewH + 64;
+  const vx0 = camera.x - 64, vy0 = camera.y - 64, vx1 = camera.x + canvas.width + 64, vy1 = camera.y + canvas.height + 64;
   const visibleObjects = getNearbyObjects(viewRect).filter(o => {
       const pad = o.rotation ? Math.max(o.width, o.height) : 0;
       return o.x + o.width + pad >= vx0 && o.x - pad <= vx1 && o.y + o.height + pad >= vy0 && o.y - pad <= vy1;
   }).sort((a, b) => (a._ord || 0) - (b._ord || 0));
   perfStats.visible = visibleObjects.length;
 
-  // Triggers remain fully active during play/test, but are invisible.
-  // Only draw them while editing so they don't clutter the actual game.
-  if (!playMode && !testMode) {
-    visibleObjects.forEach(obj => {
-      if (isAnyTrigger(obj.tag)) drawSingleObject(obj);
-    });
-  }
+  // First pass: draw triggers
+  visibleObjects.forEach(obj => {
+    if (isAnyTrigger(obj.tag)) drawSingleObject(obj);
+  });
 
-  // Draw non-triggers in all modes.
+  // Second pass: draw non-triggers
   visibleObjects.forEach(obj => {
     if (!isAnyTrigger(obj.tag)) drawSingleObject(obj);
   });
@@ -12203,12 +12012,10 @@ function gameLoop(timestamp) {
         const near = getNearbyObjects(player);     // one nearby-blocks lookup shared by the touch checks
         checkTriggers(near);
         checkEffectTriggerTouches(near);
-            checkMonitors();
+        checkMonitors();
         checkComparers();
         updatePlatforms(delta);
         updateVisualTweens();
-        updateFxTweens();
-        updateCameraSystem();
         runScheduled();
         checkGoal();
         updatePlayerTrail();
@@ -12219,6 +12026,13 @@ function gameLoop(timestamp) {
             particles[i].update();
             if (particles[i].life <= 0) particles.splice(i, 1);
         }
+
+        const targetX = player.x - canvas.width / 2;
+        const targetY = player.y - canvas.height / 2;
+        camera.x += (targetX - camera.x) * CAM_SMOOTH;
+        camera.y += (targetY - camera.y) * CAM_SMOOTH;
+        camera.x = Math.max(0, Math.min(camera.x, world.width - canvas.width));
+        camera.y = Math.max(0, Math.min(camera.y, world.height - canvas.height));
 
         for (const u in smoothedPlayers) {
             if (!otherPlayers[u]) continue;
