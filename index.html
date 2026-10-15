@@ -802,11 +802,6 @@
         <input type="number" id="propHeight">
     </div>
     <div class="input-group">
-        <label for="propRotation">Rotation (degrees):</label>
-        <input type="number" id="propRotation" step="1" min="-360" max="360" value="0">
-        <small style="color:#71717a;font-size:10px;">Rotate solid blocks to make slopes. Physics objects follow the slope surface.</small>
-    </div>
-    <div class="input-group">
         <label for="propOpacity">Opacity (0–1):</label>
         <input type="number" id="propOpacity" step="0.1" min="0" max="1">
     </div>
@@ -2769,28 +2764,12 @@ function setObjPos(o, nx, ny) {
     if (pp) { pp.startX += dx; pp.endX += dx; pp.startY += dy; pp.endY += dy; }
 }
 // Topmost object under a point (respects draw order). Locked / hidden are skipped unless asked.
-function pointInObjectShape(wx, wy, o) {
-    // Pointer hit-testing must use the same rotated rectangle the editor renders.
-    // Transform the point back into the object's local, unrotated coordinates.
-    const angle = (o.rotation || 0) * Math.PI / 180;
-    if (Math.abs(angle) < 1e-8) {
-        return wx >= o.x && wx <= o.x + o.width && wy >= o.y && wy <= o.y + o.height;
-    }
-    const cx = o.x + o.width / 2, cy = o.y + o.height / 2;
-    const dx = wx - cx, dy = wy - cy;
-    const c = Math.cos(angle), sn = Math.sin(angle);
-    const localX = dx * c + dy * sn;
-    const localY = -dx * sn + dy * c;
-    return Math.abs(localX) <= o.width / 2 && Math.abs(localY) <= o.height / 2;
-}
 function pickObjectAt(wx, wy, includeLocked = false) {
     let best = null, bestOrd = -1;
-    // Query a point-sized area, then use precise shape tests instead of the old
-    // axis-aligned editor rectangle, which was wrong for rotated objects.
     for (const o of getNearbyObjects({ x: wx, y: wy, width: 1, height: 1 })) {
         if (o.tag === 'player' || o.hidden) continue;
         if (o.locked && !includeLocked) continue;
-        if (!pointInObjectShape(wx, wy, o)) continue;
+        if (wx < o.x || wx > o.x + o.width || wy < o.y || wy > o.y + o.height) continue;
         const ord = o._ord || 0;
         if (ord >= bestOrd) { best = o; bestOrd = ord; }
     }
@@ -4346,10 +4325,8 @@ function updateSpatialGrid() {
     for (let i = 0; i < objects.length; i++) {
         const obj = objects[i];
         obj._ord = i;                                              // draw order = array order
-        // Index the real rotated bounds, not just the unrotated editor rectangle.
-        const bounds = obj.rotation ? rotatedAABB(obj) : obj;
-        const startX = Math.floor(bounds.x / SPATIAL_CELL_SIZE), endX = Math.floor((bounds.x + bounds.width) / SPATIAL_CELL_SIZE);
-        const startY = Math.floor(bounds.y / SPATIAL_CELL_SIZE), endY = Math.floor((bounds.y + bounds.height) / SPATIAL_CELL_SIZE);
+        const startX = Math.floor(obj.x / SPATIAL_CELL_SIZE), endX = Math.floor((obj.x + obj.width) / SPATIAL_CELL_SIZE);
+        const startY = Math.floor(obj.y / SPATIAL_CELL_SIZE), endY = Math.floor((obj.y + obj.height) / SPATIAL_CELL_SIZE);
         for (let x = startX; x <= endX; x++) {
             for (let y = startY; y <= endY; y++) {
                 const key = cellKey(x, y);
@@ -4520,99 +4497,13 @@ function toggleSetting(key) {
     }
     saveSettings();
 }
-function rectCorners(o) {
-  const cx = o.x + o.width / 2, cy = o.y + o.height / 2;
-  const r = (o.rotation || 0) * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r);
-  return [[-o.width/2,-o.height/2],[o.width/2,-o.height/2],[o.width/2,o.height/2],[-o.width/2,o.height/2]].map(([x,y]) => ({x:cx+x*c-y*sn,y:cy+x*sn+y*c}));
-}
-function rotatedAABB(o) {
-  const pts = rectCorners(o), xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
-  const x=Math.min(...xs), y=Math.min(...ys), right=Math.max(...xs), bottom=Math.max(...ys);
-  return {x,y,width:right-x,height:bottom-y};
-}
-function satContact(a, b) {
-  // Separating Axis Theorem: use the real edges of both rectangles, not their AABBs.
-  const ap = rectCorners(a), bp = rectCorners(b);
-  let minOverlap = Infinity, bestX = 0, bestY = 0;
-  const acx = a.x + a.width / 2, acy = a.y + a.height / 2;
-  const bcx = b.x + b.width / 2, bcy = b.y + b.height / 2;
-  for (const poly of [ap, bp]) {
-    for (let i = 0; i < 2; i++) {
-      const p1 = poly[i], p2 = poly[i + 1];
-      let nx = -(p2.y - p1.y), ny = p2.x - p1.x;
-      const len = Math.hypot(nx, ny);
-      if (len < 1e-8) continue;
-      nx /= len; ny /= len;
-      let amin = Infinity, amax = -Infinity, bmin = Infinity, bmax = -Infinity;
-      for (const pt of ap) { const d = pt.x * nx + pt.y * ny; amin = Math.min(amin, d); amax = Math.max(amax, d); }
-      for (const pt of bp) { const d = pt.x * nx + pt.y * ny; bmin = Math.min(bmin, d); bmax = Math.max(bmax, d); }
-      const intervalOverlap = Math.min(amax, bmax) - Math.max(amin, bmin);
-      if (intervalOverlap <= 0) return null;
-      // Correct containment too: calculate the distance needed to fully separate,
-      // rather than using the smaller object's entire width as a false MTV.
-      const penetration = Math.min(amax - bmin, bmax - amin);
-      if (penetration < minOverlap) { minOverlap = penetration; bestX = nx; bestY = ny; }
-    }
-  }
-  // The contact normal always points from the solid toward the moving object.
-  if ((acx - bcx) * bestX + (acy - bcy) * bestY < 0) { bestX = -bestX; bestY = -bestY; }
-  return { penetration: minOverlap, normalX: bestX, normalY: bestY };
-}
 function rectsCollide(a, b) {
-  const aa = a.rotation ? rotatedAABB(a) : a, bb = b.rotation ? rotatedAABB(b) : b;
-  if (!(aa.x < bb.x + bb.width && aa.x + aa.width > bb.x && aa.y < bb.y + bb.height && aa.y + aa.height > bb.y)) return false;
-  if (!a.rotation && !b.rotation) return true;
-  return !!satContact(a, b);
-}
-
-// The upper edge of a rotated solid is its walkable slope surface.
-function getSlopeSurface(o) {
-  const angle=((o.rotation||0)%360+360)%360;
-  if (!angle || angle > 80 && angle < 280) return null; // horizontal surfaces use normal collision; avoid upside-down/vertical faces
-  const pts=rectCorners(o);
-  const a=pts[0], b=pts[1];
-  const dx=b.x-a.x;
-  if (Math.abs(dx)<0.001) return null;
-  return {x1:Math.min(a.x,b.x),x2:Math.max(a.x,b.x),a,b,angle:Math.atan2(b.y-a.y,b.x-a.x)};
-}
-function slopeYAt(surface,x) {
-  const t=(x-surface.a.x)/(surface.b.x-surface.a.x);
-  return surface.a.y+(surface.b.y-surface.a.y)*t;
-}
-function resolveSlopeContacts(obj, previousBottom) {
-  let best=null;
-  const broad={x:obj.x-12,y:obj.y-obj.height-24,width:obj.width+24,height:obj.height*2+48};
-  for (const other of getNearbyObjects(broad)) {
-    if (other===obj || !other.solid || other.tag==='trigger' || !other.rotation) continue;
-    if (obj.tag!=='player' && other.tag==='player') continue;
-    const surface=getSlopeSurface(other); if(!surface) continue;
-    const left=obj.x+Math.min(6,obj.width*0.2), right=obj.x+obj.width-Math.min(6,obj.width*0.2), center=obj.x+obj.width/2;
-    if (right < surface.x1 || left > surface.x2) continue;
-    const sampleX=Math.max(surface.x1,Math.min(surface.x2,center));
-    const sy=slopeYAt(surface,sampleX);
-    const bottom=obj.y+obj.height;
-    const wasNear=previousBottom===undefined || previousBottom <= sy+Math.max(16,Math.abs(obj.vy||0)*2+5);
-    if ((bottom >= sy-4 && bottom <= sy+Math.max(20,Math.abs(obj.vy||0)*2+8) && (obj.vy||0)>=-1 && wasNear) || (obj._slopeObject===other && bottom>=sy-12 && bottom<=sy+18)) {
-      if (!best || sy < best.y) best={object:other,surface,y:sy,angle:surface.angle};
-    }
-  }
-  if (!best) { if(obj.tag==='player') obj._slopeObject=null; return false; }
-  obj.y=best.y-obj.height;
-  obj.vy=0;
-  obj._slopeObject=best.object;
-  if (obj.tag==='player') {
-    obj.isJumping=false; obj.jumpsLeft=obj.maxJumps; obj._slopeAngle=best.angle;
-    const degrees=best.angle*180/Math.PI;
-    if (Math.abs(degrees)>=20) {
-      const downhill=Math.sign(Math.sin(best.angle));
-      obj.vx += downhill * Math.min(0.85,Math.abs(Math.sin(best.angle))*0.85);
-      obj.vx=Math.max(-12,Math.min(12,obj.vx));
-    }
-  } else {
-    const degrees=best.angle*180/Math.PI;
-    if (Math.abs(degrees)>=20) obj.vx += Math.sign(Math.sin(best.angle))*Math.min(0.6,Math.abs(Math.sin(best.angle))*0.6);
-  }
-  return true;
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
 }
 async function saveSettings() {
     if (!currentUser) return;
@@ -5984,7 +5875,6 @@ function openPopup(obj) {
   document.getElementById("propY").value       = Math.round(obj.y);
   document.getElementById("propWidth").value   = obj.width;
   document.getElementById("propHeight").value  = obj.height;
-  document.getElementById("propRotation").value = obj.rotation || 0;
   document.getElementById("propOpacity").value = obj.opacity !== undefined ? obj.opacity : 1;
   document.getElementById("propGravity").value = obj.gravity ?? 0;
 
@@ -6125,8 +6015,6 @@ function applyProperties() {
   // General properties (apply to ALL)
   selectedObject.width = parseFloat(document.getElementById("propWidth").value) || GRID_SIZE;
   selectedObject.height = parseFloat(document.getElementById("propHeight").value) || GRID_SIZE;
-  const newRotation = parseFloat(document.getElementById("propRotation").value);
-  if (Number.isFinite(newRotation)) selectedObject.rotation = ((newRotation % 360) + 360) % 360;
   const rawGroup = document.getElementById("propGroup").value;
 selectedObject.group = rawGroup
     .split(',')
@@ -7332,18 +7220,7 @@ if (Math.abs(obj.x - other.x) > maxReach || Math.abs(obj.y - other.y) > maxReach
     // *** END NEW LOGIC ***
 
     if (rectsCollide(obj, other)) {
-      // Rotated rectangles use a minimum-translation vector from SAT. This keeps
-      // their sides, undersides, and sloped tops solid without AABB corner jumps.
-      if (other.rotation || obj.rotation) {
-        const contact = satContact(obj, other);
-        if (contact && (!overlap || contact.penetration < overlap.overlap)) {
-          overlap = { object: other, overlap: contact.penetration, axis, centerDist: 0,
-            rotated: true, normalX: contact.normalX, normalY: contact.normalY };
-        }
-        if (contact && axis === 'y' && contact.normalY < -0.17) hasGroundContact = true;
-        continue;
-      }
-      // Calculate overlap for axis-aligned rectangles.
+      // Calculate overlap
       const halfSize = (obj[sizeAxis] + other[sizeAxis]) / 2;
       const centerDist = (other[moveAxis] + other[sizeAxis] / 2) - (obj[moveAxis] + obj[sizeAxis] / 2);
       const currentOverlap = halfSize - Math.abs(centerDist);
@@ -7369,41 +7246,6 @@ function resolveCollision(obj, collision) {
     const overlap = collision.overlap;
     const isGround = other === ground;
     const isPlayer = other.tag === 'player';
-
-    if (collision.rotated) {
-        const nx = collision.normalX, ny = collision.normalY;
-        // Small skin prevents floating-point jitter and repeated re-penetration.
-        obj.x += nx * (overlap + 0.02);
-        obj.y += ny * (overlap + 0.02);
-        const preResolveVy = obj.vy;
-        const intoSurface = obj.vx * nx + obj.vy * ny;
-        if (intoSurface < 0) {
-            obj.vx -= intoSurface * nx;
-            obj.vy -= intoSurface * ny;
-        }
-        if (ny < -0.65 && preResolveVy >= -1.5) {
-            obj._contactGrounded = true;
-            const surface = getSlopeSurface(other);
-            let angle = surface ? surface.angle : ((other.rotation || 0) * Math.PI / 180);
-            while (angle > Math.PI) angle -= Math.PI * 2;
-            while (angle < -Math.PI) angle += Math.PI * 2;
-            if (angle > Math.PI / 2) angle -= Math.PI;
-            if (angle < -Math.PI / 2) angle += Math.PI;
-            obj._slopeAngle = Math.max(-Math.PI * 0.42, Math.min(Math.PI * 0.42, angle));
-            if (obj.tag === 'player') {
-                obj.isJumping = false;
-                obj.jumpsLeft = obj.maxJumps;
-                obj._slopeObject = other;
-                if (other.tag === 'breakable' && !other.breakTimer && !other.broken) startBreak(other);
-                if (other.slime) obj.jumpsLeft = obj.maxJumps;
-                if (other.kill && obj.tag === 'player') resetPlayer(obj);
-                if (other.bounce) { obj.vy = -18; obj.isJumping = true; obj._contactGrounded = false; }
-            }
-        }
-        if (obj.tag === 'player' && other.kill) resetPlayer(obj);
-        if (obj.pushable && obj.tag !== 'player' && Math.abs(ny) > 0.35) obj.vy = Math.min(obj.vy, 0);
-        return;
-    }
 
     if (collision.axis === 'y') {
         const direction = isGround || isPlayer ? 1 : Math.sign(collision.centerDist);
@@ -7479,51 +7321,6 @@ function resolveCollision(obj, collision) {
         }
     }
 }
-function resolveRotatedPenetrations(obj) {
-    // Axis-by-axis resolution can leave a corner embedded in a rotated block
-    // after a diagonal/underside approach. A few short SAT depenetration passes
-    // make the final position non-overlapping without snapping to the block top.
-    for (let pass = 0; pass < 4; pass++) {
-        let corrected = false;
-        const candidates = getNearbyObjects({ x: obj.x - 4, y: obj.y - 4, width: obj.width + 8, height: obj.height + 8 });
-        for (const other of candidates) {
-            if (other === obj || !other.solid || other.tag === 'trigger' || !(other.rotation || obj.rotation)) continue;
-            if (obj.tag !== 'player' && other.tag === 'player') continue;
-            const contact = satContact(obj, other);
-            if (!contact || contact.penetration <= 0) continue;
-            const nx = contact.normalX, ny = contact.normalY;
-            const push = contact.penetration + 0.04;
-            obj.x += nx * push;
-            obj.y += ny * push;
-            const into = obj.vx * nx + obj.vy * ny;
-            if (into < 0) {
-                obj.vx -= into * nx;
-                obj.vy -= into * ny;
-            }
-            // Only a clearly upward-facing surface is ground; side/underside
-            // contacts must never rotate the player or reset its jump.
-            if (ny < -0.65 && obj.vy >= -1.5) {
-                obj._contactGrounded = true;
-                if (obj.tag === 'player') {
-                    const surface = getSlopeSurface(other);
-                    let angle = surface ? surface.angle : ((other.rotation || 0) * Math.PI / 180);
-                    while (angle > Math.PI) angle -= Math.PI * 2;
-                    while (angle < -Math.PI) angle += Math.PI * 2;
-                    if (angle > Math.PI / 2) angle -= Math.PI;
-                    if (angle < -Math.PI / 2) angle += Math.PI;
-                    // Avoid abrupt, near-vertical character rotations on corners.
-                    obj._slopeAngle = Math.max(-Math.PI * 0.42, Math.min(Math.PI * 0.42, angle));
-                    obj._slopeObject = other;
-                    obj.isJumping = false;
-                    obj.jumpsLeft = obj.maxJumps;
-                }
-            }
-            corrected = true;
-        }
-        if (!corrected) break;
-    }
-}
-
 function resetPlayer(obj) {
   playSFX('die'); // ADD
   deathFlash = 1.0;
@@ -7533,9 +7330,7 @@ function resetPlayer(obj) {
   obj.vx = 0;
   obj.vy = 0;
   obj.isJumping = true;
-  obj.jumpsLeft = 0;
-  obj._slopeObject = null;
-  obj._slopeAngle = 0;
+  obj.jumpsLeft = 0; 
 }
 
 
@@ -7611,8 +7406,6 @@ if (onConveyor) {
     obj.vy = Math.max(Math.min(obj.vy, 20), -20);
 
     // --- 3. Horizontal Movement & Collision ---
-    obj._contactGrounded = false;
-    const previousBottom = obj.y + obj.height;
     obj.x += obj.vx * delta;
     let xCollision = checkCollisions(obj, 'x');
     if (xCollision.overlap) resolveCollision(obj, xCollision.overlap);
@@ -7621,34 +7414,12 @@ if (onConveyor) {
     obj.y += obj.vy * delta;
     let yCollision = checkCollisions(obj, 'y');
     if (yCollision.overlap) resolveCollision(obj, yCollision.overlap);
-    // Final continuous-style correction handles rotated block undersides and
-    // corners after both movement axes have been resolved.
-    resolveRotatedPenetrations(obj);
-    const onSlope = obj._contactGrounded === true;
-    if (onSlope) {
-      const degrees = Math.abs(obj._slopeAngle * 180 / Math.PI);
-      const tangentX = Math.cos(obj._slopeAngle), tangentY = Math.sin(obj._slopeAngle);
-      if (degrees < 20 && (obj.tag !== 'player' || (!keys.left && !keys.right))) {
-        // Static-friction approximation: shallow slopes hold still unless momentum is significant.
-        const tangentSpeed = obj.vx * tangentX + obj.vy * tangentY;
-        if (Math.abs(tangentSpeed) < 2.2) { obj.vx = 0; obj.vy = 0; }
-      } else if (degrees >= 20) {
-        // Gravity naturally projects onto the slope tangent; this small assist makes steep slides readable.
-        const downhill = Math.sin(obj._slopeAngle);
-        obj.vx += downhill * Math.min(obj.tag === 'player' ? 0.3 : 0.18, Math.sin(degrees * Math.PI / 180) * (obj.tag === 'player' ? 0.3 : 0.18)) * delta;
-        obj.vx = Math.max(-12, Math.min(12, obj.vx));
-      }
-    }
 
     if (obj.tag === "player") {
-      const currentlyGrounded = onSlope || yCollision.hasGroundContact || (!!yCollision.overlap && obj.vy >= 0);
+      const currentlyGrounded = yCollision.hasGroundContact || yCollision.overlap;
 
       if (!currentlyGrounded) {
         obj.isJumping = true;
-        obj._slopeObject = null;
-        obj._slopeAngle = 0;
-      } else if (onSlope) {
-        obj.isJumping = false;
       }
 
       if (obj.wasGrounded && obj.isJumping && obj.vy >= 0) {
@@ -11624,11 +11395,9 @@ function drawSingleObject(obj) {
         if (obj.tag !== 'text' && (obj.flipX || obj.flipY)) ctx.scale(obj.flipX ? -1 : 1, obj.flipY ? -1 : 1);
     }
     if (obj.tag === 'player') {
-    // Follow a contacted slope with the body perpendicular to its normal.
-    // On flat ground retain the small run lean.
-    const slopeAngle = (!obj.isJumping && obj._slopeObject) ? (obj._slopeAngle || 0) : 0;
-    const leanAmount = slopeAngle ? 0 : obj.vx * 0.03;
-    ctx.rotate(slopeAngle + leanAmount);
+    // Lean forward when running
+    const leanAmount = obj.vx * 0.03;
+    ctx.rotate(leanAmount);
 
     // Squish horizontally when running fast
     const speedRatio = Math.abs(obj.vx) / 6;
